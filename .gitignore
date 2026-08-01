@@ -1,32 +1,51 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
+# Build output
+/denyfirst
+/dist/
+/bin/
 *.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-
-# Test binary, built with `go test -c`
 *.test
-
-# Code coverage profiles and other test artifacts
 *.out
-coverage.*
-*.coverprofile
-profile.cov
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
+# Coverage
+coverage.out
+coverage.html
 
-# Go workspace file
+# Go workspace files — machine-specific, must not be shared
 go.work
 go.work.sum
 
-# env file
+# ── Secrets ──────────────────────────────────────────────────────────
+# Push protection is the real defence; this is the layer before it.
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_ed25519
+id_ecdsa
+*_rsa
+*_ed25519
+credentials.json
+secrets.yaml
+secrets.yml
+.netrc
+.npmrc
 
-# Editor/IDE
-# .idea/
-# .vscode/
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Local scratch — a place to put things that must never be committed
+/tmp/
+/scratch/
+/local/
