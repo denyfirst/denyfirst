@@ -55,7 +55,12 @@ jobs:
       - name: Verify go.mod and go.sum are tidy
         run: |
           go mod tidy
-          git diff --exit-code go.mod go.sum
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "go mod tidy modified the repository:"
+            git status --porcelain
+            git diff
+            exit 1
+          fi
 
       - name: Verify module checksums
         run: go mod verify
