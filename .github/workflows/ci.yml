@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Deny by default at the top level. Jobs opt in to what they need.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.24"
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # PIN THESE. See the note at the bottom of this file before merging.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+
+      - name: Verify go.mod and go.sum are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Verify module checksums
+        run: go mod verify
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Test with race detector
+        run: go test -race -shuffle=on -coverprofile=coverage.out ./...
+
+      - name: Build
+        run: go build -trimpath ./...
+
+  vulncheck:
+    name: Known vulnerabilities
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      # govulncheck reports only vulnerabilities on code paths actually
+      # reachable from this module, so a hit here is a real problem rather
+      # than a version-range guess.
+      - name: Run govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  staticcheck:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run staticcheck
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
+
+  gosec:
+    name: Security linter
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run gosec
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          gosec -severity medium -confidence medium ./...
+
+# ─────────────────────────────────────────────────────────────────────
+# BEFORE MERGING: pin every `uses:` to a full 40-character commit SHA.
+#
+# Tags are mutable. Whoever controls an action's repository can move `v4`
+# to different code, and your CI will run it with whatever token the job
+# holds. This is not hypothetical; it is how several supply-chain attacks
+# on GitHub Actions have worked.
+#
+# Resolve the SHA for a tag:
+#
+#   git ls-remote https://github.com/actions/checkout refs/tags/v4.2.2
+#   git ls-remote https://github.com/actions/setup-go refs/tags/v5.2.0
+#
+# Then write it as:
+#
+#   uses: actions/checkout@<40-char-sha>  # v4.2.2
+#
+# The trailing comment records which tag the SHA came from, so the pin
+# stays readable. Once "Require actions to be pinned to a full-length
+# commit SHA" is enabled in organisation settings, unpinned workflows are
+# rejected outright.
+#
+# The `go install ...@latest` lines above have the same weakness in a
+# milder form. Pin them to explicit versions once the versions are chosen.
+# ─────────────────────────────────────────────────────────────────────
