@@ -3,6 +3,7 @@ package safedial
 import (
 	"context"
 	"errors"
+	"net"
 	"net/netip"
 	"testing"
 	"time"
@@ -141,24 +142,75 @@ func TestDefaults(t *testing.T) {
 	}
 }
 
+// blockingResolver never answers, so a lookup through it can only end when a
+// deadline fires. Timing tests that rely on a real lookup being slow are not
+// tests: a warm CI runner resolves and connects in twenty milliseconds, and
+// the assertion silently inverts.
+func blockingResolver() *net.Resolver {
+	return &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}
+}
+
 // A caller with a tighter deadline than TotalTimeout must not have it
 // extended. This is the property that lets an HTTP handler bound the whole
 // request regardless of how the dialer is configured.
+//
+// If TotalTimeout won, this test would hang for an hour and the Go test
+// timeout would kill the run, which is a failure either way.
 func TestCallerDeadlineWins(t *testing.T) {
-	d := &Dialer{TotalTimeout: time.Hour}
+	d := &Dialer{TotalTimeout: time.Hour, Resolver: blockingResolver()}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
 	start := time.Now()
-	_, err := d.DialContext(ctx, "tcp", "example.com:443")
+	_, err := d.DialContext(ctx, "tcp", "unreachable.test:443")
 	elapsed := time.Since(start)
 
 	if err == nil {
-		t.Fatal("expected an error once the caller deadline expired")
+		t.Fatal("dial succeeded against a resolver that never answers")
 	}
 	if elapsed > 5*time.Second {
-		t.Errorf("dial took %v; the caller's 50ms deadline was not honoured", elapsed)
+		t.Errorf("dial took %v; the caller's 100ms deadline was not honoured", elapsed)
+	}
+}
+
+// TotalTimeout must bound the operation when the caller sets no deadline of
+// its own. Without it, a per-attempt timeout multiplies by the number of
+// addresses tried.
+func TestTotalTimeoutBoundsTheOperation(t *testing.T) {
+	d := &Dialer{
+		Timeout:      time.Hour, // deliberately useless as a bound
+		TotalTimeout: 150 * time.Millisecond,
+		Resolver:     blockingResolver(),
+	}
+
+	start := time.Now()
+	_, err := d.DialContext(context.Background(), "tcp", "unreachable.test:443")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("dial succeeded against a resolver that never answers")
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("dial took %v; TotalTimeout of 150ms did not bound it", elapsed)
+	}
+}
+
+// An already-expired context must be refused before any network activity.
+func TestExpiredContextIsRefused(t *testing.T) {
+	d := &Dialer{}
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	if _, err := d.DialContext(ctx, "tcp", "example.com:443"); err == nil {
+		t.Error("DialContext succeeded with a context whose deadline had already passed")
 	}
 }
 
