@@ -13,11 +13,11 @@ import (
 
 func TestDescribeCipherGrading(t *testing.T) {
 	cases := []struct {
-		id            uint16
-		wantForward   bool
-		wantAEAD      bool
-		wantGrade     string
-		wantInsecure  bool
+		id           uint16
+		wantForward  bool
+		wantAEAD     bool
+		wantGrade    string
+		wantInsecure bool
 	}{
 		{
 			id:          tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
@@ -139,9 +139,12 @@ func TestCandidateSuites(t *testing.T) {
 			seen[id] = true
 		}
 	}
+}
 
-	// Go does not allow choosing TLS 1.3 suites, so there is nothing to
-	// enumerate and the probe reports the negotiated suite instead.
+// Go ignores Config.CipherSuites for TLS 1.3. candidateSuites must return
+// nothing for it, because handing those IDs to a handshake would suggest a
+// selection that the library will not honour.
+func TestCandidateSuitesSkipsTLS13(t *testing.T) {
 	if got := candidateSuites(tls.VersionTLS13); len(got) != 0 {
 		t.Errorf("candidateSuites(TLS 1.3) returned %d suites; Go does not permit selecting them", len(got))
 	}
