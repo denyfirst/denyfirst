@@ -160,7 +160,7 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 		HasSAN:             len(leaf.DNSNames) > 0 || len(leaf.IPAddresses) > 0,
 		SelfSigned:         selfSigned,
 		ChainTrusted:       report.Trusted,
-		ChainComplete:      chainComplete(chain, report.Trusted, selfSigned),
+		ChainComplete:      chainComplete(chain, selfSigned),
 		HostnameMatches:    hostnameMatches,
 	}
 	facts.KeyAlgorithm, facts.KeyBits = keyDetails(leaf)
@@ -174,30 +174,41 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 	report.Grade = policy.GradeLeaf(facts, now)
 	report.Verdict = report.Grade.Verdict
 
-	if len(chain) == 1 && !selfSigned {
-		report.Notes = append(report.Notes,
-			"The server sent only the leaf certificate. Browsers often fetch the missing issuer themselves; command-line clients and mobile applications usually do not.")
+	if !facts.ChainComplete {
+		if report.Trusted {
+			report.Notes = append(report.Notes,
+				"The issuer was not sent, yet verification succeeded: this platform's verifier fetched the missing certificate over the network. Clients that do not fetch — most command-line tools, mobile applications, and API consumers — will fail against this server.")
+		} else {
+			report.Notes = append(report.Notes,
+				"The server did not send the certificate that issued the leaf.")
+		}
 	}
 
 	return report, nil
 }
 
-// chainComplete reports whether the server sent everything a client needs.
+// chainComplete reports whether the server sent the certificate that issued
+// the leaf.
 //
-// Servers are not expected to send the root, so a missing root is not a gap.
-// The question is narrower: was the leaf's issuer either included in the
-// presented chain or already trusted? Only a negative answer to both is
-// evidence of an incomplete chain, and this returns false only on evidence.
-func chainComplete(chain []*x509.Certificate, trusted, selfSigned bool) bool {
-	if trusted || selfSigned {
+// This is answered structurally rather than from the verification result,
+// because verification is not portable. On Windows and macOS, Go delegates to
+// the platform verifier, which fetches a missing intermediate over the network
+// through the authority information access extension. On Linux it does not.
+// The same server would then read as complete on one machine and incomplete on
+// another, which is the drift the policy package exists to prevent.
+//
+// Servers are not expected to send the root, so a missing root is not a gap. A
+// leaf issued directly by a root would be reported as incomplete here; that
+// arrangement is essentially absent from the public web, where every CA signs
+// through an intermediate.
+func chainComplete(chain []*x509.Certificate, selfSigned bool) bool {
+	if selfSigned {
 		return true
 	}
 
 	leaf := chain[0]
 	for _, c := range chain[1:] {
 		if bytes.Equal(c.RawSubject, leaf.RawIssuer) {
-			// The issuer was sent. Verification failed for some other
-			// reason, which the trust rule reports.
 			return true
 		}
 	}
