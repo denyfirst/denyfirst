@@ -5,147 +5,12 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
-	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/denyfirst/denyfirst/internal/policy"
 )
-
-// Suites whose properties follow from the protocol rather than from a policy
-// decision. TLS 1.3 mandates AEAD and ephemeral key exchange; ECDHE with GCM
-// has both by construction. These expectations cannot drift with a Go release.
-func TestStrongSuitesAreGradedStrong(t *testing.T) {
-	strong := []uint16{
-		tls.TLS_AES_128_GCM_SHA256,
-		tls.TLS_AES_256_GCM_SHA384,
-		tls.TLS_CHACHA20_POLY1305_SHA256,
-		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
-		tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
-	}
-
-	for _, id := range strong {
-		got := describeCipher(id)
-
-		if got.Name == "" || strings.Contains(got.Name, "0x") {
-			t.Errorf("describeCipher(%#04x) produced no readable name: %q", id, got.Name)
-		}
-		if !got.ForwardSecret {
-			t.Errorf("%s: ForwardSecret = false, but the suite is ephemeral", got.Name)
-		}
-		if !got.AEAD {
-			t.Errorf("%s: AEAD = false, but the suite is AEAD", got.Name)
-		}
-		if got.Grade != "strong" {
-			t.Errorf("%s: Grade = %q, want \"strong\"", got.Name, got.Grade)
-		}
-	}
-}
-
-// Forward secrecy is read from the key exchange named in the suite. Without
-// it, one compromised private key decrypts every session ever recorded.
-func TestForwardSecrecyDetection(t *testing.T) {
-	ephemeral := []uint16{
-		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-		tls.TLS_AES_128_GCM_SHA256,
-	}
-	for _, id := range ephemeral {
-		if got := describeCipher(id); !got.ForwardSecret {
-			t.Errorf("%s: ForwardSecret = false, want true", got.Name)
-		}
-	}
-
-	static := []uint16{
-		tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_RSA_WITH_AES_128_CBC_SHA,
-		tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
-	}
-	for _, id := range static {
-		if got := describeCipher(id); got.ForwardSecret {
-			t.Errorf("%s: ForwardSecret = true, but the key exchange is static RSA", got.Name)
-		}
-	}
-}
-
-// AEAD is read from the cipher mode. CBC in TLS has a long history of
-// padding-oracle attacks.
-func TestAEADDetection(t *testing.T) {
-	aead := []uint16{
-		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
-		tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
-		tls.TLS_CHACHA20_POLY1305_SHA256,
-	}
-	for _, id := range aead {
-		if got := describeCipher(id); !got.AEAD {
-			t.Errorf("%s: AEAD = false, want true", got.Name)
-		}
-	}
-
-	notAEAD := []uint16{
-		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-		tls.TLS_RSA_WITH_AES_128_CBC_SHA,
-		tls.TLS_RSA_WITH_RC4_128_SHA,
-	}
-	for _, id := range notAEAD {
-		if got := describeCipher(id); got.AEAD {
-			t.Errorf("%s: AEAD = true, but the suite is CBC or a stream cipher", got.Name)
-		}
-	}
-}
-
-// Grading follows rules, not a hardcoded verdict per suite. Asserting that a
-// named suite is "weak" rather than "insecure" bakes in one Go release's
-// judgement: Go has already moved static-RSA AEAD suites from one category to
-// the other. These rules hold whatever it decides next.
-func TestGradingRulesHoldForEverySuite(t *testing.T) {
-	insecure := tls.InsecureCipherSuites()
-	secure := tls.CipherSuites()
-
-	if len(insecure)+len(secure) == 0 {
-		t.Fatal("crypto/tls reported no cipher suites at all")
-	}
-
-	for _, cs := range insecure {
-		got := describeCipher(cs.ID)
-		if !got.Insecure {
-			t.Errorf("%s: Insecure = false, but crypto/tls lists it as insecure", cs.Name)
-		}
-		if got.Grade != "insecure" {
-			t.Errorf("%s: Grade = %q, want \"insecure\"", cs.Name, got.Grade)
-		}
-	}
-
-	for _, cs := range secure {
-		got := describeCipher(cs.ID)
-		if got.Insecure {
-			t.Errorf("%s: Insecure = true, but crypto/tls lists it as secure", cs.Name)
-		}
-
-		want := "weak"
-		if got.ForwardSecret && got.AEAD {
-			want = "strong"
-		}
-		if got.Grade != want {
-			t.Errorf("%s: Grade = %q, want %q (ForwardSecret=%v AEAD=%v)",
-				cs.Name, got.Grade, want, got.ForwardSecret, got.AEAD)
-		}
-	}
-}
-
-// Every suite Go exposes must land in one of the three grades. A suite added
-// in a future release that fell through the classification shows up here.
-func TestEverySuiteReceivesAGrade(t *testing.T) {
-	valid := []string{"strong", "weak", "insecure"}
-
-	for _, cs := range append(tls.CipherSuites(), tls.InsecureCipherSuites()...) {
-		if got := describeCipher(cs.ID); !slices.Contains(valid, got.Grade) {
-			t.Errorf("%s: grade %q is not one of %v", cs.Name, got.Grade, valid)
-		}
-	}
-}
 
 func TestCandidateSuites(t *testing.T) {
 	for _, version := range []uint16{tls.VersionTLS10, tls.VersionTLS11, tls.VersionTLS12} {
@@ -172,6 +37,35 @@ func TestCandidateSuites(t *testing.T) {
 func TestCandidateSuitesSkipsTLS13(t *testing.T) {
 	if got := candidateSuites(tls.VersionTLS13); len(got) != 0 {
 		t.Errorf("candidateSuites(TLS 1.3) returned %d suites; Go does not permit selecting them", len(got))
+	}
+}
+
+// gradeCipher must reach the policy package rather than carry its own
+// opinion. If grading logic ever creeps back into this package, the verdict
+// here will stop matching.
+func TestGradeCipherDelegatesToPolicy(t *testing.T) {
+	cases := []uint16{
+		tls.TLS_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_RSA_WITH_RC4_128_SHA,
+	}
+
+	for _, id := range cases {
+		name := tls.CipherSuiteName(id)
+		got := gradeCipher(id)
+
+		if got.ID != id {
+			t.Errorf("%s: ID = %#04x, want %#04x", name, got.ID, id)
+		}
+		want := policy.GradeCipher(name)
+		if got.Verdict != want.Verdict {
+			t.Errorf("%s: Verdict = %q, but policy says %q", name, got.Verdict, want.Verdict)
+		}
+		if got.Name != name {
+			t.Errorf("Name = %q, want %q", got.Name, name)
+		}
 	}
 }
 
@@ -212,6 +106,110 @@ func TestClassifyHandshakeError(t *testing.T) {
 	}
 }
 
+// A server that refuses TLS 1.0 has done the right thing. Grading the refusal
+// would report a correct configuration as insecure.
+func TestUnsupportedVersionsDoNotContributeFindings(t *testing.T) {
+	results := []VersionResult{
+		{
+			Version:   tls.VersionTLS10,
+			Name:      "TLS 1.0",
+			Supported: false,
+			Error:     "server refused TLS 1.0",
+		},
+		{
+			Version:   tls.VersionTLS13,
+			Name:      "TLS 1.3",
+			Supported: true,
+			Grade:     policy.GradeVersion(tls.VersionTLS13),
+			Ciphers:   []CipherResult{gradeCipher(tls.TLS_AES_128_GCM_SHA256)},
+		},
+	}
+
+	verdict, findings := summarise(results)
+
+	if verdict != policy.Strong {
+		t.Errorf("Verdict = %q, want %q", verdict, policy.Strong)
+	}
+	for _, f := range findings {
+		if f.RuleID == "version.deprecated" {
+			t.Error("a refused version produced a deprecation finding; refusing it is correct behaviour")
+		}
+	}
+}
+
+// One insecure suite makes the configuration insecure, because the attacker
+// picks which suite is negotiated.
+func TestWorstCaseAggregation(t *testing.T) {
+	results := []VersionResult{{
+		Version:   tls.VersionTLS12,
+		Name:      "TLS 1.2",
+		Supported: true,
+		Grade:     policy.GradeVersion(tls.VersionTLS12),
+		Ciphers: []CipherResult{
+			gradeCipher(tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256),   // strong
+			gradeCipher(tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384), // strong
+			gradeCipher(tls.TLS_RSA_WITH_RC4_128_SHA),                // insecure
+		},
+	}}
+
+	verdict, findings := summarise(results)
+
+	if verdict != policy.Insecure {
+		t.Errorf("Verdict = %q, want %q: two strong suites do not offset one insecure suite", verdict, policy.Insecure)
+	}
+	if len(findings) == 0 {
+		t.Fatal("graded insecure with no finding to explain it")
+	}
+	if findings[0].Verdict != policy.Insecure {
+		t.Errorf("findings are not sorted by severity: first is %q", findings[0].Verdict)
+	}
+}
+
+// Nothing measured must not read as passing.
+func TestNothingMeasuredIsUngraded(t *testing.T) {
+	results := []VersionResult{
+		{Version: tls.VersionTLS13, Name: "TLS 1.3", Supported: false, Error: "connection refused"},
+		{Version: tls.VersionTLS12, Name: "TLS 1.2", Supported: false, Error: "connection refused"},
+	}
+
+	verdict, findings := summarise(results)
+
+	if verdict != policy.Ungraded {
+		t.Errorf("Verdict = %q, want it ungraded: an unreachable server has not passed anything", verdict)
+	}
+	if len(findings) != 0 {
+		t.Errorf("expected no findings, got %+v", findings)
+	}
+}
+
+// The same problem seen at several versions must appear once.
+func TestFindingsAreDeduplicated(t *testing.T) {
+	rc4 := gradeCipher(tls.TLS_RSA_WITH_RC4_128_SHA)
+
+	results := []VersionResult{
+		{
+			Version: tls.VersionTLS11, Name: "TLS 1.1", Supported: true,
+			Grade: policy.GradeVersion(tls.VersionTLS11), Ciphers: []CipherResult{rc4},
+		},
+		{
+			Version: tls.VersionTLS12, Name: "TLS 1.2", Supported: true,
+			Grade: policy.GradeVersion(tls.VersionTLS12), Ciphers: []CipherResult{rc4},
+		},
+	}
+
+	_, findings := summarise(results)
+
+	seen := map[string]int{}
+	for _, f := range findings {
+		seen[f.RuleID]++
+	}
+	for id, count := range seen {
+		if count > 1 {
+			t.Errorf("rule %s appears %d times, want once", id, count)
+		}
+	}
+}
+
 func TestDefaults(t *testing.T) {
 	zero := &Prober{}
 	if got := zero.handshakeTimeout(); got != defaultHandshakeTimeout {
@@ -230,6 +228,27 @@ func TestDefaults(t *testing.T) {
 	}
 	if got := set.totalTimeout(); got != 2*time.Second {
 		t.Errorf("totalTimeout() = %v, want 2s", got)
+	}
+}
+
+// Every report must name the policy that graded it, so a verdict can be
+// reproduced after the rules change.
+func TestReportNamesThePolicy(t *testing.T) {
+	p := &Prober{
+		Dial: func(_ context.Context, _, _ string) (net.Conn, error) {
+			return nil, errors.New("no network in this test")
+		},
+	}
+
+	report, err := p.Probe(context.Background(), "example.test", "443")
+	if err != nil {
+		t.Fatalf("Probe returned %v", err)
+	}
+	if report.Policy != policy.Version {
+		t.Errorf("Policy = %q, want %q", report.Policy, policy.Version)
+	}
+	if report.Verdict != policy.Ungraded {
+		t.Errorf("Verdict = %q, want it ungraded when nothing connected", report.Verdict)
 	}
 }
 
