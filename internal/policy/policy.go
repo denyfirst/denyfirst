@@ -385,6 +385,45 @@ func GradeVersion(version uint16) VersionFinding {
 
 func isTLS13Suite(name string) bool {
 	return strings.HasPrefix(name, "TLS_AES_") ||
+
+// Ungraded means no verdict was reached, usually because nothing could be
+// measured. It is deliberately distinct from Strong: silence about something
+// untested must not read as approval.
+const Ungraded Verdict = ""
+
+// Rank orders verdicts by severity so callers can aggregate without
+// hardcoding the order.
+func (v Verdict) Rank() int {
+	switch v {
+	case Insecure:
+		return 2
+	case Weak:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// Worst returns the most severe verdict in the list, ignoring Ungraded
+// entries. An empty list, or one holding nothing but Ungraded, yields
+// Ungraded.
+//
+// Aggregating by worst case rather than by average is the whole point. An
+// attacker chooses which protocol version and cipher suite to negotiate, so
+// one insecure option makes the configuration insecure however many strong
+// options sit beside it.
+func Worst(verdicts ...Verdict) Verdict {
+	out := Ungraded
+	for _, v := range verdicts {
+		if v == Ungraded {
+			continue
+		}
+		if out == Ungraded || v.Rank() > out.Rank() {
+			out = v
+		}
+	}
+	return out
+}
 		strings.HasPrefix(name, "TLS_CHACHA20_POLY1305_") ||
 		strings.HasPrefix(name, "TLS_AEGIS_")
 }
