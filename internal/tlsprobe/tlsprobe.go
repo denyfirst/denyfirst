@@ -320,16 +320,24 @@ func (p *Prober) handshake(ctx context.Context, host, port string, version uint1
 		addr = remote.String()
 	}
 
+	// Both settings gosec objects to here are the purpose of the tool rather
+	// than an oversight.
+	//
+	// InsecureSkipVerify is on because the probe must describe expired,
+	// self-signed, and mismatched certificates rather than fail on them.
+	// Verification is performed separately in certinfo, on the chain
+	// collected here, so an invalid certificate becomes a finding instead of
+	// an absent result.
+	//
+	// MinVersion drops to TLS 1.0 because reporting that a server still
+	// accepts an obsolete protocol version requires speaking it.
+	//
+	// #nosec G402 -- deliberate: this is a TLS scanner, not a TLS client
 	cfg := &tls.Config{
-		ServerName: host,
-		MinVersion: version,
-		MaxVersion: version,
-
-		// The goal is to describe what the server offers, including
-		// expired, self-signed, and mismatched certificates. Verification
-		// happens separately in certinfo, on the chain collected here, so
-		// that a failure produces a finding rather than an absent result.
-		InsecureSkipVerify: true, //nolint:gosec // deliberate: see comment
+		ServerName:         host,
+		MinVersion:         version,
+		MaxVersion:         version,
+		InsecureSkipVerify: true,
 	}
 	if len(suites) > 0 {
 		cfg.CipherSuites = suites
@@ -351,7 +359,6 @@ func (p *Prober) dial() DialFunc {
 	d := &safedial.Dialer{
 		Timeout:      p.handshakeTimeout(),
 		TotalTimeout: p.totalTimeout(),
-		AllowedPorts: nil,
 	}
 	return d.DialContext
 }
@@ -370,10 +377,17 @@ func (p *Prober) totalTimeout() time.Duration {
 	return defaultTotalTimeout
 }
 
-// candidateSuites returns every suite Go can offer at the given version,
-// insecure ones included. Reporting that a server still accepts RC4 is the
-// point of the exercise.
+// candidateSuites returns every suite Go can be told to offer at the given
+// version, insecure ones included. Reporting that a server still accepts RC4
+// is the point of the exercise.
+//
+// TLS 1.3 returns nothing: Go ignores Config.CipherSuites for that version,
+// so there is no selection to make and nothing to enumerate.
 func candidateSuites(version uint16) []uint16 {
+	if version >= tls.VersionTLS13 {
+		return nil
+	}
+
 	var out []uint16
 	for _, cs := range tls.CipherSuites() {
 		if slices.Contains(cs.SupportedVersions, version) {
