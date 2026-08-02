@@ -14,6 +14,13 @@ func TestSplitTarget(t *testing.T) {
 		{"example.com", "example.com", "443"},
 		{"example.com:8443", "example.com", "8443"},
 		{"  example.com  ", "example.com", "443"},
+		// Surrounding whitespace is trimmed rather than refused: people
+		// paste it constantly, and after trimming there is nothing left to
+		// exploit. Interior control characters are a different matter and
+		// are rejected below.
+		{"example.com\n", "example.com", "443"},
+		{"example.com\r\n", "example.com", "443"},
+		{"\texample.com:8443\n", "example.com", "8443"},
 
 		// A pasted URL is a likely mistake, not an error worth refusing.
 		{"https://example.com", "example.com", "443"},
@@ -44,9 +51,16 @@ func TestSplitTargetRejectsMalformedInput(t *testing.T) {
 		"",
 		"   ",
 		"https://",
+
+		// Interior control characters and spaces survive trimming. A newline
+		// inside a hostname is how header injection starts, and a NUL byte is
+		// how a truncating parser is fooled into reading a different name
+		// than the one that was validated.
 		"exa mple.com",
-		"example.com\n",
+		"exam\nple.com",
+		"example\r.com",
 		"example.com\x00.evil.test",
+
 		strings.Repeat("a", 300),
 	}
 
