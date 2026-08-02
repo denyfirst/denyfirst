@@ -75,7 +75,7 @@ go build ./cmd/denyfirst
 ./denyfirst
 ```
 
-Requires Go 1.25.10 or later. No database, no configuration file, no environment
+Requires Go 1.25.12 or later. No database, no configuration file, no environment
 variables required to start.
 
 ## Contributing
