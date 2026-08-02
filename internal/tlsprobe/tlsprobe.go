@@ -248,9 +248,20 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 			"Cipher preference could not be determined: it requires a pre-1.3 version offering at least two suites.")
 	}
 
+	// The two notes below describe different gaps and both belong in a
+	// report. The first bounds what was offered at all; the second explains
+	// why one version shows a single suite. Dropping either leaves the reader
+	// to assume the list is exhaustive.
 	if slices.ContainsFunc(results, func(v VersionResult) bool { return v.Supported }) {
 		report.Notes = append(report.Notes,
 			"Only cipher suites implemented by Go's TLS stack were offered. Suites outside it, and SSLv2 or SSLv3, are not covered.")
+	}
+
+	if slices.ContainsFunc(results, func(v VersionResult) bool {
+		return v.Supported && v.Version == tls.VersionTLS13
+	}) {
+		report.Notes = append(report.Notes,
+			"For TLS 1.3 only the negotiated suite is listed. Go gives a client no way to choose among TLS 1.3 suites, so the rest could not be enumerated.")
 	}
 
 	report.Duration = time.Since(start)
