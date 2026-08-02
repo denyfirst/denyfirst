@@ -206,11 +206,18 @@ func chainComplete(chain []*x509.Certificate, trusted, selfSigned bool) bool {
 
 // isSelfSigned checks the signature, not only the names. A certificate can
 // name itself as its own issuer without being able to prove it.
+//
+// CheckSignature is used rather than CheckSignatureFrom because the latter
+// first applies RFC 5280's rule that a non-CA key must not verify certificate
+// signatures. That rule is right for chain building and wrong here: most
+// self-signed server certificates in the wild are not marked as CAs, and
+// treating them as ordinary untrusted certificates would hide the one fact
+// that actually explains the failure.
 func isSelfSigned(c *x509.Certificate) bool {
 	if !bytes.Equal(c.RawSubject, c.RawIssuer) {
 		return false
 	}
-	return c.CheckSignatureFrom(c) == nil
+	return c.CheckSignature(c.SignatureAlgorithm, c.RawTBSCertificate, c.Signature) == nil
 }
 
 func describe(c *x509.Certificate) Certificate {
