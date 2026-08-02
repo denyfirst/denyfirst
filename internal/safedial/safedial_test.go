@@ -1,9 +1,11 @@
 package safedial
 
 import (
+	"context"
 	"errors"
 	"net/netip"
 	"testing"
+	"time"
 )
 
 func TestCheckAddrBlocks(t *testing.T) {
@@ -110,5 +112,70 @@ func TestPortAllowList(t *testing.T) {
 	open := &Dialer{}
 	if err := open.checkPort("9999"); err != nil {
 		t.Errorf("empty allow list should permit any port, got: %v", err)
+	}
+}
+
+func TestDefaults(t *testing.T) {
+	zero := &Dialer{}
+
+	if got := zero.perAttemptTimeout(); got != defaultTimeout {
+		t.Errorf("perAttemptTimeout() = %v, want %v", got, defaultTimeout)
+	}
+	if got := zero.totalTimeout(); got != defaultTotalTimeout {
+		t.Errorf("totalTimeout() = %v, want %v", got, defaultTotalTimeout)
+	}
+	if got := zero.maxAddrs(); got != defaultMaxAddrs {
+		t.Errorf("maxAddrs() = %v, want %v", got, defaultMaxAddrs)
+	}
+
+	set := &Dialer{Timeout: time.Second, TotalTimeout: 2 * time.Second, MaxAddrs: 3}
+
+	if got := set.perAttemptTimeout(); got != time.Second {
+		t.Errorf("perAttemptTimeout() = %v, want 1s", got)
+	}
+	if got := set.totalTimeout(); got != 2*time.Second {
+		t.Errorf("totalTimeout() = %v, want 2s", got)
+	}
+	if got := set.maxAddrs(); got != 3 {
+		t.Errorf("maxAddrs() = %v, want 3", got)
+	}
+}
+
+// A caller with a tighter deadline than TotalTimeout must not have it
+// extended. This is the property that lets an HTTP handler bound the whole
+// request regardless of how the dialer is configured.
+func TestCallerDeadlineWins(t *testing.T) {
+	d := &Dialer{TotalTimeout: time.Hour}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := d.DialContext(ctx, "tcp", "example.com:443")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected an error once the caller deadline expired")
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("dial took %v; the caller's 50ms deadline was not honoured", elapsed)
+	}
+}
+
+func TestRejectsNonTCP(t *testing.T) {
+	d := &Dialer{}
+	if _, err := d.DialContext(context.Background(), "udp", "example.com:53"); err == nil {
+		t.Error("DialContext accepted a udp network")
+	} else if !errors.Is(err, ErrBlocked) {
+		t.Errorf("got %v; expected it to wrap ErrBlocked", err)
+	}
+}
+
+func TestTruncNote(t *testing.T) {
+	if got := truncNote(false, 8); got != "" {
+		t.Errorf("truncNote(false, 8) = %q, want empty", got)
+	}
+	if got := truncNote(true, 8); got == "" {
+		t.Error("truncNote(true, 8) returned nothing; a partial result must be explained")
 	}
 }
