@@ -7,7 +7,7 @@
 // endpoint (169.254.169.254) and use the service as an SSRF proxy into our
 // own infrastructure.
 //
-// Two properties matter and are easy to get wrong:
+// Four properties matter and are each easy to get wrong:
 //
 //   - The hostname is resolved exactly once. The resolved IP is inspected and
 //     then dialled directly. A dialer that resolves for the check and lets the
@@ -17,6 +17,14 @@
 //
 //   - Addresses are unmapped before inspection. ::ffff:127.0.0.1 is an IPv6
 //     address that is really loopback; without Unmap it passes every check.
+//
+//   - The number of addresses tried is capped. A hostname served by an
+//     attacker-controlled nameserver can resolve to hundreds of addresses.
+//     Without a cap, one request turns into hundreds of connection attempts.
+//
+//   - The whole operation shares one time budget. A per-attempt timeout alone
+//     multiplies: eight addresses at ten seconds each is eighty seconds of
+//     work for a single request.
 package safedial
 
 import (
@@ -53,11 +61,26 @@ var blockedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("100::/64"),        // discard-only
 }
 
+const (
+	defaultTimeout      = 10 * time.Second
+	defaultTotalTimeout = 30 * time.Second
+	defaultMaxAddrs     = 8
+)
+
 // Dialer opens TCP connections to public addresses only. The zero value is
-// usable: it applies a ten second timeout and permits any port.
+// usable and applies the defaults documented on each field.
 type Dialer struct {
 	// Timeout bounds a single connection attempt. Zero means ten seconds.
 	Timeout time.Duration
+
+	// TotalTimeout bounds the entire operation, resolution included, however
+	// many addresses are tried. Zero means thirty seconds. If the context
+	// passed to DialContext expires sooner, the context wins.
+	TotalTimeout time.Duration
+
+	// MaxAddrs caps how many resolved addresses are attempted. Zero means
+	// eight. Anything beyond the cap is ignored.
+	MaxAddrs int
 
 	// AllowedPorts, when non-empty, restricts which destination ports may be
 	// dialled. Values are decimal strings, for example "443".
@@ -66,8 +89,6 @@ type Dialer struct {
 	// Resolver overrides the system resolver. Nil means net.DefaultResolver.
 	Resolver *net.Resolver
 }
-
-const defaultTimeout = 10 * time.Second
 
 // DialContext matches the signature expected by http.Transport.DialContext and
 // by tls.Dialer.NetDialer, so a Dialer can be dropped into either.
@@ -82,13 +103,18 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 	if err != nil {
 		return nil, fmt.Errorf("safedial: bad address %q: %w", address, err)
 	}
-
 	if err := checkHost(host); err != nil {
 		return nil, err
 	}
 	if err := d.checkPort(port); err != nil {
 		return nil, err
 	}
+
+	// One budget for resolution and every attempt together. WithTimeout keeps
+	// whichever deadline is earlier, so a caller with a tighter deadline is
+	// never overridden.
+	ctx, cancel := context.WithTimeout(ctx, d.totalTimeout())
+	defer cancel()
 
 	resolver := d.Resolver
 	if resolver == nil {
@@ -103,14 +129,22 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 		return nil, fmt.Errorf("safedial: %q resolved to no addresses", host)
 	}
 
-	timeout := d.Timeout
-	if timeout <= 0 {
-		timeout = defaultTimeout
+	limit := d.maxAddrs()
+	truncated := len(addrs) > limit
+	if truncated {
+		addrs = addrs[:limit]
 	}
-	inner := net.Dialer{Timeout: timeout}
+
+	inner := net.Dialer{Timeout: d.perAttemptTimeout()}
 
 	var blocked, dialErr error
 	for _, addr := range addrs {
+		// Stop as soon as the shared budget is gone rather than starting an
+		// attempt that cannot finish.
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("safedial: %q: %w%s", address, err, truncNote(truncated, limit))
+		}
+
 		addr = addr.Unmap()
 
 		if err := checkAddr(addr); err != nil {
@@ -134,17 +168,38 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 
 	// Every candidate was refused by policy: report that, not a network error.
 	if dialErr == nil && blocked != nil {
-		return nil, blocked
+		return nil, fmt.Errorf("%w%s", blocked, truncNote(truncated, limit))
 	}
 	if dialErr != nil {
-		return nil, fmt.Errorf("safedial: connect %q: %w", address, dialErr)
+		return nil, fmt.Errorf("safedial: connect %q: %w%s", address, dialErr, truncNote(truncated, limit))
 	}
-	return nil, fmt.Errorf("%w: %q has no usable public address", ErrBlocked, host)
+	return nil, fmt.Errorf("%w: %q has no usable public address%s", ErrBlocked, host, truncNote(truncated, limit))
 }
 
 // Dial is DialContext with a background context.
 func (d *Dialer) Dial(network, address string) (net.Conn, error) {
 	return d.DialContext(context.Background(), network, address)
+}
+
+func (d *Dialer) perAttemptTimeout() time.Duration {
+	if d.Timeout > 0 {
+		return d.Timeout
+	}
+	return defaultTimeout
+}
+
+func (d *Dialer) totalTimeout() time.Duration {
+	if d.TotalTimeout > 0 {
+		return d.TotalTimeout
+	}
+	return defaultTotalTimeout
+}
+
+func (d *Dialer) maxAddrs() int {
+	if d.MaxAddrs > 0 {
+		return d.MaxAddrs
+	}
+	return defaultMaxAddrs
 }
 
 func (d *Dialer) checkPort(port string) error {
@@ -157,6 +212,15 @@ func (d *Dialer) checkPort(port string) error {
 		}
 	}
 	return fmt.Errorf("%w: port %q is not in the allow list", ErrBlocked, port)
+}
+
+// truncNote explains a partial result so a failure is not mistaken for a
+// complete one.
+func truncNote(truncated bool, limit int) string {
+	if !truncated {
+		return ""
+	}
+	return fmt.Sprintf(" (only the first %d resolved addresses were considered)", limit)
 }
 
 // checkHost rejects input that should never reach the resolver. It is a
