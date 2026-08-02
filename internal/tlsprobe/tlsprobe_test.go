@@ -11,113 +11,138 @@ import (
 	"time"
 )
 
-func TestDescribeCipherGrading(t *testing.T) {
-	cases := []struct {
-		id           uint16
-		wantForward  bool
-		wantAEAD     bool
-		wantGrade    string
-		wantInsecure bool
-	}{
-		{
-			id:          tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
-			wantForward: true,
-			wantAEAD:    true,
-			wantGrade:   "strong",
-		},
-		{
-			id:          tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
-			wantForward: true,
-			wantAEAD:    true,
-			wantGrade:   "strong",
-		},
-		{
-			// TLS 1.3: forward secrecy and AEAD are protocol requirements.
-			id:          tls.TLS_AES_128_GCM_SHA256,
-			wantForward: true,
-			wantAEAD:    true,
-			wantGrade:   "strong",
-		},
-		{
-			id:          tls.TLS_AES_256_GCM_SHA384,
-			wantForward: true,
-			wantAEAD:    true,
-			wantGrade:   "strong",
-		},
-		{
-			id:          tls.TLS_CHACHA20_POLY1305_SHA256,
-			wantForward: true,
-			wantAEAD:    true,
-			wantGrade:   "strong",
-		},
-		{
-			// AEAD but static RSA key exchange: one leaked key exposes every
-			// session ever recorded.
-			id:          tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
-			wantForward: false,
-			wantAEAD:    true,
-			wantGrade:   "weak",
-		},
-		{
-			// Forward secret but CBC: the padding-oracle family applies.
-			id:          tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
-			wantForward: true,
-			wantAEAD:    false,
-			wantGrade:   "weak",
-		},
-		{
-			id:           tls.TLS_RSA_WITH_RC4_128_SHA,
-			wantForward:  false,
-			wantAEAD:     false,
-			wantGrade:    "insecure",
-			wantInsecure: true,
-		},
-		{
-			id:           tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
-			wantForward:  false,
-			wantAEAD:     false,
-			wantGrade:    "insecure",
-			wantInsecure: true,
-		},
+// Suites whose properties follow from the protocol rather than from a policy
+// decision. TLS 1.3 mandates AEAD and ephemeral key exchange; ECDHE with GCM
+// has both by construction. These expectations cannot drift with a Go release.
+func TestStrongSuitesAreGradedStrong(t *testing.T) {
+	strong := []uint16{
+		tls.TLS_AES_128_GCM_SHA256,
+		tls.TLS_AES_256_GCM_SHA384,
+		tls.TLS_CHACHA20_POLY1305_SHA256,
+		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+		tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
 	}
 
-	for _, tc := range cases {
-		got := describeCipher(tc.id)
+	for _, id := range strong {
+		got := describeCipher(id)
 
 		if got.Name == "" || strings.Contains(got.Name, "0x") {
-			t.Errorf("describeCipher(%#04x) produced no readable name: %q", tc.id, got.Name)
+			t.Errorf("describeCipher(%#04x) produced no readable name: %q", id, got.Name)
 		}
-		if got.ForwardSecret != tc.wantForward {
-			t.Errorf("%s: ForwardSecret = %v, want %v", got.Name, got.ForwardSecret, tc.wantForward)
+		if !got.ForwardSecret {
+			t.Errorf("%s: ForwardSecret = false, but the suite is ephemeral", got.Name)
 		}
-		if got.AEAD != tc.wantAEAD {
-			t.Errorf("%s: AEAD = %v, want %v", got.Name, got.AEAD, tc.wantAEAD)
+		if !got.AEAD {
+			t.Errorf("%s: AEAD = false, but the suite is AEAD", got.Name)
 		}
-		if got.Insecure != tc.wantInsecure {
-			t.Errorf("%s: Insecure = %v, want %v", got.Name, got.Insecure, tc.wantInsecure)
-		}
-		if got.Grade != tc.wantGrade {
-			t.Errorf("%s: Grade = %q, want %q", got.Name, got.Grade, tc.wantGrade)
+		if got.Grade != "strong" {
+			t.Errorf("%s: Grade = %q, want \"strong\"", got.Name, got.Grade)
 		}
 	}
 }
 
-// Every suite Go exposes must receive a grade. A new suite in a future Go
-// release that fell through the classification would show up here.
-func TestEveryKnownSuiteIsGraded(t *testing.T) {
-	all := append(tls.CipherSuites(), tls.InsecureCipherSuites()...)
-	if len(all) == 0 {
+// Forward secrecy is read from the key exchange named in the suite. Without
+// it, one compromised private key decrypts every session ever recorded.
+func TestForwardSecrecyDetection(t *testing.T) {
+	ephemeral := []uint16{
+		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_AES_128_GCM_SHA256,
+	}
+	for _, id := range ephemeral {
+		if got := describeCipher(id); !got.ForwardSecret {
+			t.Errorf("%s: ForwardSecret = false, want true", got.Name)
+		}
+	}
+
+	static := []uint16{
+		tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
+	}
+	for _, id := range static {
+		if got := describeCipher(id); got.ForwardSecret {
+			t.Errorf("%s: ForwardSecret = true, but the key exchange is static RSA", got.Name)
+		}
+	}
+}
+
+// AEAD is read from the cipher mode. CBC in TLS has a long history of
+// padding-oracle attacks.
+func TestAEADDetection(t *testing.T) {
+	aead := []uint16{
+		tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+		tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+		tls.TLS_CHACHA20_POLY1305_SHA256,
+	}
+	for _, id := range aead {
+		if got := describeCipher(id); !got.AEAD {
+			t.Errorf("%s: AEAD = false, want true", got.Name)
+		}
+	}
+
+	notAEAD := []uint16{
+		tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+		tls.TLS_RSA_WITH_RC4_128_SHA,
+	}
+	for _, id := range notAEAD {
+		if got := describeCipher(id); got.AEAD {
+			t.Errorf("%s: AEAD = true, but the suite is CBC or a stream cipher", got.Name)
+		}
+	}
+}
+
+// Grading follows rules, not a hardcoded verdict per suite. Asserting that a
+// named suite is "weak" rather than "insecure" bakes in one Go release's
+// judgement: Go has already moved static-RSA AEAD suites from one category to
+// the other. These rules hold whatever it decides next.
+func TestGradingRulesHoldForEverySuite(t *testing.T) {
+	insecure := tls.InsecureCipherSuites()
+	secure := tls.CipherSuites()
+
+	if len(insecure)+len(secure) == 0 {
 		t.Fatal("crypto/tls reported no cipher suites at all")
 	}
 
-	valid := []string{"strong", "weak", "insecure"}
-	for _, cs := range all {
+	for _, cs := range insecure {
 		got := describeCipher(cs.ID)
-		if !slices.Contains(valid, got.Grade) {
-			t.Errorf("%s: grade %q is not one of %v", cs.Name, got.Grade, valid)
+		if !got.Insecure {
+			t.Errorf("%s: Insecure = false, but crypto/tls lists it as insecure", cs.Name)
 		}
-		if got.Insecure != cs.Insecure {
-			t.Errorf("%s: Insecure = %v, but crypto/tls says %v", cs.Name, got.Insecure, cs.Insecure)
+		if got.Grade != "insecure" {
+			t.Errorf("%s: Grade = %q, want \"insecure\"", cs.Name, got.Grade)
+		}
+	}
+
+	for _, cs := range secure {
+		got := describeCipher(cs.ID)
+		if got.Insecure {
+			t.Errorf("%s: Insecure = true, but crypto/tls lists it as secure", cs.Name)
+		}
+
+		want := "weak"
+		if got.ForwardSecret && got.AEAD {
+			want = "strong"
+		}
+		if got.Grade != want {
+			t.Errorf("%s: Grade = %q, want %q (ForwardSecret=%v AEAD=%v)",
+				cs.Name, got.Grade, want, got.ForwardSecret, got.AEAD)
+		}
+	}
+}
+
+// Every suite Go exposes must land in one of the three grades. A suite added
+// in a future release that fell through the classification shows up here.
+func TestEverySuiteReceivesAGrade(t *testing.T) {
+	valid := []string{"strong", "weak", "insecure"}
+
+	for _, cs := range append(tls.CipherSuites(), tls.InsecureCipherSuites()...) {
+		if got := describeCipher(cs.ID); !slices.Contains(valid, got.Grade) {
+			t.Errorf("%s: grade %q is not one of %v", cs.Name, got.Grade, valid)
 		}
 	}
 }
@@ -238,19 +263,33 @@ func TestDefaultDialerRefusesPrivateTargets(t *testing.T) {
 	}
 }
 
-// A caller's deadline must bound the probe regardless of TotalTimeout.
+// A caller's deadline must bound the probe regardless of TotalTimeout. The
+// dialer here never returns on its own, so only a deadline can end the probe.
 func TestCallerDeadlineWins(t *testing.T) {
-	p := &Prober{TotalTimeout: time.Hour}
+	p := &Prober{
+		TotalTimeout: time.Hour,
+		Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
 	start := time.Now()
-	if _, err := p.Probe(ctx, "example.com", "443"); err != nil {
-		t.Logf("probe returned %v", err)
-	}
+	report, err := p.Probe(ctx, "example.test", "443")
+	elapsed := time.Since(start)
 
-	if elapsed := time.Since(start); elapsed > 10*time.Second {
-		t.Errorf("probe took %v; the caller's 100ms deadline was not honoured", elapsed)
+	if elapsed > 10*time.Second {
+		t.Fatalf("probe took %v; the caller's 200ms deadline was not honoured", elapsed)
+	}
+	if err != nil {
+		return // an error is an acceptable outcome
+	}
+	for _, v := range report.Versions {
+		if v.Supported {
+			t.Errorf("%s reported as supported although the dialer never connected", v.Name)
+		}
 	}
 }
