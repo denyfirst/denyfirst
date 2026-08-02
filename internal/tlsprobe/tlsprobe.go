@@ -5,16 +5,21 @@
 // results describe what the server will actually negotiate rather than what
 // it claims to support.
 //
-// Two design points are deliberate.
+// Three design points are deliberate.
 //
 // Connections default to the SSRF-safe dialer. Leaving Prober.Dial nil
 // selects safedial, so refusing private destinations is the default and
 // bypassing it requires an explicit decision. The reverse arrangement — safe
 // only when configured — fails open the first time someone forgets.
 //
-// This package touches the network and returns raw material. Interpretation
-// of the certificate chain belongs in certinfo, which takes []*x509.Certificate
-// and computes, so it can be tested without a server.
+// This package measures; it does not judge. Every verdict comes from the
+// policy package, which carries the rules and the documents behind them. That
+// keeps the answer reproducible: the same server graded by the same policy
+// version yields the same result, whatever crypto/tls decides about a suite
+// between Go releases.
+//
+// Interpretation of the certificate chain belongs in certinfo, which takes
+// []*x509.Certificate and computes, so it can be tested without a server.
 //
 // # Known limitation
 //
@@ -40,6 +45,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/safedial"
 )
 
@@ -87,6 +93,18 @@ type Report struct {
 	// with several addresses may not answer identically on each.
 	Address string `json:"address,omitempty"`
 
+	// Policy names the rule set that produced every verdict below, so a
+	// result can be reproduced after the rules move on.
+	Policy string `json:"policy"`
+
+	// Verdict is the worst verdict across everything the server accepts.
+	// Empty when nothing could be measured, which is not the same as passing.
+	Verdict policy.Verdict `json:"verdict,omitempty"`
+
+	// Findings collects each distinct problem once, so a caller can present
+	// them without walking the version and cipher trees.
+	Findings []policy.Finding `json:"findings,omitempty"`
+
 	Versions []VersionResult `json:"versions"`
 
 	// Certificates is the chain as presented, leaf first, from the newest
@@ -115,10 +133,16 @@ type Report struct {
 
 // VersionResult describes one protocol version.
 type VersionResult struct {
-	Version   uint16   `json:"-"`
-	Name      string   `json:"name"`
-	Supported bool     `json:"supported"`
-	Ciphers   []Cipher `json:"ciphers,omitempty"`
+	Version   uint16 `json:"-"`
+	Name      string `json:"name"`
+	Supported bool   `json:"supported"`
+
+	// Grade is populated only when Supported is true. A server that refuses
+	// TLS 1.0 has done the right thing, and attaching the deprecation finding
+	// to that refusal would penalise a correct configuration.
+	Grade policy.VersionFinding `json:"grade,omitzero"`
+
+	Ciphers []CipherResult `json:"ciphers,omitempty"`
 
 	// Error explains a failed handshake. A refusal by the server and a
 	// refusal by our own client are different findings, and the text
@@ -126,24 +150,10 @@ type VersionResult struct {
 	Error string `json:"error,omitempty"`
 }
 
-// Cipher describes one negotiated cipher suite.
-type Cipher struct {
-	ID   uint16 `json:"-"`
-	Name string `json:"name"`
-
-	// ForwardSecret is true for ephemeral key exchange (ECDHE, DHE) and for
-	// every TLS 1.3 suite. Without it, one compromised private key decrypts
-	// all past traffic that was ever captured.
-	ForwardSecret bool `json:"forwardSecret"`
-
-	// AEAD is true for GCM and ChaCha20-Poly1305. CBC suites in TLS have a
-	// long history of padding-oracle attacks.
-	AEAD bool `json:"aead"`
-
-	// Insecure follows Go's own classification in tls.InsecureCipherSuites.
-	Insecure bool `json:"insecure"`
-
-	Grade string `json:"grade"`
+// CipherResult is one negotiated suite together with its grade.
+type CipherResult struct {
+	ID uint16 `json:"-"`
+	policy.CipherFinding
 }
 
 // Probe runs the full sequence against host:port.
@@ -153,7 +163,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	ctx, cancel := context.WithTimeout(ctx, p.totalTimeout())
 	defer cancel()
 
-	report := &Report{Host: host, Port: port}
+	report := &Report{Host: host, Port: port, Policy: policy.Version}
 
 	// Versions are independent, so probe them concurrently. Cipher
 	// enumeration within a version is inherently sequential: each round
@@ -183,11 +193,12 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 			}
 
 			result.Supported = true
+			result.Grade = policy.GradeVersion(version)
 
 			if version == tls.VersionTLS13 {
 				// Go does not expose TLS 1.3 suite selection, so report what
 				// was negotiated instead of enumerating.
-				result.Ciphers = []Cipher{describeCipher(state.CipherSuite)}
+				result.Ciphers = []CipherResult{gradeCipher(state.CipherSuite)}
 			} else {
 				result.Ciphers = p.enumerateCiphers(ctx, host, port, version)
 			}
@@ -218,6 +229,8 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 		break
 	}
 
+	report.Verdict, report.Findings = summarise(results)
+
 	if len(report.Certificates) == 0 {
 		report.Notes = append(report.Notes,
 			"No handshake completed, so no certificate chain was retrieved.")
@@ -244,12 +257,58 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	return report, nil
 }
 
+// summarise reduces the per-version results to one verdict and a deduplicated
+// finding list.
+//
+// Only versions the server actually accepts contribute. Refusing an obsolete
+// version is correct behaviour, and grading the refusal would report a
+// well-configured server as insecure.
+func summarise(results []VersionResult) (policy.Verdict, []policy.Finding) {
+	var (
+		verdicts []policy.Verdict
+		findings []policy.Finding
+		seen     = map[string]bool{}
+	)
+
+	collect := func(fs []policy.Finding) {
+		for _, f := range fs {
+			if seen[f.RuleID] {
+				continue
+			}
+			seen[f.RuleID] = true
+			findings = append(findings, f)
+		}
+	}
+
+	for _, v := range results {
+		if !v.Supported {
+			continue
+		}
+
+		verdicts = append(verdicts, v.Grade.Verdict)
+		collect(v.Grade.Findings)
+
+		for _, c := range v.Ciphers {
+			verdicts = append(verdicts, c.Verdict)
+			collect(c.Findings)
+		}
+	}
+
+	// Most severe first, so a caller showing only the top item shows the
+	// thing that matters.
+	slices.SortStableFunc(findings, func(a, b policy.Finding) int {
+		return b.Verdict.Rank() - a.Verdict.Rank()
+	})
+
+	return policy.Worst(verdicts...), findings
+}
+
 // enumerateCiphers offers every candidate, records what the server picks,
 // removes it, and repeats. The number of handshakes is the number of suites
 // the server supports, not the number offered.
-func (p *Prober) enumerateCiphers(ctx context.Context, host, port string, version uint16) []Cipher {
+func (p *Prober) enumerateCiphers(ctx context.Context, host, port string, version uint16) []CipherResult {
 	remaining := candidateSuites(version)
-	found := make([]Cipher, 0, len(remaining))
+	found := make([]CipherResult, 0, len(remaining))
 
 	for round := 0; len(remaining) > 0 && round < maxEnumerationRounds; round++ {
 		if ctx.Err() != nil {
@@ -269,7 +328,7 @@ func (p *Prober) enumerateCiphers(ctx context.Context, host, port string, versio
 			break
 		}
 
-		found = append(found, describeCipher(state.CipherSuite))
+		found = append(found, gradeCipher(state.CipherSuite))
 		remaining = slices.Delete(remaining, idx, idx+1)
 	}
 
@@ -377,6 +436,14 @@ func (p *Prober) totalTimeout() time.Duration {
 	return defaultTotalTimeout
 }
 
+// gradeCipher pairs a suite ID with the policy verdict for its IANA name.
+func gradeCipher(id uint16) CipherResult {
+	return CipherResult{
+		ID:            id,
+		CipherFinding: policy.GradeCipher(tls.CipherSuiteName(id)),
+	}
+}
+
 // candidateSuites returns every suite Go can be told to offer at the given
 // version, insecure ones included. Reporting that a server still accepts RC4
 // is the point of the exercise.
@@ -400,42 +467,6 @@ func candidateSuites(version uint16) []uint16 {
 		}
 	}
 	return out
-}
-
-// describeCipher classifies a suite by its IANA name. Go exposes ID, Name,
-// SupportedVersions, and Insecure, but not key exchange or mode, so those are
-// read from the name. The names are registry-assigned and do not change.
-func describeCipher(id uint16) Cipher {
-	name := tls.CipherSuiteName(id)
-	c := Cipher{ID: id, Name: name}
-
-	for _, cs := range tls.InsecureCipherSuites() {
-		if cs.ID == id {
-			c.Insecure = true
-			break
-		}
-	}
-
-	switch {
-	case strings.HasPrefix(name, "TLS_AES_"), strings.HasPrefix(name, "TLS_CHACHA20_"):
-		// TLS 1.3 suites. The protocol mandates AEAD and ephemeral exchange.
-		c.ForwardSecret = true
-		c.AEAD = true
-	default:
-		c.ForwardSecret = strings.Contains(name, "_ECDHE_") || strings.Contains(name, "_DHE_")
-		c.AEAD = strings.Contains(name, "_GCM_") || strings.Contains(name, "_CHACHA20_POLY1305")
-	}
-
-	switch {
-	case c.Insecure:
-		c.Grade = "insecure"
-	case c.ForwardSecret && c.AEAD:
-		c.Grade = "strong"
-	default:
-		c.Grade = "weak"
-	}
-
-	return c
 }
 
 func versionName(v uint16) string {
