@@ -169,3 +169,40 @@ func TestScanRejectsMalformedTarget(t *testing.T) {
 		t.Error("Scan accepted a host containing a newline")
 	}
 }
+
+// The allow list must hold at the library level, not only in the HTTP
+// handler. A guard that lives in one caller disappears the moment a second
+// caller is written, and the second caller is where the mistake happens.
+func TestScannerEnforcesPortsByDefault(t *testing.T) {
+	s := &Scanner{}
+
+	for _, target := range []string{"example.test:22", "example.test:3389", "example.test:25"} {
+		_, err := s.Scan(context.Background(), target)
+		if err == nil {
+			t.Errorf("a zero Scanner accepted %s, a port outside the allow list", target)
+			continue
+		}
+		if !strings.Contains(err.Error(), "not scannable") {
+			t.Errorf("Scan(%s) failed for the wrong reason: %v", target, err)
+		}
+	}
+}
+
+// AllowAnyPort must actually lift the restriction, or the command line loses
+// a capability it is entitled to.
+func TestAllowAnyPortLiftsTheRestriction(t *testing.T) {
+	s := &Scanner{
+		AllowAnyPort: true,
+		Prober: &tlsprobe.Prober{
+			Dial: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return nil, errors.New("no network in this test")
+			},
+		},
+	}
+
+	if _, err := s.Scan(context.Background(), "example.test:22"); err != nil {
+		if strings.Contains(err.Error(), "not scannable") {
+			t.Error("AllowAnyPort did not disable the port check")
+		}
+	}
+}
