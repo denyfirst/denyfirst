@@ -31,6 +31,7 @@ import (
 
 	"github.com/denyfirst/denyfirst/internal/certinfo"
 	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/denyfirst/internal/scan"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
 )
 
@@ -39,22 +40,17 @@ const (
 	exitWeak     = 1
 	exitInsecure = 2
 	exitError    = 3
-
-	defaultPort = "443"
-	maxHostLen  = 253
 )
 
 func main() {
 	os.Exit(run())
 }
 
-// result is the combined output for one target.
+// result pairs a scan with the error that prevented it, so one failed target
+// does not stop the rest.
 type result struct {
-	Target      string           `json:"target"`
-	Verdict     policy.Verdict   `json:"verdict"`
-	TLS         *tlsprobe.Report `json:"tls"`
-	Certificate *certinfo.Report `json:"certificate,omitempty"`
-	Error       string           `json:"error,omitempty"`
+	*scan.Result
+	Error string `json:"error,omitempty"`
 }
 
 func run() int {
@@ -83,20 +79,22 @@ func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	prober := &tlsprobe.Prober{TotalTimeout: *timeout}
+	scanner := &scan.Scanner{
+		Prober: &tlsprobe.Prober{TotalTimeout: *timeout},
+	}
 	if *allowPrivate {
 		// Deliberate opt-out of the SSRF guard. Reasonable for a local
 		// operator scanning their own network; never reachable from the HTTP
 		// service, which has no equivalent switch.
 		d := &net.Dialer{Timeout: *timeout}
-		prober.Dial = d.DialContext
+		scanner.Prober.Dial = d.DialContext
 	}
 
 	worst := policy.Ungraded
 	results := make([]result, 0, len(targets))
 
 	for _, target := range targets {
-		r := scan(ctx, prober, target, *timeout)
+		r := runScan(ctx, scanner, target, *timeout)
 		results = append(results, r)
 		worst = policy.Worst(worst, r.Verdict)
 
@@ -130,71 +128,15 @@ func run() int {
 	}
 }
 
-func scan(ctx context.Context, prober *tlsprobe.Prober, target string, timeout time.Duration) result {
-	out := result{Target: target}
-
-	host, port, err := splitTarget(target)
-	if err != nil {
-		out.Error = err.Error()
-		return out
-	}
-	out.Target = net.JoinHostPort(host, port)
-
+func runScan(ctx context.Context, s *scan.Scanner, target string, timeout time.Duration) result {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	tlsReport, err := prober.Probe(ctx, host, port)
+	r, err := s.Scan(ctx, target)
 	if err != nil {
-		out.Error = err.Error()
-		return out
+		return result{Result: &scan.Result{Target: target}, Error: err.Error()}
 	}
-	out.TLS = tlsReport
-	out.Verdict = tlsReport.Verdict
-
-	if len(tlsReport.Certificates) > 0 {
-		certReport, err := certinfo.Analyse(tlsReport.Certificates, host, time.Now())
-		if err != nil {
-			out.Error = err.Error()
-			return out
-		}
-		out.Certificate = certReport
-		out.Verdict = policy.Worst(out.Verdict, certReport.Verdict)
-	}
-
-	return out
-}
-
-// splitTarget accepts host or host:port and applies the same input limits the
-// HTTP service will need, so the two cannot drift apart.
-func splitTarget(target string) (host, port string, err error) {
-	target = strings.TrimSpace(target)
-
-	// A pasted URL is a likely mistake rather than an error worth refusing.
-	for _, prefix := range []string{"https://", "http://"} {
-		if rest, ok := strings.CutPrefix(target, prefix); ok {
-			target = rest
-		}
-	}
-	target = strings.TrimSuffix(target, "/")
-	if i := strings.IndexByte(target, '/'); i >= 0 {
-		target = target[:i]
-	}
-
-	host, port, err = net.SplitHostPort(target)
-	if err != nil {
-		host, port = target, defaultPort
-	}
-
-	switch {
-	case host == "":
-		return "", "", fmt.Errorf("no host in %q", target)
-	case len(host) > maxHostLen:
-		return "", "", fmt.Errorf("host exceeds %d bytes", maxHostLen)
-	case strings.ContainsAny(host, " \t\r\n\x00"):
-		return "", "", fmt.Errorf("host contains control or space characters")
-	}
-
-	return host, port, nil
+	return result{Result: r}
 }
 
 func printReport(r result) {
@@ -210,8 +152,8 @@ func printReport(r result) {
 		verdict = "ungraded (nothing could be measured)"
 	}
 	fmt.Printf("\n  Verdict   %s\n", verdict)
-	fmt.Printf("  Policy    %s\n", r.TLS.Policy)
-	if r.TLS.Address != "" {
+	fmt.Printf("  Policy    %s\n", r.Policy)
+	if r.TLS != nil && r.TLS.Address != "" {
 		fmt.Printf("  Address   %s\n", r.TLS.Address)
 	}
 
@@ -221,10 +163,16 @@ func printReport(r result) {
 	printFindings(r)
 	printNotes(r)
 
-	fmt.Printf("\n  Completed in %s\n", r.TLS.Duration.Round(time.Millisecond))
+	if r.TLS != nil {
+		fmt.Printf("\n  Completed in %s\n", r.TLS.Duration.Round(time.Millisecond))
+	}
 }
 
 func printVersions(t *tlsprobe.Report) {
+	if t == nil {
+		return
+	}
+
 	fmt.Printf("\n  Protocol versions\n")
 	for _, v := range t.Versions {
 		switch {
@@ -239,6 +187,10 @@ func printVersions(t *tlsprobe.Report) {
 }
 
 func printCiphers(t *tlsprobe.Report) {
+	if t == nil {
+		return
+	}
+
 	for _, v := range t.Versions {
 		if !v.Supported || len(v.Ciphers) == 0 {
 			continue
@@ -305,24 +257,7 @@ func printCertificate(c *certinfo.Report) {
 }
 
 func printFindings(r result) {
-	var findings []policy.Finding
-	seen := map[string]bool{}
-
-	collect := func(fs []policy.Finding) {
-		for _, f := range fs {
-			if !seen[f.RuleID] {
-				seen[f.RuleID] = true
-				findings = append(findings, f)
-			}
-		}
-	}
-	if r.TLS != nil {
-		collect(r.TLS.Findings)
-	}
-	if r.Certificate != nil {
-		collect(r.Certificate.Grade.Findings)
-	}
-
+	findings := r.Findings()
 	if len(findings) == 0 {
 		fmt.Printf("\n  No findings.\n")
 		return
@@ -339,13 +274,7 @@ func printFindings(r result) {
 }
 
 func printNotes(r result) {
-	var notes []string
-	if r.TLS != nil {
-		notes = append(notes, r.TLS.Notes...)
-	}
-	if r.Certificate != nil {
-		notes = append(notes, r.Certificate.Notes...)
-	}
+	notes := r.Notes()
 	if len(notes) == 0 {
 		return
 	}
