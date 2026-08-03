@@ -124,7 +124,16 @@ type Report struct {
 	OCSPStapled bool   `json:"ocspStapled"`
 	SCTCount    int    `json:"sctCount"`
 
-	Duration time.Duration `json:"durationMs"`
+	// Duration is the wall time the probe took, for Go callers.
+	//
+	// It is not serialised directly: time.Duration marshals as nanoseconds,
+	// so a field labelled milliseconds would carry a number a thousand times
+	// too large. A tool that reports other people's mistakes cannot ship a
+	// unit error of its own.
+	Duration time.Duration `json:"-"`
+
+	// DurationMs is the same value in milliseconds, for JSON consumers.
+	DurationMs int64 `json:"durationMs"`
 
 	// Notes records what the probe could not establish. It is part of the
 	// result, not a debug aid: an unexplained gap reads as an absence.
@@ -265,6 +274,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	}
 
 	report.Duration = time.Since(start)
+	report.DurationMs = report.Duration.Milliseconds()
 	return report, nil
 }
 
