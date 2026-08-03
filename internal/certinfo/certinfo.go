@@ -108,9 +108,13 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 	leaf := chain[0]
 
 	report := &Report{
-		Policy:    policy.Version,
-		Hostname:  hostname,
-		CheckedAt: now,
+		Policy:   policy.Version,
+		Hostname: hostname,
+		// UTC is forced rather than inherited from the host. A local zone in
+		// a response is a geographic fingerprint of wherever this runs, and a
+		// privacy property should not depend on a machine being configured
+		// correctly.
+		CheckedAt: now.UTC(),
 		Chain:     make([]Certificate, 0, len(chain)),
 	}
 	for _, c := range chain {
