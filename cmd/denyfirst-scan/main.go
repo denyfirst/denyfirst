@@ -81,6 +81,11 @@ func run() int {
 
 	scanner := &scan.Scanner{
 		Prober: &tlsprobe.Prober{TotalTimeout: *timeout},
+
+		// A local operator scanning their own network is not the abuse the
+		// port list guards against, so the command line lifts it. The HTTP
+		// service has no equivalent switch.
+		AllowAnyPort: true,
 	}
 	if *allowPrivate {
 		// Deliberate opt-out of the SSRF guard. Reasonable for a local

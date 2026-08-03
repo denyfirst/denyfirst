@@ -64,10 +64,26 @@ type Result struct {
 	Certificate *certinfo.Report `json:"certificate,omitempty"`
 }
 
-// Scanner runs one scan. The zero value is usable and defaults to the
-// SSRF-safe dialer.
+// Scanner runs one scan. The zero value is usable, dials through safedial,
+// and enforces the port allow list.
 type Scanner struct {
 	Prober *tlsprobe.Prober
+
+	// AllowAnyPort disables the port allow list.
+	//
+	// The check lives here rather than only in the HTTP handler so that it
+	// survives a second caller. A guard placed where a request arrives
+	// protects that one entry point; a guard placed where the connection is
+	// made protects every entry point, including the ones not written yet.
+	//
+	// It is off by default for the same reason safedial refuses private
+	// addresses by default: a protection that must be switched on is one that
+	// is eventually forgotten.
+	//
+	// The command line sets it, because a local operator scanning their own
+	// network is not the abuse the list guards against. The service never
+	// does, and has no configuration option that would let it.
+	AllowAnyPort bool
 
 	// Now supplies the current time, so certificate arithmetic is
 	// reproducible in tests. Nil means time.Now.
@@ -79,6 +95,11 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 	host, port, err := SplitTarget(target)
 	if err != nil {
 		return nil, err
+	}
+	if !s.AllowAnyPort {
+		if err := CheckPort(port); err != nil {
+			return nil, err
+		}
 	}
 
 	prober := s.Prober
@@ -196,6 +217,12 @@ func SplitTarget(target string) (host, port string, err error) {
 }
 
 // CheckPort reports whether a port may be dialled.
+//
+// The error names the port, which is safe for an operator reading a terminal
+// and unsafe for an HTTP response: SplitHostPort does not require a port to be
+// numeric, so this string can carry back whatever a caller sent. Callers
+// exposed to strangers must write their own message rather than pass this one
+// through.
 func CheckPort(port string) error {
 	for _, allowed := range AllowedPorts {
 		if port == allowed {

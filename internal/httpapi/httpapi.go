@@ -24,6 +24,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -203,7 +205,12 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := scan.CheckPort(port); err != nil {
-		writeError(w, http.StatusBadRequest, "port_not_allowed", err.Error())
+		// The rule is described rather than the input repeated. SplitHostPort
+		// does not require a port to be numeric, so err.Error() would carry
+		// back whatever the caller sent.
+		writeError(w, http.StatusBadRequest, "port_not_allowed",
+			"That port is not scannable. This service connects only to "+
+				strings.Join(scan.AllowedPorts, ", ")+".")
 		return
 	}
 
@@ -301,3 +308,18 @@ func retryAfterSeconds(d time.Duration) int {
 
 // Compile-time assurance that the server satisfies http.Handler.
 var _ http.Handler = (*Server)(nil)
+
+// SilentErrorLog returns the logger to give http.Server.ErrorLog.
+//
+// The default logger writes lines such as "http: panic serving 203.0.113.7"
+// to standard error. That is a client address in a log file, which is exactly
+// what this project undertakes not to keep — and it would appear without any
+// code here ever writing it. A promise that depends on a library's default
+// staying convenient is not a promise.
+//
+// Discarding these lines costs the ability to diagnose a panic from its log.
+// The exchange is deliberate: a panic is reproducible from a stack trace in a
+// test, and a leaked address cannot be taken back.
+func SilentErrorLog() *log.Logger {
+	return log.New(io.Discard, "", 0)
+}

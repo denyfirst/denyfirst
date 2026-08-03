@@ -161,10 +161,19 @@ func TestErrorsDoNotEchoInput(t *testing.T) {
 	s := New(offlineScanner(), Limits{Burst: 1000}, nil)
 
 	const marker = "<script>alert(1)</script>"
-	w := post(t, s, `{"target":"exam `+marker+` ple"}`)
 
+	// The host path.
+	w := post(t, s, `{"target":"exam `+marker+` ple"}`)
 	if strings.Contains(w.Body.String(), "script") {
-		t.Errorf("the response repeated the caller's input: %s", w.Body.String())
+		t.Errorf("the host was repeated back: %s", w.Body.String())
+	}
+
+	// The port path is separate and has its own message. SplitHostPort does
+	// not require a port to be numeric, so anything after the colon reaches
+	// the port check unaltered.
+	w = post(t, s, `{"target":"example.test:`+marker+`"}`)
+	if strings.Contains(w.Body.String(), "script") {
+		t.Errorf("the port was repeated back: %s", w.Body.String())
 	}
 }
 
