@@ -1,0 +1,90 @@
+name: Fuzz
+
+# Active fuzzing runs on a schedule rather than on every push.
+#
+# The seed corpus already runs in the ordinary test job, because `go test`
+# executes each fuzz target against its seeds. That part is deterministic and
+# belongs on the critical path.
+#
+# Generative fuzzing is not deterministic. A crash discovered while somebody
+# was fixing a typo would fail their pull request for a reason that has nothing
+# to do with their change, and the usual response to that is to stop reading
+# the failures. Running it apart keeps a real finding legible.
+on:
+  schedule:
+    # Nightly, at a time chosen to avoid the top of the hour when GitHub's
+    # scheduler is busiest and jobs queue.
+    - cron: "37 3 * * *"
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Seconds to spend on each target"
+        required: false
+        default: "120"
+
+permissions: {}
+
+concurrency:
+  group: fuzz
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    strategy:
+      # One target per job, so a crash in one does not hide the others, and
+      # the failing target is named in the job list.
+      fail-fast: false
+      matrix:
+        include:
+          - package: ./internal/scan
+            target: FuzzSplitTarget
+          - package: ./internal/scan
+            target: FuzzCheckPort
+          - package: ./internal/policy
+            target: FuzzGradeCipher
+          - package: ./internal/policy
+            target: FuzzGradeLeaf
+          - package: ./internal/policy
+            target: FuzzMaxValidityDays
+          - package: ./internal/certinfo
+            target: FuzzAnalyse
+          - package: ./internal/httpapi
+            target: FuzzScanHandler
+
+    steps:
+      - name: Check out the commit under test
+        run: |
+          git init -q
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "${GITHUB_SHA}"
+          git checkout -q FETCH_HEAD
+
+      - name: Fuzz ${{ matrix.target }}
+        env:
+          DURATION: ${{ inputs.duration || '120' }}
+        run: |
+          go test "${{ matrix.package }}" \
+            -run '^$' \
+            -fuzz '^${{ matrix.target }}$' \
+            -fuzztime "${DURATION}s"
+
+      # A crash leaves a reproducer under testdata/fuzz. Keeping it is the
+      # whole point: the file turns a random discovery into a permanent
+      # regression test once it is committed.
+      - name: Keep the reproducer
+        if: failure()
+        run: |
+          if [ -d "${{ matrix.package }}/testdata/fuzz" ]; then
+            echo "Reproducers found. Commit these to testdata/fuzz so the case"
+            echo "becomes part of the seed corpus and cannot come back."
+            find "${{ matrix.package }}/testdata/fuzz" -type f -print
+            echo
+            find "${{ matrix.package }}/testdata/fuzz" -type f -exec sh -c \
+              'echo "--- $1"; cat "$1"' _ {} \;
+          fi

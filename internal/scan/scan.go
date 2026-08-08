@@ -9,8 +9,11 @@ package scan
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
+	"net/netip"
+	"strconv"
 	"strings"
 	"time"
 
@@ -181,6 +184,13 @@ func (r *Result) Notes() []string {
 //
 // On the command line the input is a typo; over HTTP it is whatever a stranger
 // sent. One implementation means the stricter case sets the rules for both.
+//
+// The result must be stable: splitting a target, rejoining it with
+// net.JoinHostPort, and splitting it again has to give the same answer. If it
+// did not, a check performed on one form would not describe the form that is
+// eventually dialled, which is where parser-mismatch attacks live. Fuzzing
+// found five inputs that broke that property in an earlier version of this
+// function, all of them because the host was never examined for shape.
 func SplitTarget(target string) (host, port string, err error) {
 	target = strings.TrimSpace(target)
 
@@ -190,39 +200,148 @@ func SplitTarget(target string) (host, port string, err error) {
 			target = rest
 		}
 	}
-	target = strings.TrimSuffix(target, "/")
 	if i := strings.IndexByte(target, '/'); i >= 0 {
 		target = target[:i]
 	}
+	if target == "" {
+		return "", "", errors.New("the target names no host")
+	}
 
-	host, port, err = net.SplitHostPort(target)
+	host, port, err = splitHostPort(target)
 	if err != nil {
-		host, port = target, DefaultPort
+		return "", "", err
 	}
-
-	switch {
-	case host == "":
-		return "", "", fmt.Errorf("no host in %q", target)
-	case len(host) > maxHostLen:
-		return "", "", fmt.Errorf("host exceeds %d bytes", maxHostLen)
-	case strings.ContainsAny(host, " \t\r\n\x00"):
-		// Trimming removed the harmless case. What is left is interior: a
-		// newline inside a hostname is how header injection starts, and a NUL
-		// byte is how a truncating parser is made to read a different name
-		// than the one that was checked.
-		return "", "", fmt.Errorf("host contains control or space characters")
+	if err := checkHostSyntax(host); err != nil {
+		return "", "", err
 	}
-
+	if err := checkPortSyntax(port); err != nil {
+		return "", "", err
+	}
 	return host, port, nil
 }
 
-// CheckPort reports whether a port may be dialled.
+// splitHostPort separates a target without consulting net.SplitHostPort.
 //
-// The error names the port, which is safe for an operator reading a terminal
-// and unsafe for an HTTP response: SplitHostPort does not require a port to be
-// numeric, so this string can carry back whatever a caller sent. Callers
-// exposed to strangers must write their own message rather than pass this one
-// through.
+// That function is written for addresses a program produced, and it accepts
+// several forms this one must not. "example.com:" parses with an empty port,
+// and a bracketed address with no port fails outright, which left the brackets
+// attached to the hostname in the earlier version here.
+func splitHostPort(target string) (host, port string, err error) {
+	// A bracketed IPv6 literal, with or without a port.
+	if strings.HasPrefix(target, "[") {
+		end := strings.IndexByte(target, ']')
+		if end < 0 {
+			return "", "", errors.New("the target opens a bracket that is never closed")
+		}
+
+		host = target[1:end]
+		switch rest := target[end+1:]; {
+		case rest == "":
+			return host, DefaultPort, nil
+		case strings.HasPrefix(rest, ":"):
+			return host, rest[1:], nil
+		default:
+			return "", "", errors.New("the target has characters after the closing bracket")
+		}
+	}
+
+	switch strings.Count(target, ":") {
+	case 0:
+		return target, DefaultPort, nil
+
+	case 1:
+		i := strings.IndexByte(target, ':')
+		return target[:i], target[i+1:], nil
+
+	default:
+		// Several colons and no brackets: either a bare IPv6 literal, which
+		// has no room for a port, or nonsense. Accepting it only when it
+		// really parses keeps a name such as "a:1:2:3" from being dialled.
+		if _, err := netip.ParseAddr(target); err != nil {
+			return "", "", errors.New("the target has several colons and is not an IPv6 address")
+		}
+		return target, DefaultPort, nil
+	}
+}
+
+// checkHostSyntax accepts only what a resolver can be given.
+//
+// The permitted set is a list of what is allowed rather than a list of what is
+// forbidden. A deny list has to anticipate every dangerous character, and the
+// brackets that broke the earlier version of this function were exactly the
+// ones nobody thought to forbid.
+func checkHostSyntax(host string) error {
+	switch {
+	case host == "":
+		return errors.New("the target names no host")
+	case len(host) > maxHostLen:
+		return fmt.Errorf("the host exceeds %d bytes", maxHostLen)
+	case strings.ContainsAny(host, " \t\r\n\x00"):
+		// Trimming removed the harmless case. What is left is interior: a
+		// newline inside a hostname is where header injection starts, and a
+		// NUL byte is how a truncating parser is made to read a name other
+		// than the one that was checked.
+		return errors.New("the host contains a control character or a space")
+	}
+
+	for _, c := range host {
+		switch {
+		case c >= 'a' && c <= 'z',
+			c >= 'A' && c <= 'Z',
+			c >= '0' && c <= '9',
+			c == '-', c == '.', c == '_', c == ':':
+		default:
+			// Colons are permitted above only so that an IPv6 literal reaches
+			// the check below; anything else here cannot appear in a name the
+			// resolver will accept.
+			return errors.New("the host contains a character that cannot appear in a hostname; " +
+				"an internationalised name must be given in punycode")
+		}
+	}
+
+	// A colon is legitimate only inside an IPv6 literal.
+	if strings.Contains(host, ":") {
+		if _, err := netip.ParseAddr(host); err != nil {
+			return errors.New("the host contains a colon but is not an IPv6 address")
+		}
+	}
+
+	return nil
+}
+
+// checkPortSyntax requires a port in canonical form.
+//
+// This is separate from CheckPort, which decides whether a well-formed port is
+// one this project will dial. Syntax first: net.SplitHostPort does not require
+// a port to be numeric, so without this an arbitrary string reaches the allow
+// list and, from there, any message built from it.
+//
+// Canonical means the digits and nothing else. strconv.Atoi accepts "+443" and
+// "0443" and reports 443 for both, which would leave three spellings of one
+// port in circulation. The allow list compares strings, so those spellings are
+// refused today; the reason to reject them here is that the comparison might
+// one day become numeric, and then they would quietly be allowed. Two ways to
+// write the same value is where parser-mismatch bugs begin.
+func checkPortSyntax(port string) error {
+	if port == "" {
+		return errors.New("the target names no port")
+	}
+
+	n, err := strconv.Atoi(port)
+	if err != nil || n < 1 || n > 65535 {
+		return errors.New("the port must be a number between 1 and 65535")
+	}
+	if strconv.Itoa(n) != port {
+		return errors.New("the port must be written as digits only, without a sign or leading zeros")
+	}
+	return nil
+}
+
+// CheckPort reports whether a well-formed port is one this project will dial.
+//
+// The error names the port, which is safe for an operator reading a terminal.
+// Callers exposed to strangers should still write their own message rather
+// than pass this one through, so that nothing a caller sent is reflected back.
 func CheckPort(port string) error {
 	for _, allowed := range AllowedPorts {
 		if port == allowed {

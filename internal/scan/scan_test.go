@@ -35,6 +35,15 @@ func TestSplitTarget(t *testing.T) {
 		{"https://example.com:8443/x", "example.com", "8443"},
 
 		{"[2606:4700:4700::1111]:443", "2606:4700:4700::1111", "443"},
+
+		// Bracketed and bare IPv6 without a port. Fuzzing found that the
+		// earlier version left the brackets attached to the hostname, so the
+		// resolver was handed a name it could never look up.
+		{"[::1]", "::1", "443"},
+		{"[2606:4700:4700::1111]", "2606:4700:4700::1111", "443"},
+		{"::1", "::1", "443"},
+		{"2606:4700:4700::1111", "2606:4700:4700::1111", "443"},
+		{"[::1]:8443", "::1", "8443"},
 	}
 
 	for _, tc := range cases {
@@ -63,6 +72,26 @@ func TestSplitTargetRejectsMalformedInput(t *testing.T) {
 		"example\r.com",
 		"example.com\x00.evil.test",
 		strings.Repeat("a", 300),
+
+		// Every entry below was accepted by the earlier version. Fuzzing
+		// found the first five; the rest follow from the same gap, which was
+		// that the host was never examined for shape.
+		"example.com:", // net.SplitHostPort permits an empty port
+		"[",            // an unclosed bracket
+		"]",            // a stray bracket as a hostname
+		"[]",           // brackets around nothing
+		"[]:443",       //
+		"[::1]x",       // characters after the closing bracket
+		"a:1:2:3",      // several colons, and not an IPv6 address
+		":443",         // no host
+		"user:pass@example.com",
+		"example.com:0",
+		"example.com:65536",
+		"example.com:abc",
+		"example.com:99999999999999999999",
+		"example.com#fragment",
+		"example.com?query=1",
+		"münchen.de", // an internationalised name must be given in punycode
 	}
 
 	for _, in := range bad {
@@ -203,6 +232,54 @@ func TestAllowAnyPortLiftsTheRestriction(t *testing.T) {
 	if _, err := s.Scan(context.Background(), "example.test:22"); err != nil {
 		if strings.Contains(err.Error(), "not scannable") {
 			t.Error("AllowAnyPort did not disable the port check")
+		}
+	}
+}
+
+// The property fuzzing broke: splitting a target, rejoining it, and splitting
+// again has to give the same answer. Where it does not, a check performed on
+// one form does not describe the form that is eventually dialled, which is
+// where parser-mismatch attacks live.
+func TestSplitTargetIsStable(t *testing.T) {
+	inputs := []string{
+		"example.com",
+		"example.com:8443",
+		"https://example.com/path",
+		"[::1]",
+		"[::1]:8443",
+		"::1",
+		"[2606:4700:4700::1111]:443",
+		"2606:4700:4700::1111",
+		"::ffff:127.0.0.1",
+	}
+
+	for _, in := range inputs {
+		host, port, err := SplitTarget(in)
+		if err != nil {
+			t.Errorf("SplitTarget(%q) returned %v", in, err)
+			continue
+		}
+
+		rejoined := net.JoinHostPort(host, port)
+		host2, port2, err := SplitTarget(rejoined)
+		if err != nil {
+			t.Errorf("SplitTarget(%q) produced %q, which SplitTarget then rejected: %v", in, rejoined, err)
+			continue
+		}
+		if host2 != host || port2 != port {
+			t.Errorf("SplitTarget is not stable: %q gave (%q, %q); rejoined as %q it gives (%q, %q)",
+				in, host, port, rejoined, host2, port2)
+		}
+	}
+}
+
+// A port has to be a number before the allow list is consulted. Otherwise an
+// arbitrary string reaches CheckPort and, from there, any message built from
+// it.
+func TestPortSyntaxIsCheckedBeforeTheAllowList(t *testing.T) {
+	for _, in := range []string{"example.com:44 3", "example.com:443x", "example.com:-1", "example.com:+443"} {
+		if _, _, err := SplitTarget(in); err == nil {
+			t.Errorf("SplitTarget(%q) accepted a port that is not a number", in)
 		}
 	}
 }
