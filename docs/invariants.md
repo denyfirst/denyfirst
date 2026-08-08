@@ -1,5 +1,16 @@
 # Security invariants
 
+This document states what the project guarantees and how each guarantee is
+kept. It is deliberately not a status report on unfinished work: a list of
+where a system is weakest, published together, is a prioritised target list
+even when each entry could be worked out separately. Weaknesses in our own
+defences are tracked privately and written up here once they are closed.
+
+Limitations of the tool's accuracy are a different matter and stay public.
+Rule R3 below requires every report to declare what it could not measure,
+because a reader who is not told what was skipped will read silence as a clean
+result.
+
 Every rule below states something that must be true of this project, where it
 is enforced, and which test would fail if it stopped being true.
 
@@ -168,7 +179,8 @@ default staying convenient is not a promise.
 
 *Enforced by:* the absence of logging in `internal/httpapi`, and
 `httpapi.SilentErrorLog` passed to `http.Server.ErrorLog`
-*Guarded by:* review — **there is no test for this yet**, which is a gap
+*Guarded by:* `TestNothingIsLogged`, `TestClientAddressesAreForgotten`,
+`TestSilentErrorLogDiscards`
 
 ### P2 — The target travels in a request body, not a URL
 
@@ -216,7 +228,7 @@ IANA registry, and gives no way to choose among TLS 1.3 suites. A report that
 omits this reads as exhaustive.
 
 *Enforced in:* `internal/tlsprobe`, the `Notes` field
-*Guarded by:* review — **no test asserts the notes are present**, which is a gap
+*Guarded by:* `TestSupportedVersionsCarryTheCoverageNote`
 
 ### R4 — Nothing measured is not the same as passing
 
@@ -290,22 +302,3 @@ working.
 *Guarded by:* the `Known vulnerabilities` job in CI
 
 ---
-
-## Known gaps
-
-Listed rather than hidden. An unnamed gap is a surprise; a named one is work.
-
-- **P1 and R3 have no tests.** Both are enforced by review, which is the
-  weakest form of enforcement this document argues against.
-- **No server binary exists yet.** `httpapi.Server` is an `http.Handler` with
-  nothing listening. The timeouts that matter against Slowloris —
-  `ReadHeaderTimeout` in particular — live on `http.Server` and are therefore
-  not yet set anywhere.
-- **CI installs its tools with `@latest`.** The Go module proxy verifies each
-  download against the checksum database, which is stronger than a git tag,
-  but the version is still whatever exists on the day.
-- **Release artifacts are not signed.** Nothing lets a user verify that a
-  binary came from a particular commit.
-- **No fuzzing.** The certificate and target parsers take untrusted input and
-  have only example-based tests.
-- **No independent review.** Nobody outside this project has read the code.

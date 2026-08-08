@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"io"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -189,4 +190,20 @@ func TestMissingCertificateIsAStartupError(t *testing.T) {
 	if _, err := newCertReloader(filepath.Join(dir, "absent.pem"), filepath.Join(dir, "absent.key")); err == nil {
 		t.Error("newCertReloader accepted paths that do not exist")
 	}
+}
+
+// The default http.Server logger writes lines such as "http: panic serving
+// 203.0.113.7" to standard error. That is a client address in a log file,
+// which invariant P1 forbids, and it would appear without any code here ever
+// writing it.
+func TestSilentErrorLogDiscards(t *testing.T) {
+	logger := httpapi.SilentErrorLog()
+	if logger == nil {
+		t.Fatal("SilentErrorLog returned nil; http.Server would fall back to its default")
+	}
+	if logger.Writer() != io.Discard {
+		t.Error("SilentErrorLog does not discard; a promise that depends on a library default is not a promise")
+	}
+
+	logger.Printf("http: panic serving 203.0.113.7:5000")
 }
