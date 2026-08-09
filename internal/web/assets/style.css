@@ -1,0 +1,467 @@
+/*
+  denyfirst
+  ---------
+  The page is meant to read as an annotated document rather than a dashboard.
+  A verdict is a stamp pressed onto a record; a finding carries its sources in
+  the margin beneath it; what could not be measured is set in the same weight
+  as what could, because a reader who is not told what was skipped will read
+  silence as a clean result.
+
+  Colours are inks. The three verdict colours are deep and printerly rather
+  than signal-bright, so a page full of findings still reads as a document and
+  not as an alarm panel.
+*/
+
+:root {
+  --paper:       #fbfaf7;
+  --paper-sunk:  #f2f0eb;
+  --ink:         #16181d;
+  --ink-soft:    #4a4f59;
+  --ink-faint:   #8a8f98;
+  --rule:        #dedbd3;
+
+  --navy:        #22346b;
+
+  --strong:      #1f5d3e;
+  --weak:        #a6740c;
+  --insecure:    #9b1b24;
+
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono",
+          Menlo, Consolas, monospace;
+
+  --measure: 34rem;
+  --page: 52rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper:      #14161a;
+    --paper-sunk: #1b1e24;
+    --ink:        #e8e6e1;
+    --ink-soft:   #a8adb6;
+    --ink-faint:  #767b84;
+    --rule:       #2b2f37;
+
+    --navy:       #93a7e0;
+
+    --strong:     #6fbf92;
+    --weak:       #d9a23c;
+    --insecure:   #e8757e;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  font-size: 17px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  line-height: 1.55;
+  font-synthesis-weight: none;
+}
+
+a {
+  color: var(--navy);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+a:hover { text-decoration-thickness: 2px; }
+
+:focus-visible {
+  outline: 2px solid var(--navy);
+  outline-offset: 2px;
+}
+
+/* ── Masthead ─────────────────────────────────────────────────────────── */
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 1.6rem 1.5rem 1.1rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.wordmark {
+  font-family: var(--mono);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.masthead-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+  letter-spacing: 0.01em;
+}
+
+/* ── The ask ──────────────────────────────────────────────────────────── */
+
+main {
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.ask { padding: 3.2rem 0 2.4rem; }
+
+h1 {
+  margin: 0 0 1.1rem;
+  font-size: clamp(2rem, 6vw, 3.05rem);
+  line-height: 1.06;
+  letter-spacing: -0.028em;
+  font-weight: 640;
+}
+
+.lede {
+  max-width: var(--measure);
+  margin: 0 0 2.2rem;
+  font-size: 1.02rem;
+  color: var(--ink-soft);
+}
+
+.ask-form { margin: 0 0 1.1rem; }
+
+.field-label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  color: var(--ink-faint);
+  margin-bottom: 0.5rem;
+}
+
+.field-row {
+  display: flex;
+  gap: 0.6rem;
+  max-width: var(--measure);
+}
+
+.field {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 1rem;
+  padding: 0.72rem 0.85rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1.5px solid var(--ink);
+  border-radius: 0;
+}
+
+.field::placeholder { color: var(--ink-faint); }
+
+.submit {
+  flex: 0 0 auto;
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.72rem 1.4rem;
+  color: var(--paper);
+  background: var(--ink);
+  border: 1.5px solid var(--ink);
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.submit:hover:not(:disabled) { background: var(--navy); border-color: var(--navy); }
+.submit:disabled { cursor: progress; opacity: 0.55; }
+
+.field-help,
+.promise,
+.noscript {
+  max-width: var(--measure);
+  font-size: 0.82rem;
+  color: var(--ink-faint);
+}
+
+.field-help { margin: 0.6rem 0 0; }
+.promise { margin: 2rem 0 0; }
+
+.noscript {
+  margin: 1.4rem 0 0;
+  padding: 0.9rem 1rem;
+  background: var(--paper-sunk);
+  border-left: 3px solid var(--ink-faint);
+}
+
+/* ── Result ───────────────────────────────────────────────────────────── */
+
+.result {
+  padding: 0 0 4rem;
+  animation: settle 200ms ease-out;
+}
+
+@keyframes settle {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result { animation: none; }
+}
+
+.summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  padding: 1.5rem 0;
+  border-top: 2px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
+}
+
+.summary-target {
+  font-family: var(--mono);
+  font-size: 1.28rem;
+  font-weight: 600;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.summary-meta {
+  margin: 0.35rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+}
+
+/*
+  The signature of the page. A verdict is not a badge or a pill; it is a mark
+  pressed onto a record, so it gets hard edges, weight, and letterspacing.
+*/
+.stamp {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  padding: 0.5rem 0.9rem 0.5rem 1.08rem;
+  border: 2.5px solid currentColor;
+}
+
+.stamp-strong   { color: var(--strong); }
+.stamp-weak     { color: var(--weak); }
+.stamp-insecure { color: var(--insecure); }
+.stamp-ungraded { color: var(--ink-faint); }
+
+.section-title {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--ink-faint);
+  margin: 2.6rem 0 0.9rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+/* ── Findings ─────────────────────────────────────────────────────────── */
+
+.finding {
+  padding: 0 0 0 1.05rem;
+  margin: 0 0 1.9rem;
+  border-left: 3px solid var(--rule);
+}
+
+.finding-strong   { border-left-color: var(--strong); }
+.finding-weak     { border-left-color: var(--weak); }
+.finding-insecure { border-left-color: var(--insecure); }
+
+.finding-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.finding-title {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 620;
+  letter-spacing: -0.012em;
+}
+
+.finding-rule {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+}
+
+.finding-body {
+  max-width: var(--measure);
+  margin: 0.45rem 0 0.7rem;
+  color: var(--ink-soft);
+  font-size: 0.94rem;
+}
+
+/*
+  The citations are the argument. They are set as a strip rather than a
+  footnote list so that they read as part of the finding, not as an appendix
+  somebody can skip.
+*/
+.sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.9rem;
+  font-size: 0.78rem;
+}
+
+.sources a { color: var(--navy); }
+
+/* ── Tables ───────────────────────────────────────────────────────────── */
+
+.rows {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.rows th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.68rem;
+  padding: 0 0.8rem 0.5rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.rows td {
+  padding: 0.42rem 0.8rem 0.42rem 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+/*
+  Only the identifier column breaks mid-word. Suite names are long and contain
+  no spaces, so on a narrow screen they need it; the short labels beside them
+  do not, and are unreadable when it happens — "strong" split across two lines
+  reads as "stron g".
+*/
+.rows td.identifier {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.rows td:last-child, .rows th:last-child { padding-right: 0; }
+
+.mark-strong   { color: var(--strong); }
+.mark-weak     { color: var(--weak); }
+.mark-insecure { color: var(--insecure); }
+.mark-faint    { color: var(--ink-faint); }
+
+.group-label {
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  color: var(--ink-faint);
+  margin: 1.5rem 0 0.5rem;
+}
+
+/* ── Certificate ──────────────────────────────────────────────────────── */
+
+.pairs {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, max-content) 1fr;
+  gap: 0.42rem 1.2rem;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+
+.pairs dt {
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.68rem;
+  padding-top: 0.12rem;
+}
+
+.pairs dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ── Notes and errors ─────────────────────────────────────────────────── */
+
+.notes {
+  max-width: var(--measure);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+}
+
+.notes li {
+  padding-left: 1rem;
+  margin-bottom: 0.6rem;
+  border-left: 1px solid var(--rule);
+}
+
+.failure {
+  max-width: var(--measure);
+  margin: 2rem 0 0;
+  padding: 1rem 1.1rem;
+  background: var(--paper-sunk);
+  border-left: 3px solid var(--insecure);
+}
+
+.failure p { margin: 0; }
+.failure p + p { margin-top: 0.5rem; font-size: 0.85rem; color: var(--ink-faint); }
+
+.working {
+  font-family: var(--mono);
+  font-size: 0.84rem;
+  color: var(--ink-faint);
+  padding: 2rem 0;
+}
+
+/* ── Colophon ─────────────────────────────────────────────────────────── */
+
+.colophon {
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 1.8rem 1.5rem 3rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.82rem;
+  color: var(--ink-faint);
+}
+
+.colophon p { max-width: var(--measure); margin: 0 0 0.9rem; }
+
+.colophon-links {
+  display: flex;
+  gap: 1.3rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 34rem) {
+  .field-row { flex-direction: column; }
+  .submit { width: 100%; }
+  .pairs { grid-template-columns: 1fr; gap: 0.1rem 0; }
+  .pairs dd { margin-bottom: 0.6rem; }
+    /* Narrower columns leave the identifiers more room to sit on one line. */
+  .rows { font-size: 0.74rem; }
+  .rows th, .rows td { padding-right: 0.5rem; }
+}

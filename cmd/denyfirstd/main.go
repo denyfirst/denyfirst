@@ -31,6 +31,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/httpapi"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/scan"
+	"github.com/denyfirst/denyfirst/internal/web"
 )
 
 const (
@@ -114,9 +115,19 @@ func run() int {
 	// that would turn either off.
 	api := httpapi.New(&scan.Scanner{}, limits, nil)
 
+	// The API and the pages are routed separately because they need different
+	// security headers. The API needs no resources at all and denies
+	// everything; a page needs its own stylesheet and script. Serving both
+	// through one policy would mean the API inherits permission it never
+	// needed, which is the usual way a strict header becomes a loose one.
+	root := http.NewServeMux()
+	root.Handle("/api/v1/scan", api)
+	root.Handle("/healthz", api)
+	root.Handle("/", web.Handler())
+
 	srv := &http.Server{
 		Addr:    *listen,
-		Handler: api,
+		Handler: root,
 
 		// ReadHeaderTimeout is the one that matters most. Without it, a
 		// client can open a connection and send headers one byte at a time

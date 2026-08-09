@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>denyfirst — check what a server actually negotiates</title>
+<meta name="description" content="Check a server's TLS configuration and certificate against cited standards. Nothing about the scan is recorded.">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="masthead">
+  <a class="wordmark" href="/">denyfirst</a>
+  <p class="masthead-note">Records nothing. Cites everything.</p>
+</header>
+
+<main>
+
+  <section class="ask">
+    <h1>Check what a server<br>actually negotiates.</h1>
+
+    <p class="lede">
+      Not what it advertises. This opens a real handshake at every TLS version,
+      works out which cipher suites the server will accept, and reads the
+      certificate chain it presents.
+    </p>
+
+    <form class="ask-form" id="scan-form" autocomplete="off">
+      <label class="field-label" for="target">Hostname</label>
+      <div class="field-row">
+        <input
+          class="field"
+          type="text"
+          id="target"
+          name="target"
+          placeholder="example.com"
+          spellcheck="false"
+          autocapitalize="off"
+          autocorrect="off"
+          enterkeyhint="go"
+          aria-describedby="field-help">
+        <button class="submit" type="submit" id="submit">Check</button>
+      </div>
+      <p class="field-help" id="field-help">
+        Port 443 unless you name another. Public hosts only.
+      </p>
+    </form>
+
+    <p class="promise">
+      The hostname travels in the request body, never in the address bar, so it
+      stays out of your history and out of every proxy log on the way here.
+      Nothing about the scan is written down at this end either.
+    </p>
+
+    <noscript>
+      <p class="noscript">
+        Running a scan needs JavaScript, because the result is fetched and
+        rendered in the page. The same scan is available from the command line
+        tool in the repository, which needs nothing but Go.
+      </p>
+    </noscript>
+  </section>
+
+  <section class="result" id="result" aria-live="polite" aria-atomic="false" hidden></section>
+
+</main>
+
+<footer class="colophon">
+  <p>
+    Every verdict comes from a written rule set with its sources attached.
+    Disagree with a grade and you are disagreeing with the document behind it,
+    which is the point.
+  </p>
+  <p class="colophon-links">
+    <a href="https://github.com/denyfirst/denyfirst">Source</a>
+    <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/invariants.md">What we guarantee</a>
+    <a href="https://github.com/denyfirst/denyfirst/blob/main/SECURITY.md">Report a vulnerability</a>
+  </p>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>
