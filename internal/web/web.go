@@ -15,16 +15,10 @@ import (
 	"embed"
 	"net/http"
 	"strconv"
-	"time"
 )
 
 //go:embed assets
 var assets embed.FS
-
-// buildTime is when the binary was built, used for conditional requests. It
-// is fixed for the life of the process, which is what makes it usable as a
-// validator.
-var buildTime = time.Now().UTC().Truncate(time.Second)
 
 // contentSecurityPolicy is deliberately not the one the API uses.
 //
