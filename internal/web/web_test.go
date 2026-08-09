@@ -1,0 +1,178 @@
+package web
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func get(t *testing.T, path string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	r := httptest.NewRequest(http.MethodGet, path, nil)
+	w := httptest.NewRecorder()
+	Handler().ServeHTTP(w, r)
+	return w
+}
+
+// The route table and the embedded tree have to agree. If a file is renamed
+// and the table is not, the mismatch is a 500 at runtime rather than a
+// compile error, so it is caught here instead.
+func TestEveryRouteResolves(t *testing.T) {
+	for path := range routes {
+		w := get(t, path)
+		if w.Code != http.StatusOK {
+			t.Errorf("GET %s returned %d", path, w.Code)
+		}
+		if w.Body.Len() == 0 {
+			t.Errorf("GET %s returned an empty body", path)
+		}
+	}
+}
+
+// The routes are an allow list, so nothing outside it is reachable, including
+// anything that would be found by walking the embedded tree.
+func TestUnlistedPathsAreNotServed(t *testing.T) {
+	paths := []string{
+		"/assets/index.html",
+		"/index.html",
+		"/web.go",
+		"/../web.go",
+		"/assets",
+		"/nothing-here",
+		"/.git/config",
+	}
+
+	for _, path := range paths {
+		if w := get(t, path); w.Code != http.StatusNotFound {
+			t.Errorf("GET %s returned %d, want 404", path, w.Code)
+		}
+	}
+}
+
+// The page needs a stylesheet and a script; the API needs nothing. Sharing one
+// policy between them is how a strict header quietly becomes a permissive one.
+func TestContentSecurityPolicyAllowsOnlySelf(t *testing.T) {
+	csp := get(t, "/").Header().Get("Content-Security-Policy")
+
+	if csp == "" {
+		t.Fatal("no Content-Security-Policy on the page")
+	}
+
+	for _, required := range []string{
+		"default-src 'none'",
+		"script-src 'self'",
+		"style-src 'self'",
+		"frame-ancestors 'none'",
+		"base-uri 'none'",
+	} {
+		if !strings.Contains(csp, required) {
+			t.Errorf("the policy is missing %q: %s", required, csp)
+		}
+	}
+
+	// Everything above is worth having only because of this. An inline
+	// allowance would make the rest close to decorative.
+	for _, forbidden := range []string{"unsafe-inline", "unsafe-eval", "*", "data:"} {
+		if strings.Contains(csp, forbidden) {
+			t.Errorf("the policy contains %q: %s", forbidden, csp)
+		}
+	}
+}
+
+// A page that carries inline style or script would force 'unsafe-inline' into
+// the policy sooner or later. Keeping the assets free of it is what lets the
+// policy stay strict.
+func TestNoInlineStyleOrScript(t *testing.T) {
+	page := get(t, "/").Body.String()
+
+	for _, pattern := range []string{"<script>", "<style", " style=", " onclick=", " onload=", " onerror="} {
+		if strings.Contains(page, pattern) {
+			t.Errorf("the page contains %q, which the policy forbids", pattern)
+		}
+	}
+}
+
+// Open item 6 of the threat model: the endpoint echoes the target on success,
+// and hostnames are attacker-chosen. The first place that renders one is where
+// this becomes exploitable, so the rendering code must have no way to reach a
+// markup parser at all.
+func TestScriptCannotInjectMarkup(t *testing.T) {
+	script, err := assets.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("reading the script: %v", err)
+	}
+
+	forbidden := []string{
+		"innerHTML",
+		"outerHTML",
+		"insertAdjacentHTML",
+		"document.write",
+		"eval(",
+		"new Function(",
+		"createContextualFragment",
+	}
+
+	source := string(script)
+	for _, name := range forbidden {
+		// The comment at the top of the file names these deliberately, so
+		// only occurrences outside a comment would matter. Counting is enough
+		// to notice a new one appearing.
+		if strings.Count(source, name) > 1 {
+			t.Errorf("the script mentions %s more than once; every node must be built with createElement and textContent", name)
+		}
+	}
+}
+
+func TestHeadersOnEveryResponse(t *testing.T) {
+	responses := map[string]*httptest.ResponseRecorder{
+		"page":  get(t, "/"),
+		"asset": get(t, "/style.css"),
+		"404":   get(t, "/nothing-here"),
+	}
+
+	required := map[string]string{
+		"X-Content-Type-Options":       "nosniff",
+		"X-Frame-Options":              "DENY",
+		"Referrer-Policy":              "no-referrer",
+		"Cross-Origin-Resource-Policy": "same-origin",
+		"Cache-Control":                "no-store",
+	}
+
+	for name, w := range responses {
+		for header, want := range required {
+			if got := w.Header().Get(header); got != want {
+				t.Errorf("%s: %s = %q, want %q", name, header, got, want)
+			}
+		}
+		if w.Header().Get("Content-Security-Policy") == "" {
+			t.Errorf("%s: no Content-Security-Policy", name)
+		}
+	}
+}
+
+func TestOnlyReadMethodsAreServed(t *testing.T) {
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch} {
+		r := httptest.NewRequest(method, "/", nil)
+		w := httptest.NewRecorder()
+		Handler().ServeHTTP(w, r)
+
+		if w.Code != http.StatusMethodNotAllowed {
+			t.Errorf("%s / returned %d, want 405", method, w.Code)
+		}
+	}
+}
+
+// The page has to explain itself to a reader whose browser runs no script,
+// rather than presenting a form that silently does nothing.
+func TestPageWorksWithoutScript(t *testing.T) {
+	page := get(t, "/").Body.String()
+
+	if !strings.Contains(page, "<noscript>") {
+		t.Error("the page has no noscript block; without one the form appears to work and does not")
+	}
+	if !strings.Contains(page, "command line") {
+		t.Error("the noscript block does not point anywhere a reader can actually go")
+	}
+}
