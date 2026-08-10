@@ -18,6 +18,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -50,6 +51,13 @@ const (
 	// scan budget cuts the response off mid-encode. The user then sees a
 	// truncated body with no explanation, which is worse than an error.
 	writeMargin = 10 * time.Second
+
+	// statsInterval is how often the counters are written to disk.
+	//
+	// On a timer rather than per request. Writing per request would put disk
+	// latency in the scan path and, worse, would make the file's modification
+	// time a record of when somebody used the service.
+	statsInterval = time.Minute
 )
 
 func main() {
@@ -80,6 +88,10 @@ func run() int {
 			"number of reverse proxies in front of this service; leave at zero unless\n"+
 				"\tthere really is one, because trusting X-Forwarded-For without a proxy\n"+
 				"\tlets every client choose its own rate limit key")
+
+		statsFile = flag.String("stats-file", "",
+			"path to a file holding the aggregate counters; empty keeps them in\n"+
+				"\tmemory only, so a restart resets the published total")
 
 		showVersion = flag.Bool("version", false, "print the policy version and exit")
 	)
@@ -115,6 +127,16 @@ func run() int {
 	// that would turn either off.
 	api := httpapi.New(&scan.Scanner{}, limits, nil)
 
+	if *statsFile != "" {
+		if snapshot, err := loadStats(*statsFile); err == nil {
+			api.RestoreStats(snapshot)
+		} else if !os.IsNotExist(err) {
+			// A corrupt or unreadable file costs a counter, not a service.
+			// Starting from zero is wrong; refusing to start is worse.
+			fmt.Fprintf(os.Stderr, "counters could not be read from %s, starting from zero: %v\n", *statsFile, err)
+		}
+	}
+
 	// The API and the pages are routed separately because they need different
 	// security headers. The API needs no resources at all and denies
 	// everything; a page needs its own stylesheet and script. Serving both
@@ -122,8 +144,8 @@ func run() int {
 	// needed, which is the usual way a strict header becomes a loose one.
 	root := http.NewServeMux()
 	root.Handle("/api/v1/scan", api)
-	root.Handle("/healthz", api)
 	root.Handle("/api/v1/stats", api)
+	root.Handle("/healthz", api)
 	root.Handle("/", web.Handler())
 
 	srv := &http.Server{
@@ -189,6 +211,10 @@ func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	if *statsFile != "" {
+		go persistStats(ctx, api, *statsFile, statsInterval)
+	}
+
 	errc := make(chan error, 1)
 	go func() {
 		if *tlsCert != "" {
@@ -203,8 +229,8 @@ func run() int {
 	if *tlsCert != "" {
 		scheme = "https"
 	}
-	// The only line this process ever prints. It names the service, not a
-	// request.
+	// The only line this process prints in normal operation. It names the
+	// service, not a request.
 	fmt.Fprintf(os.Stderr, "denyfirstd listening on %s://%s, policy %s\n",
 		scheme, *listen, policy.Version)
 
@@ -223,16 +249,96 @@ func run() int {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 	defer cancel()
 
-	if err := srv.Shutdown(shutdownCtx); err != nil {
+	shutdownErr := srv.Shutdown(shutdownCtx)
+
+	// Written after the shutdown so the figure includes the scans that were
+	// still running when the signal arrived. The timer writes at most a
+	// minute behind; this makes the last write exact.
+	if *statsFile != "" {
+		if err := saveStats(*statsFile, api.Stats()); err != nil {
+			fmt.Fprintf(os.Stderr, "counters could not be written to %s: %v\n", *statsFile, err)
+		}
+	}
+
+	if shutdownErr != nil {
 		// Forcing the close loses in-flight responses, which is the point of
 		// reporting it rather than exiting quietly.
-		fmt.Fprintf(os.Stderr, "shutdown did not complete within %s: %v\n", shutdownGrace, err)
+		fmt.Fprintf(os.Stderr, "shutdown did not complete within %s: %v\n", shutdownGrace, shutdownErr)
 		_ = srv.Close()
 		return 1
 	}
 
 	fmt.Fprintln(os.Stderr, "denyfirstd stopped")
 	return 0
+}
+
+// loadStats reads the counters left by a previous run.
+func loadStats(path string) (httpapi.Snapshot, error) {
+	var snapshot httpapi.Snapshot
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return snapshot, err
+	}
+	if err := json.Unmarshal(body, &snapshot); err != nil {
+		return snapshot, fmt.Errorf("parsing %s: %w", path, err)
+	}
+	return snapshot, nil
+}
+
+// saveStats writes the counters.
+//
+// The file holds totals and nothing else: no hostname, no address, no
+// per-request timestamp. Whoever seizes this machine learns that the service
+// was used and by how much, which is already published on the site, and
+// learns nothing about who used it or what they looked at.
+//
+// The write goes to a temporary file and is then renamed, because a process
+// killed mid-write would otherwise leave a truncated file that the next start
+// cannot read. Rename is atomic on the filesystems this runs on, so a reader
+// sees either the old file or the new one.
+func saveStats(path string, snapshot httpapi.Snapshot) error {
+	body, err := json.Marshal(snapshot)
+	if err != nil {
+		return err
+	}
+
+	temporary := path + ".tmp"
+	if err := os.WriteFile(temporary, append(body, '\n'), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(temporary, path)
+}
+
+// persistStats writes the counters periodically until the context ends.
+func persistStats(ctx context.Context, api *httpapi.Server, path string, every time.Duration) {
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+
+	var last httpapi.Snapshot
+
+	for {
+		select {
+		case <-ctx.Done():
+			// The final write happens in run, after the shutdown, so that it
+			// includes whatever finished during the grace period.
+			return
+
+		case <-ticker.C:
+			current := api.Stats()
+			if current == last {
+				// Nothing happened, so nothing is written. An idle service
+				// leaves an idle file, and the modification time says only
+				// when the service last did something rather than when.
+				continue
+			}
+			if err := saveStats(path, current); err != nil {
+				fmt.Fprintf(os.Stderr, "counters could not be written to %s: %v\n", path, err)
+				continue
+			}
+			last = current
+		}
+	}
 }
 
 // certReloader serves the current certificate from disk.

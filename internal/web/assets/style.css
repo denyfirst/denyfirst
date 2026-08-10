@@ -449,6 +449,18 @@ h1 {
 }
 
 .colophon p { max-width: var(--measure); margin: 0 0 0.9rem; }
+/*
+  The counter is set in the same monospace as the data above it, because it is
+  data: the only record this service keeps, shown rather than described.
+*/
+.tally {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 1.1rem !important;
+}
 
 .colophon-links {
   display: flex;

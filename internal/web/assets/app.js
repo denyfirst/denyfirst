@@ -347,3 +347,43 @@ form.addEventListener("submit", async event => {
     button.textContent = label;
   }
 });
+// ── The counter ─────────────────────────────────────────────────────────
+
+/*
+  Shown because a number nobody can trace back to a person is the clearest
+  demonstration of the claim on this page. Saying "nothing is recorded" is a
+  promise; publishing the only thing that is recorded, and letting a reader
+  see it holds no hostname, no address and no time, is closer to a proof.
+*/
+async function showTally() {
+  const tally = document.getElementById("tally");
+  if (!tally) return;
+
+  try {
+    const response = await fetch("/api/v1/stats", { cache: "no-store" });
+    if (!response.ok) return;
+
+    const stats = await response.json();
+    if (typeof stats.scansTotal !== "number" || stats.scansTotal < 1) return;
+
+    const total = stats.scansTotal.toLocaleString("en");
+    let since = "";
+    if (typeof stats.since === "string" && /^\d{4}-\d{2}-\d{2}$/.test(stats.since)) {
+      const date = new Date(stats.since + "T00:00:00Z");
+      if (!isNaN(date)) {
+        since = " since " + date.toLocaleDateString("en", {
+          day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
+        });
+      }
+    }
+
+    tally.textContent =
+      total + " scans" + since +
+      ". This count is the only trace any of them left: no hostname, no address, no time.";
+    tally.hidden = false;
+  } catch {
+    // A missing counter is not worth an error on the page.
+  }
+}
+
+showTally();
