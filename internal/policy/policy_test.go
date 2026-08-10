@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDescribeCipherKeyExchange(t *testing.T) {
@@ -243,5 +244,17 @@ func TestCrossCheckAgainstGo(t *testing.T) {
 		t.Logf("%d suite(s) graded differently by policy %s and this build of Go. "+
 			"Expected: the policy follows RFC 9325 and BSI TR-02102-2, which are "+
 			"stricter than Go on suites without forward secrecy.", disagreements, Version)
+	}
+}
+
+// The rules are only as current as the last time somebody checked them
+// against the documents they cite.
+func TestRulesAreDueForReview(t *testing.T) {
+	due, err := time.Parse(time.DateOnly, ReviewBy)
+	if err != nil {
+		t.Fatalf("ReviewBy is not a date: %v", err)
+	}
+	if time.Now().After(due) {
+		t.Errorf("the rules were due for review on %s. Read internal/policy against its references, confirm each is still current, then move ReviewBy forward.", ReviewBy)
 	}
 }

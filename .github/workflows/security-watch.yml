@@ -1,0 +1,59 @@
+name: Security watch
+
+# Re-runs the vulnerability check against code that has not changed.
+#
+# The check in CI runs on push, which answers "is this change safe" and
+# nothing else. The risk it misses is the one that arrives on its own: Go
+# issues security releases roughly monthly, and this project uses crypto/tls
+# and crypto/x509 heavily, so a report can become true about untouched code
+# on a day nobody committed anything.
+#
+# A weekly run means the longest this project can be quietly vulnerable is
+# seven days rather than however long it is between commits.
+
+on:
+  schedule:
+    # Monday morning, off the hour, when GitHub's scheduler is less busy and
+    # jobs are less likely to queue.
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: security-watch
+  cancel-in-progress: true
+
+jobs:
+  vulnerabilities:
+    name: Known vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out the default branch
+        run: |
+          git init -q
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "${GITHUB_REF_NAME}"
+          git checkout -q FETCH_HEAD
+
+      - name: Run govulncheck
+        run: |
+          # Pinned rather than @latest. The module proxy verifies the download
+          # against the checksum database either way, so this is not about
+          # trust; it is about two runs a week apart testing the same thing.
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "A vulnerability is reachable from this code."
+          echo
+          echo "govulncheck reports only what this module actually calls, so a"
+          echo "hit is a real path rather than a version-range guess. Raise the"
+          echo "go directive in go.mod to the fixed release and open a pull"
+          echo "request; the check on that pull request confirms the fix."

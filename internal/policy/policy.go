@@ -31,6 +31,17 @@ import "strings"
 // it, so a verdict can be reproduced later even after the rules move on.
 const Version = "denyfirst-v1"
 
+// ReviewBy is when these rules should next be read against their sources.
+//
+// Standards move on their own schedule. RFC 8996 appeared while TLS 1.0 was
+// still common, and the CA/Browser Forum validity limit changes on dates
+// already fixed. A rule set with no review date drifts until somebody
+// notices it is wrong, and that somebody is usually a user.
+//
+// A test fails once this date passes. The failure is a reminder rather than a
+// defect: read the rules against their references, then move the date.
+const ReviewBy = "2026-11-01"
+
 // Verdict is the severity assigned to a finding.
 type Verdict string
 
