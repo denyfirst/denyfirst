@@ -49,3 +49,7 @@ Thumbs.db
 /tmp/
 /scratch/
 /local/
+# Local counter file. Real deployments name their own path.
+stats.json
+stats.json.tmp
+dist/
