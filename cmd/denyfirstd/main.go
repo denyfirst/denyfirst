@@ -276,6 +276,13 @@ func run() int {
 func loadStats(path string) (httpapi.Snapshot, error) {
 	var snapshot httpapi.Snapshot
 
+	// The path comes from a command line flag set by whoever runs this
+	// process. Nothing a stranger sends reaches here: the service has no
+	// endpoint that names a file, and internal/httpapi touches no filesystem
+	// at all. An operator who can pass this flag can already read the file
+	// themselves.
+	//
+	// #nosec G304 -- operator-supplied path, never request-supplied
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return snapshot, err
