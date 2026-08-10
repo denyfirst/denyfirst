@@ -99,6 +99,7 @@ type Server struct {
 	limits  Limits
 	rate    *limiter
 	sem     semaphore
+	counts  *counters
 	mux     *http.ServeMux
 }
 
@@ -115,11 +116,13 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 		limits:  limits,
 		rate:    newLimiter(limits.Burst, limits.Refill, limits.MaxTrackedIPs, now),
 		sem:     newSemaphore(limits.MaxConcurrent),
+		counts:  newCounters(now),
 		mux:     http.NewServeMux(),
 	}
 
 	s.mux.HandleFunc("POST /api/v1/scan", s.handleScan)
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
+	s.mux.HandleFunc("GET /api/v1/stats", s.handleStats)
 
 	return s
 }
@@ -238,6 +241,11 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 			"The target could not be reached.")
 		return
 	}
+
+	// Counted only on success, and only as a number. Nothing about which
+	// target produced it is kept, so the figure can be published without
+	// describing anybody.
+	s.counts.record(result.Verdict)
 
 	writeJSON(w, http.StatusOK, scanResponse{
 		Result:   result,

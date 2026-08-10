@@ -123,6 +123,7 @@ func run() int {
 	root := http.NewServeMux()
 	root.Handle("/api/v1/scan", api)
 	root.Handle("/healthz", api)
+	root.Handle("/api/v1/stats", api)
 	root.Handle("/", web.Handler())
 
 	srv := &http.Server{
