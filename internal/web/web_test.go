@@ -254,7 +254,7 @@ func TestPageWorksWithoutScript(t *testing.T) {
 // two things immediately: what was sent, and how to stop it. Both must be on
 // the page rather than a link away.
 func TestScanningPageAnswersTheUrgentQuestions(t *testing.T) {
-	page := strings.ToLower(get(t, "/scanning").Body.String())
+	page := strings.ToLower(strings.Join(strings.Fields(get(t, "/scanning").Body.String()), " "))
 
 	for _, required := range []string{
 		"abuse@denyfirst.dev",
@@ -272,7 +272,11 @@ func TestScanningPageAnswersTheUrgentQuestions(t *testing.T) {
 // that claims nothing is visible anywhere would be wrong, and being wrong
 // about privacy is worse than being narrow about it.
 func TestPrivacyPageStatesItsBoundary(t *testing.T) {
-	page := strings.ToLower(get(t, "/privacy").Body.String())
+	// Whitespace is collapsed first. HTML wraps prose at whatever column the
+	// author stopped typing, so a phrase can be split across lines and a
+	// search for it would fail on formatting rather than on content. A test
+	// that breaks when a paragraph is rewrapped teaches people to ignore it.
+	page := strings.ToLower(strings.Join(strings.Fields(get(t, "/privacy").Body.String()), " "))
 
 	for _, required := range []string{
 		"network provider",
@@ -288,7 +292,7 @@ func TestPrivacyPageStatesItsBoundary(t *testing.T) {
 
 // The terms have to put the decision to scan with the person making it.
 func TestTermsPlaceResponsibility(t *testing.T) {
-	page := strings.ToLower(get(t, "/terms").Body.String())
+	page := strings.ToLower(strings.Join(strings.Fields(get(t, "/terms").Body.String()), " "))
 
 	for _, required := range []string{
 		"permission",
