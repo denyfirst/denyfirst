@@ -3,16 +3,18 @@
 // The command line tool takes its input from the operator. This package takes
 // it from strangers, and that difference is the whole design.
 //
-// Four limits apply to every request: how large the body may be, how long the
-// work may take, how often one client may ask, and how many scans may run at
-// once. Each closes a way of turning the service against itself or against a
-// third party.
+// Five limits apply to every request: how large the body may be, how long the
+// work may take, how often one client may ask, how many scans may run at
+// once, and how often any one host may be scanned. The first four protect
+// this service; the last protects the server being measured, which had no say
+// in the matter.
 //
-// There is no equivalent of the command line -allow-private switch. The
-// scanner reaches the network through safedial, which refuses private,
-// loopback, link-local, and reserved destinations, and here that is not
-// configurable. A public endpoint that dials arbitrary addresses is an open
-// proxy into whatever network it runs in.
+// There is no equivalent of the command line switches. The scanner reaches
+// the network through safedial, which refuses private, loopback, link-local
+// and reserved destinations; it dials only implicit-TLS ports; and it takes
+// hostnames rather than addresses. None of that is configurable here. A
+// public endpoint that dials arbitrary addresses is an open proxy into
+// whatever network it runs in.
 //
 // Nothing about a request is logged: not the target, not the client address,
 // not the result. The addresses held for rate limiting live in memory and are
@@ -209,6 +211,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 			"The target must be a hostname, optionally with a port, and must not contain spaces or control characters.")
 		return
 	}
+
 	if err := scan.CheckPort(port); err != nil {
 		// The rule is described rather than the input repeated. SplitHostPort
 		// does not require a port to be numeric, so err.Error() would carry
@@ -218,6 +221,21 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 				strings.Join(scan.AllowedPorts, ", ")+".")
 		return
 	}
+
+	// The command line accepts addresses; this does not. A scan of a name
+	// carries that name in the client hello, which is what every browser
+	// does, and a scan of an address carries none, which is what a scanner
+	// does. It also declines to lend this address to working through a range
+	// one entry at a time.
+	if scan.IsIPTarget(host) {
+		writeError(w, http.StatusBadRequest, "hostname_required",
+			"Give a hostname rather than an address. A scan of a name looks like "+
+				"an ordinary client to the server receiving it, which is how this "+
+				"service prefers to appear. The command line tool accepts addresses "+
+				"and runs from your own machine.")
+		return
+	}
+
 	// Every other limit here protects this service. This one protects the
 	// server about to be scanned, which had no say in the matter: one request
 	// becomes roughly thirty handshakes at the other end, and several users
@@ -282,9 +300,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 // setSecurityHeaders applies the same restrictions to every response.
 //
 // The API returns JSON and needs no resources at all, so the policy denies
-// everything rather than allowing a narrower set. HTML pages will need their
-// own, looser policy; sharing this one with them would be the usual way a
-// strict header quietly becomes a permissive one.
+// everything rather than allowing a narrower set. HTML pages need their own,
+// looser policy; sharing this one with them would be the usual way a strict
+// header quietly becomes a permissive one.
 func setSecurityHeaders(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 

@@ -140,8 +140,12 @@ func TestAllowedPortsAreImplicitTLS(t *testing.T) {
 
 // A zero Scanner must reach safedial. If this ever succeeds against a private
 // address, the guard has been disconnected from the pipeline.
+//
+// Addresses are also refused outright now, so most of these stop before the
+// dialler. Both outcomes are correct; what must never happen is a completed
+// handshake.
 func TestZeroScannerRefusesPrivateTargets(t *testing.T) {
-	s := &Scanner{}
+	s := &Scanner{AllowIPTargets: true}
 
 	for _, target := range []string{"127.0.0.1", "169.254.169.254", "10.0.0.1"} {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -232,6 +236,81 @@ func TestAllowAnyPortLiftsTheRestriction(t *testing.T) {
 	if _, err := s.Scan(context.Background(), "example.test:22"); err != nil {
 		if strings.Contains(err.Error(), "not scannable") {
 			t.Error("AllowAnyPort did not disable the port check")
+		}
+	}
+}
+
+// A bare address is refused by default. A scan of a name carries that name in
+// the client hello, which is what a browser does; a scan of an address
+// carries nothing, which is what a scanner does.
+func TestScannerRefusesAddressesByDefault(t *testing.T) {
+	s := &Scanner{}
+
+	for _, target := range []string{
+		"93.184.216.34",
+		"93.184.216.34:8443",
+		"2606:4700:4700::1111",
+		"[2606:4700:4700::1111]:443",
+	} {
+		_, err := s.Scan(context.Background(), target)
+		if err == nil {
+			t.Errorf("a zero Scanner accepted %s", target)
+			continue
+		}
+		if !strings.Contains(err.Error(), "takes a hostname") {
+			t.Errorf("Scan(%s) failed for the wrong reason: %v", target, err)
+		}
+	}
+}
+
+// The command line has the case the service refuses: an operator checking a
+// server whose name does not resolve yet.
+func TestAllowIPTargetsLiftsTheRestriction(t *testing.T) {
+	s := &Scanner{
+		AllowIPTargets: true,
+		Prober: &tlsprobe.Prober{
+			Dial: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return nil, errors.New("no network in this test")
+			},
+		},
+	}
+
+	if _, err := s.Scan(context.Background(), "93.184.216.34"); err != nil {
+		if strings.Contains(err.Error(), "takes a hostname") {
+			t.Error("AllowIPTargets did not lift the restriction")
+		}
+	}
+}
+
+// A name that resembles an address must still be accepted, or the check is
+// matching strings rather than parsing. Services such as nip.io exist and
+// resolve ordinary-looking names to addresses; refusing them would be wrong
+// and would not stop anybody determined.
+func TestIsIPTarget(t *testing.T) {
+	addresses := []string{
+		"93.184.216.34",
+		"127.0.0.1",
+		"::1",
+		"2606:4700:4700::1111",
+		"::ffff:127.0.0.1",
+	}
+	for _, host := range addresses {
+		if !IsIPTarget(host) {
+			t.Errorf("IsIPTarget(%q) = false, want true", host)
+		}
+	}
+
+	names := []string{
+		"example.com",
+		"1.example.com",
+		"93.184.216.34.example.com",
+		"1.2.3.4.nip.io",
+		"xn--e1afmkfd.xn--p1ai",
+		"localhost",
+	}
+	for _, host := range names {
+		if IsIPTarget(host) {
+			t.Errorf("IsIPTarget(%q) = true, want false", host)
 		}
 	}
 }

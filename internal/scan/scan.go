@@ -68,7 +68,13 @@ type Result struct {
 }
 
 // Scanner runs one scan. The zero value is usable, dials through safedial,
-// and enforces the port allow list.
+// enforces the port allow list, and takes hostnames rather than addresses.
+//
+// This project does not offer a way to scan a range. Targets are named one at
+// a time and there is no flag, file input, or batch mode that would accept a
+// list. Somebody can write a loop around the command, and that loop is theirs;
+// the difference between a tool that sweeps and a tool that can be called
+// repeatedly is a real one, and it is kept on purpose.
 type Scanner struct {
 	Prober *tlsprobe.Prober
 
@@ -88,6 +94,27 @@ type Scanner struct {
 	// does, and has no configuration option that would let it.
 	AllowAnyPort bool
 
+	// AllowIPTargets permits a bare address as a target.
+	//
+	// Off by default, and the reason is what the connection looks like at the
+	// other end. A scan of a hostname carries that name in the client hello,
+	// which is what every browser does; a scan of an address carries no name
+	// at all, which is what a scanner does. This project spends a good deal
+	// of effort being recognisable rather than suspicious, and this is part
+	// of it.
+	//
+	// It also declines to lend one address to working through a range one
+	// entry at a time. Rate limits make that slow rather than impossible, but
+	// a sweep run from a shared service leaves its operator's name in the logs
+	// of everyone swept.
+	//
+	// Addresses can hold certificates — 1.1.1.1 has one — so this refuses a
+	// legitimate if uncommon check. The command line is where that check
+	// belongs: it runs on the operator's own machine, from their own address,
+	// so whatever they do is theirs rather than laundered through somebody
+	// else's service.
+	AllowIPTargets bool
+
 	// Now supplies the current time, so certificate arithmetic is
 	// reproducible in tests. Nil means time.Now.
 	Now func() time.Time
@@ -103,6 +130,9 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 		if err := CheckPort(port); err != nil {
 			return nil, err
 		}
+	}
+	if !s.AllowIPTargets && IsIPTarget(host) {
+		return nil, errors.New("this takes a hostname rather than an address")
 	}
 
 	prober := s.Prober
@@ -350,4 +380,15 @@ func CheckPort(port string) error {
 	}
 	return fmt.Errorf("port %s is not scannable; this project connects only to %s",
 		port, strings.Join(AllowedPorts, ", "))
+}
+
+// IsIPTarget reports whether a host is a literal address rather than a name.
+//
+// SplitTarget has already removed any brackets, so an IPv6 literal arrives
+// here bare. A name that merely resembles an address — 1.2.3.4.nip.io, or
+// 93.184.216.34.example.com — does not parse and is correctly treated as a
+// name, which is why this parses rather than matching strings.
+func IsIPTarget(host string) bool {
+	_, err := netip.ParseAddr(host)
+	return err == nil
 }

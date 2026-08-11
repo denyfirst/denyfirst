@@ -11,6 +11,7 @@
 //	denyfirst-scan example.com:8443 another.example
 //	denyfirst-scan -json example.com
 //	denyfirst-scan -allow-private 10.0.0.5
+//	denyfirst-scan 93.184.216.34
 //
 // Exit status is the worst verdict found, so the command can gate a pipeline:
 // 0 when everything is strong, 1 on a weak finding, 2 on an insecure one, and
@@ -86,6 +87,12 @@ func run() int {
 		// port list guards against, so the command line lifts it. The HTTP
 		// service has no equivalent switch.
 		AllowAnyPort: true,
+
+		// An operator checking their own server before its name resolves is
+		// exactly the case the service refuses and this one should not. This
+		// runs on their machine, from their address, so whatever they do is
+		// theirs rather than laundered through somebody else's service.
+		AllowIPTargets: true,
 	}
 	if *allowPrivate {
 		// Deliberate opt-out of the SSRF guard. Reasonable for a local

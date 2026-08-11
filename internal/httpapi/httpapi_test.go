@@ -144,6 +144,7 @@ func TestRejectsMalformedBodies(t *testing.T) {
 		`{"target":""}`:                       "invalid_target",
 		`{"target":"example.test:22"}`:        "port_not_allowed",
 		`{"target":"example.test:3389"}`:      "port_not_allowed",
+		`{"target":"93.184.216.34"}`:          "hostname_required",
 	}
 
 	for body, wantCode := range cases {
@@ -342,8 +343,9 @@ func TestConcurrencyLimit(t *testing.T) {
 }
 
 // The switch that lets the command line reach private addresses has no
-// counterpart here. If this ever returns a completed handshake, the service
-// has become an open proxy into whatever network it runs in.
+// counterpart here. Addresses are now refused before the dialler is reached,
+// which is a second layer rather than a replacement: if the hostname rule were
+// ever relaxed, safedial would still refuse these.
 func TestPrivateTargetsAreRefused(t *testing.T) {
 	s := New(nil, Limits{Burst: 1000, RequestTimeout: 5 * time.Second}, nil)
 
@@ -495,5 +497,51 @@ func TestTheTwoLimitsAreIndependent(t *testing.T) {
 	w = postFrom(t, fresh, `{"target":"shared.test"}`, "203.0.113.200:5000")
 	if errorCode(t, w) != "target_busy" {
 		t.Errorf("code = %q, want target_busy: this client had done nothing", errorCode(t, w))
+	}
+}
+
+// The service refuses addresses; the command line accepts them. This is where
+// that difference is enforced for anyone reaching it over HTTP.
+func TestServiceRequiresAHostname(t *testing.T) {
+	s := New(offlineScanner(), Limits{Burst: 1000, Refill: time.Nanosecond}, nil)
+
+	for _, target := range []string{
+		"93.184.216.34",
+		"93.184.216.34:8443",
+		"2606:4700:4700::1111",
+		"[2606:4700:4700::1111]:443",
+	} {
+		w := post(t, s, `{"target":"`+target+`"}`)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", target, w.Code)
+			continue
+		}
+		if got := errorCode(t, w); got != "hostname_required" {
+			t.Errorf("%s: code = %q, want hostname_required", target, got)
+		}
+		// The message explains the rule; it must not repeat the address.
+		if strings.Contains(w.Body.String(), target) {
+			t.Errorf("%s: the response repeated the target", target)
+		}
+	}
+}
+
+// A hostname that merely resembles an address must still be accepted, or the
+// check is matching strings rather than parsing. Services such as nip.io
+// resolve ordinary-looking names to addresses, and refusing those would be
+// wrong without stopping anybody determined.
+func TestNamesThatResembleAddressesAreAccepted(t *testing.T) {
+	s := New(offlineScanner(), Limits{Burst: 1000, Refill: time.Nanosecond}, nil)
+
+	for _, target := range []string{
+		"93.184.216.34.example.com",
+		"1.2.3.4.nip.io",
+		"v6.example.com",
+	} {
+		w := post(t, s, `{"target":"`+target+`"}`)
+		if w.Code == http.StatusBadRequest && errorCode(t, w) == "hostname_required" {
+			t.Errorf("%s was refused as an address although it is a name", target)
+		}
 	}
 }
