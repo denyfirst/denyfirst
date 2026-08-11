@@ -33,6 +33,7 @@ var refusalCodes = []string{
 	"bad_request",         // the body was not one JSON object
 	"payload_too_large",   // over the body limit
 	"unsupported_media",   // not application/json
+	"cross_site",          // a browser request originating on another site
 	"timeout",             // the scan outlasted its budget
 	"scan_failed",         // the target could not be reached
 }
@@ -91,11 +92,28 @@ func (s Snapshot) Equal(other Snapshot) bool {
 // touches no files at all, which removes an entire class of question from the
 // request path. Persistence belongs to the caller, through Stats and
 // RestoreStats.
+// publishInterval is how long the figures served over HTTP stand still.
+//
+// The counters hold no timestamps, but a counter that can be polled is a
+// clock. Reading the endpoint once a second turns "5 scans" into "a scan
+// happened at 14:32:08", which is material anyone holding the other end of
+// that connection can correlate against their own logs.
+//
+// Freezing the published figures to a whole minute widens that window from a
+// second to sixty, which is enough to make the comparison useless. The
+// figures written to disk stay live, because nobody is watching them.
+const publishInterval = time.Minute
+
 type counters struct {
 	now func() time.Time
 
 	mu   sync.Mutex
 	data Snapshot
+
+	// published is what the endpoint serves, refreshed at most once per
+	// publishInterval.
+	published   Snapshot
+	publishedAt time.Time
 }
 
 func newCounters(now func() time.Time) *counters {
@@ -156,11 +174,16 @@ func (c *counters) refuse(code string) {
 	c.data.Refused[code]++
 }
 
+// snapshot returns the live figures. Used for persistence, where the only
+// reader is the process itself.
 func (c *counters) snapshot() Snapshot {
-	today := c.now().UTC().Format(time.DateOnly)
-
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.snapshotLocked()
+}
+
+func (c *counters) snapshotLocked() Snapshot {
+	today := c.now().UTC().Format(time.DateOnly)
 
 	out := c.data
 	out.Refused = maps.Clone(c.data.Refused)
@@ -171,6 +194,24 @@ func (c *counters) snapshot() Snapshot {
 		out.TodayDate = today
 	}
 	return out
+}
+
+// publicSnapshot returns figures that stand still for a minute at a time.
+//
+// This is what the endpoint serves. See publishInterval for why it is not the
+// live figure: a counter anyone can poll is a clock, and this project already
+// promises there is no time in what it keeps.
+func (c *counters) publicSnapshot() Snapshot {
+	now := c.now()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.publishedAt.IsZero() || now.Sub(c.publishedAt) >= publishInterval {
+		c.published = c.snapshotLocked()
+		c.publishedAt = now
+	}
+	return c.published
 }
 
 func (c *counters) restore(s Snapshot) {
@@ -224,7 +265,7 @@ type statsResponse struct {
 
 func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, statsResponse{
-		Snapshot: s.counts.snapshot(),
+		Snapshot: s.counts.publicSnapshot(),
 		Policy:   policy.Version,
 	})
 }

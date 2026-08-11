@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/denyfirst/denyfirst/internal/policy"
 )
 
 // Counting by reason is safe to publish; counting by requester is not. A key
@@ -300,5 +302,81 @@ func TestDoubleCloseDoesNotLeakSlots(t *testing.T) {
 	}
 	if cap(l.slots) != limit {
 		t.Errorf("the cap changed to %d", cap(l.slots))
+	}
+}
+
+// ── The published figures ────────────────────────────────────────────────
+
+// The counters hold no timestamps, but a counter that can be polled is a
+// clock. Reading the endpoint once a second would turn "5 scans" into "a scan
+// happened at 14:32:08", which anyone holding the other end of that
+// connection can compare against their own logs.
+func TestPublishedFiguresStandStill(t *testing.T) {
+	now := time.Now()
+	c := newCounters(func() time.Time { return now })
+
+	if got := c.publicSnapshot().Total; got != 0 {
+		t.Fatalf("Total = %d, want 0", got)
+	}
+
+	for range 5 {
+		c.record(policy.Strong)
+	}
+	now = now.Add(20 * time.Second)
+
+	if got := c.publicSnapshot().Total; got != 0 {
+		t.Errorf("the published total moved to %d within the minute; polling would time each scan", got)
+	}
+
+	// The live figure, which only this process reads, is current.
+	if got := c.snapshot().Total; got != 5 {
+		t.Errorf("the live total is %d, want 5: persistence must not be delayed", got)
+	}
+
+	now = now.Add(publishInterval)
+	if got := c.publicSnapshot().Total; got != 5 {
+		t.Errorf("the published total is %d after the interval, want 5", got)
+	}
+}
+
+// ── Cross-site requests ──────────────────────────────────────────────────
+
+// A page on another site can tell a browser to send this request, and it
+// arrives carrying the visitor's address rather than the attacker's. The
+// victim's allowance is spent on a scan they never asked for.
+func TestCrossSiteRequestsAreRefused(t *testing.T) {
+	s := New(offlineScanner(), Limits{Burst: 1000, Refill: time.Nanosecond}, nil)
+
+	send := func(site string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/scan",
+			strings.NewReader(`{"target":"example.test"}`))
+		r.Header.Set("Content-Type", "application/json")
+		if site != "" {
+			r.Header.Set("Sec-Fetch-Site", site)
+		}
+		r.RemoteAddr = "203.0.113.77:5000"
+
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		return w
+	}
+
+	w := send("cross-site")
+	if w.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403 for a cross-site request", w.Code)
+	}
+	if got := errorCode(t, w); got != "cross_site" {
+		t.Errorf("code = %q, want cross_site", got)
+	}
+	if got := s.Stats().Refused["cross_site"]; got != 1 {
+		t.Errorf("cross_site counted %d times, want 1", got)
+	}
+
+	// The page itself, and clients that are not browsers, must still work.
+	// An absent header is a client that is not subject to this at all.
+	for _, site := range []string{"same-origin", "same-site", "none", ""} {
+		if w := send(site); w.Code == http.StatusForbidden {
+			t.Errorf("Sec-Fetch-Site %q was refused; only cross-site should be", site)
+		}
 	}
 }

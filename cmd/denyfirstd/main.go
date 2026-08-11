@@ -78,6 +78,8 @@ func run() int {
 			"budget for one scan")
 		maxConcurrent = flag.Int("max-concurrent", httpapi.DefaultMaxConcurrent,
 			"scans allowed to run at the same time")
+		maxConnections = flag.Int("max-connections", httpapi.DefaultMaxConnections,
+			"connections allowed to be open at once, before any request exists")
 		burst = flag.Int("burst", httpapi.DefaultBurst,
 			"scans one client may run back to back")
 		refill = flag.Duration("refill", httpapi.DefaultRefill,
@@ -124,8 +126,8 @@ func run() int {
 	}
 
 	// The scanner is left at its defaults on purpose. It dials through
-	// safedial and enforces the port allow list, and there is no flag here
-	// that would turn either off.
+	// safedial, enforces the port allow list, and takes hostnames rather than
+	// addresses. There is no flag here that would turn any of it off.
 	api := httpapi.New(&scan.Scanner{}, limits, nil)
 
 	if *statsFile != "" {
@@ -150,7 +152,6 @@ func run() int {
 	root.Handle("/", web.Handler())
 
 	srv := &http.Server{
-		Addr:    *listen,
 		Handler: root,
 
 		// ReadHeaderTimeout is the one that matters most. Without it, a
@@ -180,6 +181,19 @@ func run() int {
 		// survive a library default, so the logger is replaced rather than
 		// trusted to stay quiet.
 		ErrorLog: httpapi.SilentErrorLog(),
+
+		// HTTP/2 is switched off. A non-nil but empty TLSNextProto is what
+		// stops http.Server from enabling it alongside TLS.
+		//
+		// Its concurrent stream handling and its priority scheme have each
+		// produced denial-of-service classes, Rapid Reset among them, and
+		// tuning either needs golang.org/x/net/http2, which this project does
+		// not carry. Removing the protocol removes the question rather than
+		// leaving it to a default somebody would have to keep watching.
+		//
+		// What it costs is multiplexing. This site is four small files and
+		// one request, which keep-alive over HTTP/1.1 covers entirely.
+		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){},
 	}
 
 	if *tlsCert != "" {
@@ -205,7 +219,11 @@ func run() int {
 				tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,
 				tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
 			},
-			NextProtos: []string{"h2", "http/1.1"},
+
+			// HTTP/2 is not offered, so it is not advertised either. A server
+			// that names a protocol it will not speak invites a client to
+			// select it and then fail.
+			NextProtos: []string{"http/1.1"},
 		}
 	}
 
@@ -218,17 +236,19 @@ func run() int {
 
 	// Request-level limits arrive too late for one attack: a TLS handshake
 	// costs an elliptic curve operation before any HTTP is parsed, so a
-	// client that connects and then does nothing never reaches them.
+	// client that connects, completes a handshake and then does nothing never
+	// reaches a single one of them.
 	listener, err := net.Listen("tcp", *listen)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "listening on %s: %v\n", *listen, err)
 		return 1
 	}
-	listener = httpapi.LimitListener(listener, httpapi.DefaultMaxConnections)
+	listener = httpapi.LimitListener(listener, *maxConnections)
 
 	errc := make(chan error, 1)
 	go func() {
 		if *tlsCert != "" {
+			// The paths are already in TLSConfig.GetCertificate.
 			errc <- srv.ServeTLS(listener, "", "")
 			return
 		}
@@ -345,8 +365,8 @@ func persistStats(ctx context.Context, api *httpapi.Server, path string, every t
 			current := api.Stats()
 			if current.Equal(last) {
 				// Nothing happened, so nothing is written. An idle service
-				// leaves an idle file, and the modification time says only
-				// when the service last did something rather than when.
+				// leaves an idle file, and the modification time then says
+				// only when the service last did something.
 				continue
 			}
 			if err := saveStats(path, current); err != nil {

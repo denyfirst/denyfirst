@@ -224,15 +224,39 @@ func (r *Result) Notes() []string {
 func SplitTarget(target string) (host, port string, err error) {
 	target = strings.TrimSpace(target)
 
-	// A pasted URL is a likely mistake rather than something worth refusing.
+	// A pasted URL is a likely mistake rather than something worth refusing,
+	// so a scheme is stripped and the path with it. Without a scheme there is
+	// nothing to parse by, and a slash could mean anything.
+	//
+	// The distinction matters because the alternative is silent. Truncating
+	// "emanat.az/mpay.az/example.com" to "emanat.az" scans a server the
+	// person may not have meant, and discards two thirds of what they typed
+	// without saying so. The report would name the right host and the person
+	// would still be surprised, which is the failure this project objects to
+	// in other tools.
+	hadScheme := false
 	for _, prefix := range []string{"https://", "http://"} {
 		if rest, ok := strings.CutPrefix(target, prefix); ok {
 			target = rest
+			hadScheme = true
 		}
 	}
+
 	if i := strings.IndexByte(target, '/'); i >= 0 {
-		target = target[:i]
+		switch {
+		case hadScheme:
+			// A URL's host is everything before the first slash. Nothing is
+			// being guessed at here.
+			target = target[:i]
+		case target[i+1:] == "":
+			// A bare trailing slash discards nothing.
+			target = target[:i]
+		default:
+			return "", "", errors.New("give the hostname on its own, or a full address beginning with https://; " +
+				"everything after the slash would be dropped and this will not do that without saying so")
+		}
 	}
+
 	if target == "" {
 		return "", "", errors.New("the target names no host")
 	}
@@ -333,6 +357,29 @@ func checkHostSyntax(host string) error {
 	if strings.Contains(host, ":") {
 		if _, err := netip.ParseAddr(host); err != nil {
 			return errors.New("the host contains a colon but is not an IPv6 address")
+		}
+	}
+
+	// An address is a complete answer on its own and needs no dot; "::1" has
+	// none. Everything else does, and the reason is not tidiness.
+	//
+	// A name with no dot is completed by the resolver from its search list.
+	// On a machine configured with "search corp.example.com", asking for
+	// "intranet" dials intranet.corp.example.com. The report would then name
+	// one host while the connection went to another, which is the same
+	// mismatch between what was checked and what was dialled that this
+	// function exists to prevent.
+	//
+	// It is also what a person means: example.az and example.com are
+	// different companies, and a bare "example" is neither.
+	if _, err := netip.ParseAddr(host); err != nil {
+		labels := strings.TrimSuffix(host, ".")
+		switch {
+		case !strings.Contains(labels, "."):
+			return errors.New("the host needs a full name with a domain, such as example.com; " +
+				"a bare name would be completed by the resolver's search list and could reach a different server")
+		case strings.HasPrefix(labels, "."), strings.Contains(labels, ".."):
+			return errors.New("the host has an empty label")
 		}
 	}
 

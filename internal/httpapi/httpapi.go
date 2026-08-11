@@ -172,6 +172,28 @@ type apiError struct {
 }
 
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
+	// A page on another site can make a browser send this request, and it
+	// would arrive carrying the visitor's address rather than the attacker's.
+	// The victim's rate limit is spent, and a scan they never asked for is
+	// attributed to them.
+	//
+	// That is already blocked, but only as a side effect: a cross-origin
+	// request with a JSON content type needs a preflight, no CORS header is
+	// sent, and the browser drops it; with a simple content type it arrives
+	// and is refused for the wrong reason. Relying on that means the
+	// protection disappears the day somebody relaxes the content type check
+	// for a good reason.
+	//
+	// Sec-Fetch-Site says outright where the request came from and cannot be
+	// set by script. An absent header is a client that is not a browser, and
+	// so is not subject to this at all.
+	if site := r.Header.Get("Sec-Fetch-Site"); site == "cross-site" {
+		s.refuse(w, http.StatusForbidden, "cross_site",
+			"This endpoint is not available to other sites. Use it from this page, "+
+				"from the command line tool, or from your own instance.")
+		return
+	}
+
 	if ct := r.Header.Get("Content-Type"); ct != "" && !strings.HasPrefix(ct, "application/json") {
 		s.refuse(w, http.StatusUnsupportedMediaType, "unsupported_media",
 			"Send application/json.")
