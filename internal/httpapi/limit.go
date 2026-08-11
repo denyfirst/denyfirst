@@ -101,21 +101,37 @@ func (l *limiter) allow(key string) bool {
 
 // sweepLocked drops buckets that have been full and idle long enough that
 // forgetting them changes nothing.
+//
+// This is also how long an address is held. A bucket refills completely in
+// burst × refill; twice that is the point past which its state is
+// indistinguishable from a fresh one, and keeping it serves nothing.
 func (l *limiter) sweepLocked(now time.Time) {
 	if now.Sub(l.lastSweep) < l.sweepEvery {
 		return
 	}
 	l.lastSweep = now
 
-	// A bucket refills completely in burst*refill. Past that point its state
-	// is indistinguishable from a fresh one.
-	idle := time.Duration(l.burst) * l.refill * 2
+	idle := l.idlePeriod()
 
 	for key, b := range l.buckets {
 		if now.Sub(b.seen) > idle {
 			delete(l.buckets, key)
 		}
 	}
+}
+
+func (l *limiter) idlePeriod() time.Duration {
+	return time.Duration(l.burst) * l.refill * 2
+}
+
+// RetentionPeriod is the longest an address can be held, so that the privacy
+// page can state a number rather than a feeling.
+//
+// A bucket is dropped once it has been idle for burst × refill × 2, and the
+// sweep runs at most once a minute, so the worst case is that plus one sweep
+// interval.
+func (l *limiter) RetentionPeriod() time.Duration {
+	return l.idlePeriod() + l.sweepEvery
 }
 
 func (l *limiter) size() int {
@@ -126,24 +142,31 @@ func (l *limiter) size() int {
 
 // clientKey identifies the party a rate limit applies to.
 //
-// trustedProxyHops is the number of reverse proxies known to sit in front of
-// this service. Zero means the connection is direct and RemoteAddr is the
-// truth.
+// X-Forwarded-For is read only when the request arrived from a network named
+// in trustedProxies, and then only as far back as trustedHops.
 //
-// When proxies are present, the correct entry in X-Forwarded-For is counted
-// from the right, because each proxy appends the address it received the
-// request from. The leftmost entry is whatever the client chose to send, and
-// taking it — the usual mistake — hands the client control of its own rate
-// limit key.
-func clientKey(r *http.Request, trustedProxyHops int) string {
+// Checking where the connection came from is the part that is easy to leave
+// out, and leaving it out is worse than not reading the header at all. A
+// reverse proxy hides the origin server but rarely removes it: an address
+// found in certificate transparency logs, in old DNS records, or from a
+// scanning service reaches it directly. A client connecting that way sets
+// X-Forwarded-For to whatever it likes, and a service that trusts the header
+// on the strength of a configuration flag alone hands every such client a
+// fresh rate limit key per request.
+//
+// So the flag says a proxy exists; this says the request actually came
+// through it.
+func clientKey(r *http.Request, trustedProxies []netip.Prefix, trustedHops int) string {
 	host := remoteHost(r.RemoteAddr)
 
-	if trustedProxyHops > 0 {
+	if trustedHops > 0 && len(trustedProxies) > 0 && fromTrustedProxy(host, trustedProxies) {
 		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
 			parts := strings.Split(forwarded, ",")
-			// The proxy nearest to us appended the last entry; step back one
-			// position per additional trusted hop.
-			idx := len(parts) - trustedProxyHops
+			// Each proxy appends the address it received the request from, so
+			// the entry nearest to us is the last one. Step back one position
+			// per additional trusted hop. Taking the leftmost entry — the
+			// usual mistake — reads whatever the client chose to send.
+			idx := len(parts) - trustedHops
 			if idx >= 0 && idx < len(parts) {
 				if candidate := strings.TrimSpace(parts[idx]); candidate != "" {
 					host = candidate
@@ -168,6 +191,21 @@ func clientKey(r *http.Request, trustedProxyHops int) string {
 		return "v6:" + addr.String()
 	}
 	return "v6:" + prefix.String()
+}
+
+func fromTrustedProxy(host string, trusted []netip.Prefix) bool {
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return false
+	}
+	addr = addr.Unmap()
+
+	for _, prefix := range trusted {
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }
 
 func remoteHost(remoteAddr string) string {

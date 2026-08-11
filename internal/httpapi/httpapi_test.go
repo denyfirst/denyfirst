@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -277,7 +278,7 @@ func TestForwardedHeaderIgnoredWithoutTrustedProxy(t *testing.T) {
 
 // With one trusted proxy, the address it appended is the rightmost entry.
 // Taking the leftmost — the usual mistake — reads whatever the client sent.
-func TestForwardedHeaderReadFromTheRight(t *testing.T) {
+func TestForwardedHeaderIsReadFromDeclaredNetworks(t *testing.T) {
 	s := New(offlineScanner(), Limits{Burst: 1, Refill: time.Hour, TrustedProxyHops: 1}, nil)
 
 	send := func(xff string) int {
