@@ -3,11 +3,20 @@
 // The command line tool takes its input from the operator. This package takes
 // it from strangers, and that difference is the whole design.
 //
-// Five limits apply to every request: how large the body may be, how long the
-// work may take, how often one client may ask, how many scans may run at
-// once, and how often any one host may be scanned. The first four protect
-// this service; the last protects the server being measured, which had no say
-// in the matter.
+// Six limits apply. Five are per request: how large the body may be, how long
+// the work may take, how often one client may ask, how many scans may run at
+// once, and how often any one host may be scanned. The sixth is per
+// connection, in LimitListener, because a TLS handshake costs real work
+// before any request exists to limit.
+//
+// All but one protect this service. The per-host limit protects the server
+// being measured, which had no say in whether it is measured at all.
+//
+// Every refusal is counted by reason. An operator running a public service
+// has to be able to see a change in the shape of what arrives, and asking
+// users to trust somebody who is not watching would be its own kind of
+// carelessness. The counts name reasons rather than requesters, so they can
+// be published without describing anybody.
 //
 // There is no equivalent of the command line switches. The scanner reaches
 // the network through safedial, which refuses private, loopback, link-local
@@ -164,14 +173,14 @@ type apiError struct {
 
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	if ct := r.Header.Get("Content-Type"); ct != "" && !strings.HasPrefix(ct, "application/json") {
-		writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type",
+		s.refuse(w, http.StatusUnsupportedMediaType, "unsupported_media",
 			"Send application/json.")
 		return
 	}
 
 	if !s.rate.allow(clientKey(r, s.limits.TrustedProxyHops)) {
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(s.limits.Refill)))
-		writeError(w, http.StatusTooManyRequests, "rate_limited",
+		s.refuse(w, http.StatusTooManyRequests, "rate_limited",
 			"Too many scans from this address. Try again shortly.")
 		return
 	}
@@ -189,16 +198,16 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	if err := dec.Decode(&req); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			writeError(w, http.StatusRequestEntityTooLarge, "payload_too_large",
+			s.refuse(w, http.StatusRequestEntityTooLarge, "payload_too_large",
 				"The request body is larger than this endpoint accepts.")
 			return
 		}
-		writeError(w, http.StatusBadRequest, "bad_request",
+		s.refuse(w, http.StatusBadRequest, "bad_request",
 			"The body must be a JSON object with a single \"target\" field.")
 		return
 	}
 	if dec.More() {
-		writeError(w, http.StatusBadRequest, "bad_request",
+		s.refuse(w, http.StatusBadRequest, "bad_request",
 			"The body must contain exactly one JSON object.")
 		return
 	}
@@ -207,7 +216,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// The message describes the rule rather than echoing the input, so
 		// nothing a caller sent is reflected back.
-		writeError(w, http.StatusBadRequest, "invalid_target",
+		s.refuse(w, http.StatusBadRequest, "invalid_target",
 			"The target must be a hostname, optionally with a port, and must not contain spaces or control characters.")
 		return
 	}
@@ -216,7 +225,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		// The rule is described rather than the input repeated. SplitHostPort
 		// does not require a port to be numeric, so err.Error() would carry
 		// back whatever the caller sent.
-		writeError(w, http.StatusBadRequest, "port_not_allowed",
+		s.refuse(w, http.StatusBadRequest, "port_not_allowed",
 			"That port is not scannable. This service connects only to "+
 				strings.Join(scan.AllowedPorts, ", ")+".")
 		return
@@ -228,7 +237,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	// does. It also declines to lend this address to working through a range
 	// one entry at a time.
 	if scan.IsIPTarget(host) {
-		writeError(w, http.StatusBadRequest, "hostname_required",
+		s.refuse(w, http.StatusBadRequest, "hostname_required",
 			"Give a hostname rather than an address. A scan of a name looks like "+
 				"an ordinary client to the server receiving it, which is how this "+
 				"service prefers to appear. The command line tool accepts addresses "+
@@ -246,7 +255,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	// without being recorded.
 	if !s.targets.allow(host, port) {
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(targetRefill)))
-		writeError(w, http.StatusTooManyRequests, "target_busy",
+		s.refuse(w, http.StatusTooManyRequests, "target_busy",
 			"That server was scanned very recently. Each host has its own budget, "+
 				"regardless of who asks, so that this service cannot be pointed at one "+
 				"server in bulk. Try again in a moment.")
@@ -258,7 +267,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.sem.acquire(ctx); err != nil {
 		w.Header().Set("Retry-After", "5")
-		writeError(w, http.StatusServiceUnavailable, "too_busy",
+		s.refuse(w, http.StatusServiceUnavailable, "too_busy",
 			"Too many scans are in flight. Try again shortly.")
 		return
 	}
@@ -267,13 +276,13 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	result, err := s.scanner.Scan(ctx, net.JoinHostPort(host, port))
 	if err != nil {
 		if ctx.Err() != nil {
-			writeError(w, http.StatusGatewayTimeout, "timeout",
+			s.refuse(w, http.StatusGatewayTimeout, "timeout",
 				"The scan did not finish within the time allowed.")
 			return
 		}
 		// The underlying error can name resolver internals and addresses, so
 		// only the shape of the failure is returned.
-		writeError(w, http.StatusBadGateway, "scan_failed",
+		s.refuse(w, http.StatusBadGateway, "scan_failed",
 			"The target could not be reached.")
 		return
 	}
@@ -341,6 +350,17 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, errorResponse{Error: apiError{Code: code, Message: message}})
+}
+
+// refuse writes an error and counts it.
+//
+// The handler uses this rather than writeError so that a refusal cannot be
+// added without being counted. A figure that describes some refusals and not
+// others is worse than none at all: an operator reads it as the whole
+// picture and concludes that nothing happened.
+func (s *Server) refuse(w http.ResponseWriter, status int, code, message string) {
+	s.counts.refuse(code)
+	writeError(w, status, code, message)
 }
 
 func retryAfterSeconds(d time.Duration) int {

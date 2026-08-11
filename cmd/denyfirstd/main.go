@@ -22,6 +22,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -215,14 +216,23 @@ func run() int {
 		go persistStats(ctx, api, *statsFile, statsInterval)
 	}
 
+	// Request-level limits arrive too late for one attack: a TLS handshake
+	// costs an elliptic curve operation before any HTTP is parsed, so a
+	// client that connects and then does nothing never reaches them.
+	listener, err := net.Listen("tcp", *listen)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "listening on %s: %v\n", *listen, err)
+		return 1
+	}
+	listener = httpapi.LimitListener(listener, httpapi.DefaultMaxConnections)
+
 	errc := make(chan error, 1)
 	go func() {
 		if *tlsCert != "" {
-			// The paths are already in TLSConfig.GetCertificate.
-			errc <- srv.ListenAndServeTLS("", "")
+			errc <- srv.ServeTLS(listener, "", "")
 			return
 		}
-		errc <- srv.ListenAndServe()
+		errc <- srv.Serve(listener)
 	}()
 
 	scheme := "http"
@@ -333,7 +343,7 @@ func persistStats(ctx context.Context, api *httpapi.Server, path string, every t
 
 		case <-ticker.C:
 			current := api.Stats()
-			if current == last {
+			if current.Equal(last) {
 				// Nothing happened, so nothing is written. An idle service
 				// leaves an idle file, and the modification time says only
 				// when the service last did something rather than when.
