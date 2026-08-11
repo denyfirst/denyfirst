@@ -27,12 +27,16 @@ func TestSplitTarget(t *testing.T) {
 		{"example.com\n", "example.com", "443"},
 		{"\texample.com:8443\r\n", "example.com", "8443"},
 
-		// A pasted URL is a likely mistake, not an error worth refusing.
+		// A pasted URL is a likely mistake, not an error worth refusing. A
+		// scheme makes the host unambiguous, so the path goes with it.
 		{"https://example.com", "example.com", "443"},
 		{"http://example.com", "example.com", "443"},
 		{"https://example.com/", "example.com", "443"},
 		{"https://example.com/path/to/page", "example.com", "443"},
 		{"https://example.com:8443/x", "example.com", "8443"},
+
+		// A bare trailing slash discards nothing, so it needs no scheme.
+		{"example.com/", "example.com", "443"},
 
 		{"[2606:4700:4700::1111]:443", "2606:4700:4700::1111", "443"},
 
@@ -140,8 +144,12 @@ func TestAllowedPortsAreImplicitTLS(t *testing.T) {
 
 // A zero Scanner must reach safedial. If this ever succeeds against a private
 // address, the guard has been disconnected from the pipeline.
+//
+// Addresses are also refused outright now, so most of these stop before the
+// dialler. Both outcomes are correct; what must never happen is a completed
+// handshake.
 func TestZeroScannerRefusesPrivateTargets(t *testing.T) {
-	s := &Scanner{}
+	s := &Scanner{AllowIPTargets: true}
 
 	for _, target := range []string{"127.0.0.1", "169.254.169.254", "10.0.0.1"} {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -236,6 +244,81 @@ func TestAllowAnyPortLiftsTheRestriction(t *testing.T) {
 	}
 }
 
+// A bare address is refused by default. A scan of a name carries that name in
+// the client hello, which is what a browser does; a scan of an address
+// carries nothing, which is what a scanner does.
+func TestScannerRefusesAddressesByDefault(t *testing.T) {
+	s := &Scanner{}
+
+	for _, target := range []string{
+		"93.184.216.34",
+		"93.184.216.34:8443",
+		"2606:4700:4700::1111",
+		"[2606:4700:4700::1111]:443",
+	} {
+		_, err := s.Scan(context.Background(), target)
+		if err == nil {
+			t.Errorf("a zero Scanner accepted %s", target)
+			continue
+		}
+		if !strings.Contains(err.Error(), "takes a hostname") {
+			t.Errorf("Scan(%s) failed for the wrong reason: %v", target, err)
+		}
+	}
+}
+
+// The command line has the case the service refuses: an operator checking a
+// server whose name does not resolve yet.
+func TestAllowIPTargetsLiftsTheRestriction(t *testing.T) {
+	s := &Scanner{
+		AllowIPTargets: true,
+		Prober: &tlsprobe.Prober{
+			Dial: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return nil, errors.New("no network in this test")
+			},
+		},
+	}
+
+	if _, err := s.Scan(context.Background(), "93.184.216.34"); err != nil {
+		if strings.Contains(err.Error(), "takes a hostname") {
+			t.Error("AllowIPTargets did not lift the restriction")
+		}
+	}
+}
+
+// A name that resembles an address must still be accepted, or the check is
+// matching strings rather than parsing. Services such as nip.io exist and
+// resolve ordinary-looking names to addresses; refusing them would be wrong
+// and would not stop anybody determined.
+func TestIsIPTarget(t *testing.T) {
+	addresses := []string{
+		"93.184.216.34",
+		"127.0.0.1",
+		"::1",
+		"2606:4700:4700::1111",
+		"::ffff:127.0.0.1",
+	}
+	for _, host := range addresses {
+		if !IsIPTarget(host) {
+			t.Errorf("IsIPTarget(%q) = false, want true", host)
+		}
+	}
+
+	names := []string{
+		"example.com",
+		"1.example.com",
+		"93.184.216.34.example.com",
+		"1.2.3.4.nip.io",
+		"xn--e1afmkfd.xn--p1ai",
+		"localhost",
+	}
+	for _, host := range names {
+		if IsIPTarget(host) {
+			t.Errorf("IsIPTarget(%q) = true, want false", host)
+		}
+	}
+}
+
 // The property fuzzing broke: splitting a target, rejoining it, and splitting
 // again has to give the same answer. Where it does not, a check performed on
 // one form does not describe the form that is eventually dialled, which is
@@ -280,6 +363,94 @@ func TestPortSyntaxIsCheckedBeforeTheAllowList(t *testing.T) {
 	for _, in := range []string{"example.com:44 3", "example.com:443x", "example.com:-1", "example.com:+443"} {
 		if _, _, err := SplitTarget(in); err == nil {
 			t.Errorf("SplitTarget(%q) accepted a port that is not a number", in)
+		}
+	}
+}
+
+// A name with no dot is completed by the resolver from its search list. On a
+// machine configured with "search corp.example.com", asking for "intranet"
+// dials intranet.corp.example.com: the report names one host and the
+// connection goes to another.
+//
+// It is also what a person means. example.az and example.com are different
+// companies, and a bare "example" is neither of them.
+func TestBareNamesAreRefused(t *testing.T) {
+	bare := []string{
+		"salam",
+		"intranet",
+		"localhost",
+		"router",
+		"example",
+		".",
+		".com",
+		"example..com",
+		"com.",
+	}
+
+	for _, host := range bare {
+		if _, _, err := SplitTarget(host); err == nil {
+			t.Errorf("SplitTarget(%q) accepted a name the resolver would complete from its search list", host)
+		}
+	}
+}
+
+// An address answers for itself and needs no dot; "::1" has none.
+func TestDottedNamesAndAddressesAreAccepted(t *testing.T) {
+	good := []string{
+		"example.com",
+		"example.az",
+		"a.b.c.example.com",
+		"example.com.", // fully qualified, which is the most explicit form
+		"93.184.216.34",
+		"2606:4700:4700::1111",
+		"::1",
+	}
+
+	for _, host := range good {
+		if _, _, err := SplitTarget(host); err != nil {
+			t.Errorf("SplitTarget(%q) returned %v", host, err)
+		}
+	}
+}
+
+// Truncating at the first slash is right for a URL and wrong for anything
+// else. "emanat.az/mpay.az/example.com" is not a URL, and scanning emanat.az
+// while discarding two thirds of what somebody typed would surprise them —
+// the report would name the right host and the person would still be wrong
+// about what happened.
+func TestPathIsOnlyDroppedFromAURL(t *testing.T) {
+	withScheme := map[string]string{
+		"https://example.com/login":             "example.com",
+		"http://example.com/a/b/c":              "example.com",
+		"https://example.com/":                  "example.com",
+		"https://example.com:8443/admin":        "example.com",
+		"https://emanat.az/mpay.az/example.com": "emanat.az",
+	}
+	for in, want := range withScheme {
+		host, _, err := SplitTarget(in)
+		if err != nil {
+			t.Errorf("SplitTarget(%q) returned %v", in, err)
+			continue
+		}
+		if host != want {
+			t.Errorf("SplitTarget(%q) = %q, want %q", in, host, want)
+		}
+	}
+
+	// A bare trailing slash discards nothing.
+	if host, _, err := SplitTarget("example.com/"); err != nil || host != "example.com" {
+		t.Errorf(`SplitTarget("example.com/") = %q, %v; want example.com`, host, err)
+	}
+
+	// Without a scheme, anything after a slash would be dropped in silence.
+	for _, in := range []string{
+		"example.com/login",
+		"emanat.az/mpay.az/example.com",
+		"example.com/a/b",
+		"example.com/?x=1",
+	} {
+		if _, _, err := SplitTarget(in); err == nil {
+			t.Errorf("SplitTarget(%q) silently discarded everything after the slash", in)
 		}
 	}
 }
