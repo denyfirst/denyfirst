@@ -8,6 +8,22 @@
 // The split from tlsprobe is the same one that separates measurement from
 // judgement elsewhere in this project: tlsprobe collects, certinfo describes,
 // policy decides.
+//
+// # The chain is untrusted input
+//
+// Every other limit in this project bounds what arrives in a request. These
+// bound what arrives in a reply, which is a different direction and easy to
+// forget: the scanner connects to a server chosen by whoever asked, and that
+// server decides what to send back.
+//
+// A certificate may carry a subject thousands of characters long, hundreds of
+// alternative names, and a chain of dozens. Go parses all of it. Passing it
+// through unbounded would turn one small request into a response measured in
+// megabytes, which the person who asked for the scan pays for, not the server
+// that sent it.
+//
+// Anything cut is stated in the report. A truncated list presented as a
+// complete one would be the same failure this project criticises elsewhere.
 package certinfo
 
 import (
@@ -29,6 +45,19 @@ import (
 // ErrNoChain is returned when there is nothing to describe.
 var ErrNoChain = errors.New("certinfo: no certificates were presented")
 
+// Bounds on what a server can make this package repeat back.
+//
+// The values sit well above anything a real certificate carries and well
+// below anything that would make a report unreadable. A public chain is two
+// to four certificates; a name list beyond a few dozen entries belongs to a
+// shared host, and the first fifty are enough to see that.
+const (
+	maxChainLength  = 10
+	maxFieldLength  = 256
+	maxListEntries  = 50
+	maxUsageEntries = 20
+)
+
 // Report describes one server's chain.
 type Report struct {
 	// Policy names the rule set that produced the verdict, so a result can be
@@ -41,7 +70,8 @@ type Report struct {
 	// Grade carries the findings and the validity arithmetic.
 	Grade policy.LeafFinding `json:"grade"`
 
-	// Chain is every certificate the server sent, leaf first.
+	// Chain is the certificates the server sent, leaf first, up to the limit
+	// above. Notes says so when there were more.
 	Chain []Certificate `json:"chain"`
 
 	// Hostname is the name the chain was checked against. Empty when the
@@ -61,7 +91,7 @@ type Report struct {
 	// CheckedAt is the moment the validity window was judged against.
 	CheckedAt time.Time `json:"checkedAt"`
 
-	// Notes records what could not be established.
+	// Notes records what could not be established, and what was cut.
 	Notes []string `json:"notes,omitempty"`
 }
 
@@ -93,8 +123,43 @@ type Certificate struct {
 	ExtKeyUsage []string `json:"extKeyUsage,omitempty"`
 
 	// FingerprintSHA256 identifies this exact certificate. It is what a user
-	// pins, and what lets two reports be compared without ambiguity.
+	// pins, and what lets two reports be compared without ambiguity. It is
+	// taken over the whole certificate, before anything above was shortened,
+	// so it still identifies what the server actually sent.
 	FingerprintSHA256 string `json:"fingerprintSha256"`
+}
+
+// trimmer applies the bounds and remembers whether it had to.
+//
+// Recording that something was cut is the point. A shortened list rendered as
+// a complete one is exactly the kind of quiet omission this project objects
+// to in other tools.
+type trimmer struct {
+	cut bool
+}
+
+func (t *trimmer) text(s string) string {
+	if len(s) <= maxFieldLength {
+		return s
+	}
+	t.cut = true
+	// The marker is inside the returned value so that a reader looking at one
+	// field, rather than at the notes, still sees that it is incomplete.
+	return s[:maxFieldLength] + "…"
+}
+
+func (t *trimmer) list(items []string, limit int) []string {
+	out := items
+	if len(out) > limit {
+		out = out[:limit]
+		t.cut = true
+	}
+
+	trimmed := make([]string, 0, len(out))
+	for _, item := range out {
+		trimmed = append(trimmed, t.text(item))
+	}
+	return trimmed
 }
 
 // Analyse describes and grades a chain. The chain must be leaf first, as TLS
@@ -115,16 +180,36 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 		// privacy property should not depend on a machine being configured
 		// correctly.
 		CheckedAt: now.UTC(),
-		Chain:     make([]Certificate, 0, len(chain)),
 	}
-	for _, c := range chain {
-		report.Chain = append(report.Chain, describe(c))
+
+	// Verification and completeness read the chain as sent. Only the
+	// description is bounded, so a long chain is still judged on what it
+	// really is.
+	described := chain
+	if len(described) > maxChainLength {
+		described = described[:maxChainLength]
+		report.Notes = append(report.Notes, fmt.Sprintf(
+			"The server sent %d certificates. Only the first %d are described; the rest were judged but not listed.",
+			len(chain), maxChainLength))
+	}
+
+	var trim trimmer
+	report.Chain = make([]Certificate, 0, len(described))
+	for _, c := range described {
+		report.Chain = append(report.Chain, describe(c, &trim))
+	}
+	if trim.cut {
+		report.Notes = append(report.Notes,
+			"Some fields were longer than this report will carry and have been shortened. "+
+				"The fingerprint is taken over the whole certificate, so it still identifies what the server sent.")
 	}
 
 	selfSigned := isSelfSigned(leaf)
 
 	intermediates := x509.NewCertPool()
-	for _, c := range chain[1:] {
+	// Bounded for the same reason: path building is work, and the number of
+	// candidates is chosen by the server being examined.
+	for _, c := range chain[1:min(len(chain), maxChainLength)] {
 		intermediates.AddCert(c)
 	}
 
@@ -138,7 +223,7 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 
 	report.Trusted = err == nil
 	if err != nil {
-		report.VerifyError = err.Error()
+		report.VerifyError = trim.text(err.Error())
 
 		// A chain that reaches a trusted root but has run out of time is not
 		// an untrusted chain. Expiry has its own rule; reporting both would
@@ -170,9 +255,9 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 	facts.KeyAlgorithm, facts.KeyBits = keyDetails(leaf)
 
 	if facts.KeyAlgorithm == "" {
-		report.Notes = append(report.Notes,
-			fmt.Sprintf("Public key algorithm %q is not recognised, so key strength was not graded.",
-				leaf.PublicKeyAlgorithm.String()))
+		report.Notes = append(report.Notes, fmt.Sprintf(
+			"Public key algorithm %q is not recognised, so key strength was not graded.",
+			leaf.PublicKeyAlgorithm.String()))
 	}
 
 	report.Grade = policy.GradeLeaf(facts, now)
@@ -235,31 +320,38 @@ func isSelfSigned(c *x509.Certificate) bool {
 	return c.CheckSignature(c.SignatureAlgorithm, c.RawTBSCertificate, c.Signature) == nil
 }
 
-func describe(c *x509.Certificate) Certificate {
+func describe(c *x509.Certificate, trim *trimmer) Certificate {
+	// Taken over the whole certificate, before anything below is shortened,
+	// so the fingerprint still identifies what the server actually sent.
 	sum := sha256.Sum256(c.Raw)
 
 	out := Certificate{
-		Subject:            c.Subject.String(),
-		Issuer:             c.Issuer.String(),
-		SerialNumber:       c.SerialNumber.String(),
+		Subject:            trim.text(c.Subject.String()),
+		Issuer:             trim.text(c.Issuer.String()),
+		SerialNumber:       trim.text(c.SerialNumber.String()),
 		NotBefore:          c.NotBefore,
 		NotAfter:           c.NotAfter,
-		DNSNames:           c.DNSNames,
-		EmailAddresses:     c.EmailAddresses,
+		DNSNames:           trim.list(c.DNSNames, maxListEntries),
+		EmailAddresses:     trim.list(c.EmailAddresses, maxListEntries),
 		SignatureAlgorithm: c.SignatureAlgorithm.String(),
 		IsCA:               c.IsCA,
 		SelfSigned:         isSelfSigned(c),
 		KeyUsage:           keyUsages(c.KeyUsage),
-		ExtKeyUsage:        extKeyUsages(c.ExtKeyUsage),
+		ExtKeyUsage:        trim.list(extKeyUsages(c.ExtKeyUsage), maxUsageEntries),
 		FingerprintSHA256:  hex.EncodeToString(sum[:]),
 	}
 
+	addresses := make([]string, 0, len(c.IPAddresses))
 	for _, ip := range c.IPAddresses {
-		out.IPAddresses = append(out.IPAddresses, ip.String())
+		addresses = append(addresses, ip.String())
 	}
+	out.IPAddresses = trim.list(addresses, maxListEntries)
+
+	uris := make([]string, 0, len(c.URIs))
 	for _, u := range c.URIs {
-		out.URIs = append(out.URIs, u.String())
+		uris = append(uris, u.String())
 	}
+	out.URIs = trim.list(uris, maxListEntries)
 
 	out.KeyAlgorithm, out.KeyBits = keyDetails(c)
 	return out
