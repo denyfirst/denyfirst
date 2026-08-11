@@ -372,3 +372,39 @@ func TestSummaryIsReadable(t *testing.T) {
 		t.Errorf("Summary() = %q, want it to state the remaining lifetime", got)
 	}
 }
+
+// Paste this at the very end of internal/certinfo/certinfo_test.go,
+// after the final closing brace of the last function.
+//
+// The imports it needs — crypto/x509, strings, testing — are already there.
+
+// Invariant R3: what could not be measured is stated.
+//
+// "Trusted" means the chain reaches a root and the dates are in range. A
+// reader will take it to mean the certificate has not been revoked, and it
+// does not, so the report has to say so.
+//
+// Revocation is not checked because checking it would defeat the point of the
+// service: asking a certificate authority whether a serial is still good
+// tells that authority which certificate somebody is looking at. Silence
+// about that would read as a clean answer, which is the failure this project
+// objects to in other tools.
+func TestRevocationIsDeclaredUnchecked(t *testing.T) {
+	root := newRoot(t)
+	leaf := newLeaf(t, root, leafOpts{})
+
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+	if err != nil {
+		t.Fatalf("Analyse: %v", err)
+	}
+
+	var declared bool
+	for _, note := range report.Notes {
+		if strings.Contains(strings.ToLower(note), "revocation") {
+			declared = true
+		}
+	}
+	if !declared {
+		t.Errorf("no note says revocation was not checked; notes: %v", report.Notes)
+	}
+}

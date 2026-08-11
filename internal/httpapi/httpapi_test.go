@@ -276,29 +276,104 @@ func TestForwardedHeaderIgnoredWithoutTrustedProxy(t *testing.T) {
 	}
 }
 
-// With one trusted proxy, the address it appended is the rightmost entry.
-// Taking the leftmost — the usual mistake — reads whatever the client sent.
+// A hop count says a proxy exists. It does not say the request in hand came
+// through one.
+//
+// A reverse proxy hides an origin server but rarely removes it: the address
+// turns up in certificate transparency logs, in old DNS records, or in a
+// scanning service. A client reaching it directly writes whatever
+// X-Forwarded-For it likes, and a service that trusts the header on the
+// strength of a flag alone gives that client a fresh rate limit key for every
+// request, which is the same as having no limit at all.
+func TestForwardedHeaderIsIgnoredFromUndeclaredNetworks(t *testing.T) {
+	s := New(offlineScanner(), Limits{
+		Burst:            1,
+		Refill:           time.Hour,
+		TrustedProxies:   []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+		TrustedProxyHops: 1,
+	}, nil)
+
+	// Straight to the origin, pretending to be a proxy.
+	send := func(claim string) int {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/scan",
+			strings.NewReader(`{"target":"example.test"}`))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("X-Forwarded-For", claim)
+		r.RemoteAddr = "203.0.113.50:1000" // outside the declared network
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		return w.Code
+	}
+
+	if code := send("1.1.1.1"); code == http.StatusTooManyRequests {
+		t.Fatal("the first request was limited")
+	}
+	if code := send("2.2.2.2"); code != http.StatusTooManyRequests {
+		t.Error("a client reaching the origin directly minted a new key by changing the header")
+	}
+}
+
+// Through a declared proxy, the header is what identifies the client, and the
+// entry that counts is the one the proxy appended.
 func TestForwardedHeaderIsReadFromDeclaredNetworks(t *testing.T) {
-	s := New(offlineScanner(), Limits{Burst: 1, Refill: time.Hour, TrustedProxyHops: 1}, nil)
+	s := New(offlineScanner(), Limits{
+		Burst:            1,
+		Refill:           time.Hour,
+		TrustedProxies:   []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+		TrustedProxyHops: 1,
+	}, nil)
 
 	send := func(xff string) int {
 		r := httptest.NewRequest(http.MethodPost, "/api/v1/scan",
 			strings.NewReader(`{"target":"example.test"}`))
 		r.Header.Set("Content-Type", "application/json")
 		r.Header.Set("X-Forwarded-For", xff)
-		r.RemoteAddr = "10.0.0.1:1000" // the proxy
+		r.RemoteAddr = "10.0.0.7:1000" // the proxy
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, r)
 		return w.Code
 	}
 
-	// The client claims to be 1.1.1.1; the proxy says it came from 198.51.100.5.
+	// Two different real clients: each has its own budget.
 	if code := send("1.1.1.1, 198.51.100.5"); code == http.StatusTooManyRequests {
+		t.Fatal("the first client was limited")
+	}
+	if code := send("1.1.1.1, 198.51.100.6"); code == http.StatusTooManyRequests {
+		t.Error("a second client was refused because of the first")
+	}
+
+	// The same real client again, whatever it claims to the left. Taking the
+	// leftmost entry — the usual mistake — would let it choose its own key.
+	if code := send("9.9.9.9, 198.51.100.5"); code != http.StatusTooManyRequests {
+		t.Error("the leftmost entry was trusted")
+	}
+}
+
+// A hop count with no network to check against would mean reading a header
+// any client can write. An incomplete configuration has to fail closed.
+func TestHopCountWithoutNetworksIsIgnored(t *testing.T) {
+	s := New(offlineScanner(), Limits{
+		Burst:            1,
+		Refill:           time.Hour,
+		TrustedProxyHops: 1, // no TrustedProxies
+	}, nil)
+
+	send := func(claim string) int {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/scan",
+			strings.NewReader(`{"target":"example.test"}`))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("X-Forwarded-For", claim)
+		r.RemoteAddr = "203.0.113.60:1000"
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		return w.Code
+	}
+
+	if code := send("1.1.1.1"); code == http.StatusTooManyRequests {
 		t.Fatal("the first request was limited")
 	}
-	// Same real client, different claim. It must still be limited.
-	if code := send("9.9.9.9, 198.51.100.5"); code != http.StatusTooManyRequests {
-		t.Error("the leftmost entry was trusted, so a client could choose its own key")
+	if code := send("2.2.2.2"); code != http.StatusTooManyRequests {
+		t.Error("a hop count without a network list was honoured, so the header was trusted")
 	}
 }
 
@@ -344,9 +419,9 @@ func TestConcurrencyLimit(t *testing.T) {
 }
 
 // The switch that lets the command line reach private addresses has no
-// counterpart here. Addresses are now refused before the dialler is reached,
-// which is a second layer rather than a replacement: if the hostname rule were
-// ever relaxed, safedial would still refuse these.
+// counterpart here. Addresses are refused before the dialler is reached,
+// which is a second layer rather than a replacement: if the hostname rule
+// were ever relaxed, safedial would still refuse these.
 func TestPrivateTargetsAreRefused(t *testing.T) {
 	s := New(nil, Limits{Burst: 1000, RequestTimeout: 5 * time.Second}, nil)
 
@@ -430,7 +505,8 @@ func TestLimiterMemoryIsBounded(t *testing.T) {
 }
 
 // Idle buckets are dropped, so a busy day does not leave the map full for
-// ever.
+// ever. This is also how long an address is held, which the privacy page
+// states as a number.
 func TestLimiterSweepsIdleClients(t *testing.T) {
 	now := time.Now()
 	clock := func() time.Time { return now }
@@ -450,6 +526,21 @@ func TestLimiterSweepsIdleClients(t *testing.T) {
 
 	if got := l.size(); got > 2 {
 		t.Errorf("size = %d after an hour of idleness, want the old entries gone", got)
+	}
+}
+
+// The privacy page states how long an address is held. That figure has to
+// come from the same arithmetic the sweep uses, or the page and the code
+// drift apart and the page is the one people read.
+func TestRetentionPeriodIsBounded(t *testing.T) {
+	l := newLimiter(DefaultBurst, DefaultRefill, DefaultMaxTrackedIPs, nil)
+
+	got := l.RetentionPeriod()
+	if got <= 0 {
+		t.Fatalf("RetentionPeriod() = %v", got)
+	}
+	if got > 5*time.Minute {
+		t.Errorf("RetentionPeriod() = %v; an address held longer than a few minutes needs a reason", got)
 	}
 }
 
