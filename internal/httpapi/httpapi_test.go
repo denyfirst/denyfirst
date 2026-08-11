@@ -194,13 +194,18 @@ func TestBodySizeLimit(t *testing.T) {
 func TestRateLimit(t *testing.T) {
 	s := New(offlineScanner(), Limits{Burst: 3, Refill: time.Hour}, nil)
 
+	// A different target each time, so only the per-client budget can refuse
+	// these. The per-target limit is a separate mechanism with its own tests;
+	// reusing one hostname here would let it fire and make this test report
+	// the wrong thing.
 	for i := range 3 {
-		if w := post(t, s, `{"target":"example.test"}`); w.Code == http.StatusTooManyRequests {
+		body := `{"target":"client-limit-` + strconv.Itoa(i) + `.test"}`
+		if w := post(t, s, body); w.Code == http.StatusTooManyRequests {
 			t.Fatalf("request %d was limited while tokens remained", i+1)
 		}
 	}
 
-	w := post(t, s, `{"target":"example.test"}`)
+	w := post(t, s, `{"target":"client-limit-final.test"}`)
 	if w.Code != http.StatusTooManyRequests {
 		t.Fatalf("status = %d, want %d once the burst is spent", w.Code, http.StatusTooManyRequests)
 	}
@@ -459,5 +464,36 @@ func TestHealthReportsThePolicy(t *testing.T) {
 	}
 	if body["policy"] == "" {
 		t.Error("the health response does not name the policy version")
+	}
+}
+
+// The two limits answer different questions and must not be mistaken for one
+// another. One client scanning many hosts is ordinary use; many clients
+// scanning one host is what the target limit exists for. A test that reuses a
+// hostname while measuring the client limit reports whichever fires first,
+// which is how this pair got tangled once already.
+func TestTheTwoLimitsAreIndependent(t *testing.T) {
+	s := New(offlineScanner(), Limits{Burst: 2, Refill: time.Hour}, nil)
+
+	// One client, many targets: the client budget is what runs out.
+	for i := range 2 {
+		if w := post(t, s, `{"target":"independent-`+strconv.Itoa(i)+`.test"}`); w.Code == http.StatusTooManyRequests {
+			t.Fatalf("request %d was refused while the client still had tokens", i+1)
+		}
+	}
+	w := post(t, s, `{"target":"independent-final.test"}`)
+	if errorCode(t, w) != "rate_limited" {
+		t.Errorf("code = %q, want rate_limited: this client had spent its own budget", errorCode(t, w))
+	}
+
+	// Many clients, one target: the target budget is what runs out, and the
+	// message must say so rather than blaming the caller.
+	fresh := New(offlineScanner(), Limits{Burst: 1000, Refill: time.Nanosecond}, nil)
+	for i := range targetBurst {
+		postFrom(t, fresh, `{"target":"shared.test"}`, "203.0.113."+strconv.Itoa(i+1)+":5000")
+	}
+	w = postFrom(t, fresh, `{"target":"shared.test"}`, "203.0.113.200:5000")
+	if errorCode(t, w) != "target_busy" {
+		t.Errorf("code = %q, want target_busy: this client had done nothing", errorCode(t, w))
 	}
 }

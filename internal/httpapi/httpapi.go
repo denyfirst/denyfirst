@@ -100,6 +100,7 @@ type Server struct {
 	rate    *limiter
 	sem     semaphore
 	counts  *counters
+	targets *targetLimiter
 	mux     *http.ServeMux
 }
 
@@ -117,6 +118,7 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 		rate:    newLimiter(limits.Burst, limits.Refill, limits.MaxTrackedIPs, now),
 		sem:     newSemaphore(limits.MaxConcurrent),
 		counts:  newCounters(now),
+		targets: newTargetLimiter(now),
 		mux:     http.NewServeMux(),
 	}
 
@@ -214,6 +216,22 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "port_not_allowed",
 			"That port is not scannable. This service connects only to "+
 				strings.Join(scan.AllowedPorts, ", ")+".")
+		return
+	}
+	// Every other limit here protects this service. This one protects the
+	// server about to be scanned, which had no say in the matter: one request
+	// becomes roughly thirty handshakes at the other end, and several users
+	// aiming at one host multiply that.
+	//
+	// The message does not name the target, and the limiter does not keep it
+	// either. See targetlimit.go for how a repeated host is recognised
+	// without being recorded.
+	if !s.targets.allow(host, port) {
+		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(targetRefill)))
+		writeError(w, http.StatusTooManyRequests, "target_busy",
+			"That server was scanned very recently. Each host has its own budget, "+
+				"regardless of who asks, so that this service cannot be pointed at one "+
+				"server in bulk. Try again in a moment.")
 		return
 	}
 
