@@ -477,3 +477,82 @@ h1 {
   .rows { font-size: 0.74rem; }
   .rows th, .rows td { padding-right: 0.5rem; }
 }
+
+/*
+  Append this to internal/web/assets/style.css.
+  Nothing above it changes.
+*/
+
+/* ── Prose pages ──────────────────────────────────────────────────────── */
+
+.prose {
+  padding: 3.2rem 0 3rem;
+  max-width: var(--measure);
+}
+
+.prose h1 {
+  margin-bottom: 1.1rem;
+}
+
+.prose h2 {
+  margin: 2.8rem 0 0.7rem;
+  font-size: 1.06rem;
+  font-weight: 640;
+  letter-spacing: -0.012em;
+}
+
+.prose p {
+  margin: 0 0 1rem;
+  color: var(--ink-soft);
+}
+
+.prose .lede {
+  color: var(--ink-soft);
+  font-size: 1.02rem;
+  margin-bottom: 2.4rem;
+}
+
+.prose a {
+  color: var(--navy);
+}
+
+.prose code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  color: var(--ink);
+}
+
+/*
+  The counter file is shown rather than described, because the point of the
+  section is that a reader can see how little is in it.
+*/
+.sample {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  background: var(--paper-sunk);
+  border-left: 3px solid var(--rule);
+  padding: 0.85rem 1rem;
+  margin: 0 0 1rem;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.plain {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  color: var(--ink-soft);
+}
+
+.plain li {
+  padding-left: 1rem;
+  margin-bottom: 0.55rem;
+  border-left: 1px solid var(--rule);
+}
+
+.prose .colophon-links {
+  margin-top: 2rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--rule);
+}

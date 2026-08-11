@@ -16,17 +16,81 @@ func get(t *testing.T, path string) *httptest.ResponseRecorder {
 	return w
 }
 
-// The route table and the embedded tree have to agree. If a file is renamed
-// and the table is not, the mismatch is a 500 at runtime rather than a
-// compile error, so it is caught here instead.
+// Every route resolves. A fragment renamed without updating the table would
+// otherwise be a page with a hole in it, found by a visitor.
 func TestEveryRouteResolves(t *testing.T) {
-	for path := range routes {
+	for path := range pages {
 		w := get(t, path)
 		if w.Code != http.StatusOK {
 			t.Errorf("GET %s returned %d", path, w.Code)
 		}
 		if w.Body.Len() == 0 {
 			t.Errorf("GET %s returned an empty body", path)
+		}
+	}
+	for path := range files {
+		w := get(t, path)
+		if w.Code != http.StatusOK {
+			t.Errorf("GET %s returned %d", path, w.Code)
+		}
+	}
+}
+
+// The reason for one layout is that four copies of a footer become four
+// versions of it. This fails the moment a page stops sharing the shell.
+func TestEveryPageCarriesTheSameShell(t *testing.T) {
+	for path := range pages {
+		body := get(t, path).Body.String()
+
+		for _, required := range []string{
+			`class="masthead"`,
+			`class="wordmark"`,
+			`class="colophon"`,
+			`href="/scanning"`,
+			`href="/privacy"`,
+			`href="/terms"`,
+			`id="tally"`,
+		} {
+			if !strings.Contains(body, required) {
+				t.Errorf("%s is missing %s from the shared layout", path, required)
+			}
+		}
+	}
+}
+
+// Each page needs a title of its own. A site where every tab says the same
+// thing is a site nobody can navigate from their history.
+func TestEachPageHasItsOwnTitle(t *testing.T) {
+	seen := map[string]string{}
+
+	for path := range pages {
+		body := get(t, path).Body.String()
+
+		start := strings.Index(body, "<title>")
+		end := strings.Index(body, "</title>")
+		if start < 0 || end < start {
+			t.Errorf("%s has no title", path)
+			continue
+		}
+		title := body[start+len("<title>") : end]
+
+		if other, found := seen[title]; found {
+			t.Errorf("%s and %s share the title %q", path, other, title)
+		}
+		seen[title] = path
+	}
+}
+
+// Only the page that needs a script should load one. The fewer routes that
+// execute code, the smaller the question of what that code does.
+func TestOnlyTheScannerLoadsAScript(t *testing.T) {
+	if !strings.Contains(get(t, "/").Body.String(), `src="/app.js"`) {
+		t.Error("the scanner page does not load its script")
+	}
+
+	for _, path := range []string{"/scanning", "/terms", "/privacy"} {
+		if strings.Contains(get(t, path).Body.String(), `src="/app.js"`) {
+			t.Errorf("%s loads a script it does not need", path)
 		}
 	}
 }
@@ -36,6 +100,8 @@ func TestEveryRouteResolves(t *testing.T) {
 func TestUnlistedPathsAreNotServed(t *testing.T) {
 	paths := []string{
 		"/assets/index.html",
+		"/assets/layout.html",
+		"/layout.html",
 		"/index.html",
 		"/web.go",
 		"/../web.go",
@@ -85,11 +151,17 @@ func TestContentSecurityPolicyAllowsOnlySelf(t *testing.T) {
 // the policy sooner or later. Keeping the assets free of it is what lets the
 // policy stay strict.
 func TestNoInlineStyleOrScript(t *testing.T) {
-	page := get(t, "/").Body.String()
+	for path := range pages {
+		body := get(t, path).Body.String()
 
-	for _, pattern := range []string{"<script>", "<style", " style=", " onclick=", " onload=", " onerror="} {
-		if strings.Contains(page, pattern) {
-			t.Errorf("the page contains %q, which the policy forbids", pattern)
+		for _, pattern := range []string{"<style", " style=", " onclick=", " onload=", " onerror="} {
+			if strings.Contains(body, pattern) {
+				t.Errorf("%s contains %q, which the policy forbids", path, pattern)
+			}
+		}
+		// A script tag is permitted only as a reference to a file.
+		if strings.Contains(body, "<script>") {
+			t.Errorf("%s contains an inline script", path)
 		}
 	}
 }
@@ -127,9 +199,10 @@ func TestScriptCannotInjectMarkup(t *testing.T) {
 
 func TestHeadersOnEveryResponse(t *testing.T) {
 	responses := map[string]*httptest.ResponseRecorder{
-		"page":  get(t, "/"),
-		"asset": get(t, "/style.css"),
-		"404":   get(t, "/nothing-here"),
+		"home":    get(t, "/"),
+		"privacy": get(t, "/privacy"),
+		"asset":   get(t, "/style.css"),
+		"404":     get(t, "/nothing-here"),
 	}
 
 	required := map[string]string{
@@ -174,5 +247,60 @@ func TestPageWorksWithoutScript(t *testing.T) {
 	}
 	if !strings.Contains(page, "command line") {
 		t.Error("the noscript block does not point anywhere a reader can actually go")
+	}
+}
+
+// An administrator who finds this page from an address in their logs needs
+// two things immediately: what was sent, and how to stop it. Both must be on
+// the page rather than a link away.
+func TestScanningPageAnswersTheUrgentQuestions(t *testing.T) {
+	page := strings.ToLower(strings.Join(strings.Fields(get(t, "/scanning").Body.String()), " "))
+
+	for _, required := range []string{
+		"abuse@denyfirst.dev",
+		"handshake",
+		"excluded",
+		"scanner.denyfirst.dev",
+	} {
+		if !strings.Contains(page, strings.ToLower(required)) {
+			t.Errorf("the scanning page does not mention %q", required)
+		}
+	}
+}
+
+// The privacy page has to state the boundary as well as the promise. A page
+// that claims nothing is visible anywhere would be wrong, and being wrong
+// about privacy is worse than being narrow about it.
+func TestPrivacyPageStatesItsBoundary(t *testing.T) {
+	// Whitespace is collapsed first. HTML wraps prose at whatever column the
+	// author stopped typing, so a phrase can be split across lines and a
+	// search for it would fail on formatting rather than on content. A test
+	// that breaks when a paragraph is rewrapped teaches people to ignore it.
+	page := strings.ToLower(strings.Join(strings.Fields(get(t, "/privacy").Body.String()), " "))
+
+	for _, required := range []string{
+		"network provider",
+		"rented server",
+		"no analytics",
+		"cookies",
+	} {
+		if !strings.Contains(page, required) {
+			t.Errorf("the privacy page does not address %q", required)
+		}
+	}
+}
+
+// The terms have to put the decision to scan with the person making it.
+func TestTermsPlaceResponsibility(t *testing.T) {
+	page := strings.ToLower(strings.Join(strings.Fields(get(t, "/terms").Body.String()), " "))
+
+	for _, required := range []string{
+		"permission",
+		"without warranty",
+		"agpl",
+	} {
+		if !strings.Contains(page, required) {
+			t.Errorf("the terms do not address %q", required)
+		}
 	}
 }

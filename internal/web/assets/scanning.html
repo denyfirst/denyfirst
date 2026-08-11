@@ -1,0 +1,103 @@
+<article class="prose">
+
+    <h1>About the scans<br>from this service.</h1>
+
+    <p class="lede">
+      If you found this page from an address in your logs, this is what
+      happened and what you can do about it. The short version: one TLS
+      handshake, then the connection closed, and no data was requested from
+      your server.
+    </p>
+
+    <h2>What a scan does</h2>
+
+    <p>
+      Someone asked this service to check how your server negotiates TLS. To
+      answer that, it opens connections and completes handshakes &mdash; the
+      same exchange every browser performs before loading a page.
+    </p>
+
+    <p>
+      A single check opens roughly thirty connections over a few seconds: one
+      for each protocol version, several more to work out which cipher suites
+      you accept, and two to see whether you impose your own ordering. Each
+      one is closed as soon as the handshake finishes.
+    </p>
+
+    <h2>What it does not do</h2>
+
+    <p>
+      Nothing beyond the handshake. Once the connection is established it is
+      closed immediately, without sending a single byte of application data.
+      Your home page is not requested. No path is tried, no header is sent, no
+      request of any kind is made.
+    </p>
+
+    <ul class="plain">
+      <li>No authentication is attempted. No credentials exist here to try.</li>
+      <li>No vulnerability is tested for and no exploit is sent. Only a standard client hello.</li>
+      <li>No administrative path is probed, because no HTTP request is made at all.</li>
+      <li>No malformed packets are constructed.</li>
+      <li>Only ports that speak TLS from the first byte: 443, 8443, 465, 636, 990, 993, 995 and 5061. Nothing else is dialled, so this cannot be used as a port scanner.</li>
+    </ul>
+
+    <p>
+      Everything the report contains &mdash; your certificate chain, the suite
+      that was negotiated, whether a staple was present &mdash; is what any
+      client receives when it connects to you. None of it required asking for
+      anything.
+    </p>
+
+    <h2>Why more than one connection</h2>
+
+    <p>
+      A server does not announce what it supports; it answers what it is
+      offered. Finding out whether an obsolete protocol version is still
+      accepted means offering it and seeing what comes back. That is why the
+      answer is trustworthy, and it is also why the check is not a single
+      connection.
+    </p>
+
+    <h2>Load on your server</h2>
+
+    <p>
+      Each host has its own budget here, independent of who asks. Once a host
+      has been checked twice, further requests for it are refused for a while,
+      even if they come from different people. That limit exists so that this
+      service cannot be aimed at one server in bulk, whether by accident or on
+      purpose.
+    </p>
+
+    <h2>Stopping it</h2>
+
+    <p>
+      Write to <a href="mailto:abuse@denyfirst.dev">abuse@denyfirst.dev</a>
+      from an address at the domain, or from one listed in its WHOIS or
+      <code>security.txt</code>, and it will be excluded. No explanation is
+      needed. A reply within two working days, and the exclusion applied
+      before the reply.
+    </p>
+
+    <p>
+      The same address reaches a person for anything else: an unexpected
+      pattern, a question about what was sent, or a request for the exact
+      timing so you can match it against your own records.
+    </p>
+
+    <h2>Identifying this service</h2>
+
+    <p>
+      Connections come from addresses that resolve to
+      <code>scanner.denyfirst.dev</code> in reverse DNS. That is deliberate:
+      a scanner that hides is a scanner nobody can ask about.
+    </p>
+
+    <p>
+      The source is public and there are no dependencies to audit beyond Go
+      itself. If you want to confirm that the description above matches what
+      the code does, <a href="https://github.com/denyfirst/denyfirst">read
+      it</a> &mdash; the whole exchange is in
+      <code>internal/tlsprobe</code>.
+    </p>
+
+  </article>
