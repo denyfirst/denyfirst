@@ -1,24 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>denyfirst — check what a server actually negotiates</title>
-<meta name="description" content="Check a server's TLS configuration and certificate against cited standards. Nothing about the scan is recorded.">
-<meta name="referrer" content="no-referrer">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/style.css">
-</head>
-<body>
-
-<header class="masthead">
-  <a class="wordmark" href="/">denyfirst</a>
-  <p class="masthead-note">Records nothing. Cites everything.</p>
-</header>
-
-<main>
-
-  <section class="ask">
+<section class="ask">
     <h1>Check what a server<br>actually negotiates.</h1>
 
     <p class="lede">
@@ -44,7 +24,8 @@
         <button class="submit" type="submit" id="submit">Check</button>
       </div>
       <p class="field-help" id="field-help">
-        Port 443 unless you name another. Public hosts only.
+        Port 443 unless you name another. Public hosts only. Scan only what you
+        are entitled to scan &mdash; see the <a href="/terms">terms</a>.
       </p>
     </form>
 
@@ -64,23 +45,3 @@
   </section>
 
   <section class="result" id="result" aria-live="polite" aria-atomic="false" hidden></section>
-
-</main>
-
-<footer class="colophon">
-  <p class="tally" id="tally" hidden></p>
-  <p>
-    Every verdict comes from a written rule set with its sources attached.
-    Disagree with a grade and you are disagreeing with the document behind it,
-    which is the point.
-  </p>
-  <p class="colophon-links">
-    <a href="https://github.com/denyfirst/denyfirst">Source</a>
-    <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/invariants.md">What we guarantee</a>
-    <a href="https://github.com/denyfirst/denyfirst/blob/main/SECURITY.md">Report a vulnerability</a>
-  </p>
-</footer>
-
-<script src="/app.js"></script>
-</body>
-</html>

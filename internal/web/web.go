@@ -9,10 +9,18 @@
 // reasoning applies as to hostname characters elsewhere in this project:
 // listing what is allowed cannot be surprised by something nobody thought to
 // forbid.
+//
+// Pages share one layout. Four copies of a header would be four places for it
+// to drift, and a footer that disagrees with itself is a small thing that
+// costs more than it looks on a site whose argument is that it can be
+// checked. Each page is a fragment; the shell is applied once at startup and
+// the result is served as fixed bytes.
 package web
 
 import (
+	"bytes"
 	"embed"
+	"html/template"
 	"net/http"
 	"strconv"
 )
@@ -23,10 +31,10 @@ var assets embed.FS
 // contentSecurityPolicy is deliberately not the one the API uses.
 //
 // The API returns JSON and needs nothing at all, so its policy denies
-// everything. A page needs a stylesheet and a script, so its policy must be
-// looser. Sharing one policy between them is the usual way a strict header
-// quietly becomes a permissive one: the page forces 'self' into it, and the
-// API silently inherits permission it never needed.
+// everything. A page needs a stylesheet and, on one route, a script, so its
+// policy must be looser. Sharing one policy between them is the usual way a
+// strict header quietly becomes a permissive one: the page forces 'self' into
+// it, and the API silently inherits permission it never needed.
 //
 // There is no 'unsafe-inline' anywhere, which is what makes this policy worth
 // having. That in turn is why there is no inline style or script in any asset.
@@ -39,19 +47,83 @@ const contentSecurityPolicy = "default-src 'none'; " +
 	"frame-ancestors 'none'; " +
 	"base-uri 'none'"
 
-type asset struct {
-	file        string
-	contentType string
+// page is one rendered document.
+type page struct {
+	Title       string
+	Description string
+
+	// Fragment names the file holding the body.
+	Fragment string
+
+	// Script is true only where one is needed. A page that carries no script
+	// should not load one, however harmless it is: the fewer routes that
+	// execute code, the smaller the question of what that code does.
+	Script bool
+
+	// Body is filled in at startup. It is template.HTML because the fragment
+	// is a file in this repository rather than anything a user supplied.
+	Body template.HTML
 }
 
-// routes is the complete list of what this handler will serve. A request for
-// anything else is a 404, including anything that would have been reachable
-// by walking the embedded tree.
-var routes = map[string]asset{
-	"/":            {"assets/index.html", "text/html; charset=utf-8"},
+var pages = map[string]*page{
+	"/": {
+		Title:       "denyfirst — check what a server actually negotiates",
+		Description: "Check a server's TLS configuration and certificate against cited standards. Nothing about the scan is recorded.",
+		Fragment:    "assets/index.html",
+		Script:      true,
+	},
+	"/scanning": {
+		Title:       "About the scans from this service — denyfirst",
+		Description: "What a scan from denyfirst does, why it appears in your logs, and how to have your domain excluded.",
+		Fragment:    "assets/scanning.html",
+	},
+	"/terms": {
+		Title:       "Terms of use — denyfirst",
+		Description: "What you agree to when you use this service, and what it does not promise.",
+		Fragment:    "assets/terms.html",
+	},
+	"/privacy": {
+		Title:       "Privacy — denyfirst",
+		Description: "What this service records, what it cannot record, and what it does not control.",
+		Fragment:    "assets/privacy.html",
+	},
+}
+
+// files are the assets served as they are.
+var files = map[string]struct {
+	name        string
+	contentType string
+}{
 	"/style.css":   {"assets/style.css", "text/css; charset=utf-8"},
 	"/app.js":      {"assets/app.js", "text/javascript; charset=utf-8"},
 	"/favicon.svg": {"assets/favicon.svg", "image/svg+xml"},
+}
+
+// rendered holds every page as finished bytes.
+//
+// Built once at startup rather than per request. A template executed on every
+// request is a small cost and a large surface: nothing here varies per
+// visitor, so nothing here should be assembled per visitor.
+var rendered = map[string][]byte{}
+
+func init() {
+	layout := template.Must(template.ParseFS(assets, "assets/layout.html"))
+
+	for path, p := range pages {
+		fragment, err := assets.ReadFile(p.Fragment)
+		if err != nil {
+			// At startup, so a missing fragment stops the process instead of
+			// producing a page with a hole in it.
+			panic("web: reading " + p.Fragment + ": " + err.Error())
+		}
+		p.Body = template.HTML(fragment) //nolint:gosec // a file in this repository, not user input
+
+		var out bytes.Buffer
+		if err := layout.Execute(&out, p); err != nil {
+			panic("web: rendering " + path + ": " + err.Error())
+		}
+		rendered[path] = out.Bytes()
+	}
 }
 
 // Handler serves the site.
@@ -68,21 +140,28 @@ func serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	route, found := routes[r.URL.Path]
-	if !found {
-		http.Error(w, "There is nothing at that address.", http.StatusNotFound)
+	if body, found := rendered[r.URL.Path]; found {
+		write(w, r, "text/html; charset=utf-8", body)
 		return
 	}
 
-	body, err := assets.ReadFile(route.file)
-	if err != nil {
-		// Unreachable unless the table and the embedded tree disagree, which
-		// a test checks at build time.
-		http.Error(w, "That page is unavailable.", http.StatusInternalServerError)
+	if file, found := files[r.URL.Path]; found {
+		body, err := assets.ReadFile(file.name)
+		if err != nil {
+			// Unreachable unless the table and the embedded tree disagree,
+			// which a test checks.
+			http.Error(w, "That page is unavailable.", http.StatusInternalServerError)
+			return
+		}
+		write(w, r, file.contentType, body)
 		return
 	}
 
-	w.Header().Set("Content-Type", route.contentType)
+	http.Error(w, "There is nothing at that address.", http.StatusNotFound)
+}
+
+func write(w http.ResponseWriter, r *http.Request, contentType string, body []byte) {
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 
 	if r.Method == http.MethodHead {

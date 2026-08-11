@@ -1,0 +1,124 @@
+<article class="prose">
+
+    <h1>What this<br>keeps.</h1>
+
+    <p class="lede">
+      A count of scans, and nothing else. Not the hostname, not your address,
+      not the result, not the time. This page explains how that is arranged and
+      where the boundary of it lies.
+    </p>
+
+    <h2>The counter</h2>
+
+    <p>
+      One number goes up per scan, along with how many came back strong, weak
+      or insecure. That is the whole record. It is written to a file so a
+      restart does not reset it, and the file reads like this:
+    </p>
+
+    <pre class="sample">{"scansTotal":87412,"strong":2100,"weak":35000,"insecure":50312,"since":"2026-08-10"}</pre>
+
+    <p>
+      Two scans a second apart and two a month apart leave the same trace.
+      There is no ordering, no timing, and nothing that distinguishes one from
+      another. It is shown at the foot of every page because a number nobody
+      can trace back to a person demonstrates the claim better than the claim
+      does.
+    </p>
+
+    <h2>No logs</h2>
+
+    <p>
+      Nothing about a request is written anywhere: not the hostname you
+      submitted, not your address, not what came back. This is enforced by
+      there being no code that could write it, and a test fails if any appears.
+    </p>
+
+    <p>
+      Go's HTTP server writes a line to standard error when a handler panics,
+      and that line contains a client address. The logger is replaced with one
+      that discards, so the promise survives a library default rather than
+      depending on it.
+    </p>
+
+    <h2>Your address</h2>
+
+    <p>
+      Held in memory only, to enforce a rate limit, and dropped once it stops
+      being useful for that. It is never written to disk and never appears in
+      a response.
+    </p>
+
+    <p>
+      For IPv6 the limit applies to the network block rather than the exact
+      address, because a single subscriber is normally given a whole block and
+      can present a new address for every request.
+    </p>
+
+    <h2>The hostname you submit</h2>
+
+    <p>
+      Sent in the request body, not in the address bar. A hostname in a URL is
+      written to your browser history, to the referrer of anything the page
+      loads afterwards, and to the access log of every proxy between you and
+      here. Undertaking not to record it while putting it in a URL would hand
+      the record to everyone else instead.
+    </p>
+
+    <p>
+      There is a limit on how often any one host is checked, which needs to
+      recognise a repeat without keeping the name. The hostname is hashed with
+      a key generated when the process starts and never written down, then cut
+      to twelve bits &mdash; about four thousand buckets for every hostname
+      that exists. Billions of names share each one. The limit works; the name
+      is not there to find.
+    </p>
+
+    <h2>No third parties</h2>
+
+    <p>
+      No analytics, no fonts loaded from elsewhere, no content delivery
+      network, no tag of any kind. The page loads one stylesheet and one
+      script, both from this server. There is nothing embedded here that could
+      report your visit to anyone, which you can confirm in your browser's
+      network panel or by reading the source.
+    </p>
+
+    <h2>Cookies</h2>
+
+    <p>
+      None. Nothing is stored in your browser at all.
+    </p>
+
+    <h2>Where this runs</h2>
+
+    <p>
+      On a rented server in Frankfurt. As with any hosted service, the network
+      provider carries the traffic and can see that connections are made,
+      including the ones this service opens when it checks a server on your
+      behalf. That is true of every scanner anywhere, and it is not something
+      this project can remove.
+    </p>
+
+    <p>
+      What it can do is add nothing to it. There are no records here beyond
+      the counter above, so there is nothing to hand over, nothing to seize
+      and nothing to lose in a breach. Anyone who took this machine tomorrow
+      would find a binary, a certificate, and a file containing a number.
+    </p>
+
+    <h2>Verifying any of this</h2>
+
+    <p>
+      None of the above needs to be taken on trust. The source is public, the
+      guarantees are listed with the test that protects each one, and the
+      whole thing can be run on a machine you control.
+    </p>
+
+    <p class="colophon-links">
+      <a href="https://github.com/denyfirst/denyfirst">Source</a>
+      <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/invariants.md">What we guarantee</a>
+      <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/verify.md">Verifying a release</a>
+    </p>
+
+  </article>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<meta name="description" content="{{.Description}}">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="masthead">
+  <a class="wordmark" href="/">denyfirst</a>
+  <p class="masthead-note">Records nothing. Cites everything.</p>
+</header>
+
+<main>
+{{.Body}}
+</main>
+
+<footer class="colophon">
+  <p class="tally" id="tally" hidden></p>
+  <p>
+    Every verdict comes from a written rule set with its sources attached.
+    Disagree with a grade and you are disagreeing with the document behind it,
+    which is the point.
+  </p>
+  <p class="colophon-links">
+    <a href="/scanning">Scans from this service</a>
+    <a href="/privacy">Privacy</a>
+    <a href="/terms">Terms</a>
+    <a href="https://github.com/denyfirst/denyfirst">Source</a>
+    <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/invariants.md">What we guarantee</a>
+    <a href="https://github.com/denyfirst/denyfirst/blob/main/SECURITY.md">Report a vulnerability</a>
+  </p>
+</footer>
+
+{{if .Script}}<script src="/app.js"></script>{{end}}
+</body>
+</html>
