@@ -483,6 +483,11 @@ h1 {
   Nothing above it changes.
 */
 
+/*
+  Replace the ".prose" block near the end of style.css with this, and add the
+  ".jump" rules. Everything above the prose section is unchanged.
+*/
+
 /* ── Prose pages ──────────────────────────────────────────────────────── */
 
 .prose {
@@ -495,10 +500,19 @@ h1 {
 }
 
 .prose h2 {
-  margin: 2.8rem 0 0.7rem;
-  font-size: 1.06rem;
+  margin: 3rem 0 0.8rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--rule);
+  font-size: 1.12rem;
   font-weight: 640;
-  letter-spacing: -0.012em;
+  letter-spacing: -0.014em;
+}
+
+.prose h3 {
+  margin: 1.9rem 0 0.6rem;
+  font-size: 0.96rem;
+  font-weight: 620;
+  color: var(--ink);
 }
 
 .prose p {
@@ -509,12 +523,10 @@ h1 {
 .prose .lede {
   color: var(--ink-soft);
   font-size: 1.02rem;
-  margin-bottom: 2.4rem;
+  margin-bottom: 2rem;
 }
 
-.prose a {
-  color: var(--navy);
-}
+.prose a { color: var(--navy); }
 
 .prose code {
   font-family: var(--mono);
@@ -523,20 +535,24 @@ h1 {
 }
 
 /*
-  The counter file is shown rather than described, because the point of the
-  section is that a reader can see how little is in it.
+  One page now answers what used to be three, so it needs a way in. The jump
+  links matter most for the reader who arrived from a scanning notice and
+  wants one section, not the whole document.
 */
-.sample {
+.jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.1rem;
+  margin: 0 0 2.6rem;
+  padding: 0.9rem 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
   font-family: var(--mono);
-  font-size: 0.76rem;
-  color: var(--ink-soft);
-  background: var(--paper-sunk);
-  border-left: 3px solid var(--rule);
-  padding: 0.85rem 1rem;
-  margin: 0 0 1rem;
-  overflow-x: auto;
-  white-space: pre;
+  font-size: 0.78rem;
 }
+
+/* Anchored headings should not land under the top of the window. */
+.prose h2[id] { scroll-margin-top: 1.5rem; }
 
 .plain {
   list-style: none;
@@ -552,7 +568,7 @@ h1 {
 }
 
 .prose .colophon-links {
-  margin-top: 2rem;
+  margin-top: 2.2rem;
   padding-top: 1.1rem;
   border-top: 1px solid var(--rule);
 }

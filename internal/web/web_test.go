@@ -29,15 +29,30 @@ func TestEveryRouteResolves(t *testing.T) {
 		}
 	}
 	for path := range files {
-		w := get(t, path)
-		if w.Code != http.StatusOK {
+		if w := get(t, path); w.Code != http.StatusOK {
 			t.Errorf("GET %s returned %d", path, w.Code)
 		}
 	}
 }
 
-// The reason for one layout is that four copies of a footer become four
-// versions of it. This fails the moment a page stops sharing the shell.
+// The old addresses are printed on scanning notices and may be sitting in
+// somebody's notes, so they redirect rather than disappearing.
+func TestOldPathsRedirect(t *testing.T) {
+	for from, to := range moved {
+		w := get(t, from)
+
+		if w.Code != http.StatusMovedPermanently {
+			t.Errorf("GET %s returned %d, want 301", from, w.Code)
+			continue
+		}
+		if got := w.Header().Get("Location"); got != to {
+			t.Errorf("GET %s redirects to %q, want %q", from, got, to)
+		}
+	}
+}
+
+// The reason for one layout is that copies of a footer become versions of it.
+// This fails the moment a page stops sharing the shell.
 func TestEveryPageCarriesTheSameShell(t *testing.T) {
 	for path := range pages {
 		body := get(t, path).Body.String()
@@ -46,7 +61,6 @@ func TestEveryPageCarriesTheSameShell(t *testing.T) {
 			`class="masthead"`,
 			`class="wordmark"`,
 			`class="colophon"`,
-			`href="/scanning"`,
 			`href="/privacy"`,
 			`href="/terms"`,
 			`id="tally"`,
@@ -88,7 +102,7 @@ func TestOnlyTheScannerLoadsAScript(t *testing.T) {
 		t.Error("the scanner page does not load its script")
 	}
 
-	for _, path := range []string{"/scanning", "/terms", "/privacy"} {
+	for _, path := range []string{"/privacy", "/terms"} {
 		if strings.Contains(get(t, path).Body.String(), `src="/app.js"`) {
 			t.Errorf("%s loads a script it does not need", path)
 		}
@@ -159,17 +173,16 @@ func TestNoInlineStyleOrScript(t *testing.T) {
 				t.Errorf("%s contains %q, which the policy forbids", path, pattern)
 			}
 		}
-		// A script tag is permitted only as a reference to a file.
 		if strings.Contains(body, "<script>") {
 			t.Errorf("%s contains an inline script", path)
 		}
 	}
 }
 
-// Open item 6 of the threat model: the endpoint echoes the target on success,
-// and hostnames are attacker-chosen. The first place that renders one is where
-// this becomes exploitable, so the rendering code must have no way to reach a
-// markup parser at all.
+// The endpoint echoes the target on success, and hostnames are chosen by
+// whoever asks. The first place that renders one is where that becomes
+// exploitable, so the rendering code must have no way to reach a markup
+// parser at all.
 func TestScriptCannotInjectMarkup(t *testing.T) {
 	script, err := assets.ReadFile("assets/app.js")
 	if err != nil {
@@ -199,10 +212,11 @@ func TestScriptCannotInjectMarkup(t *testing.T) {
 
 func TestHeadersOnEveryResponse(t *testing.T) {
 	responses := map[string]*httptest.ResponseRecorder{
-		"home":    get(t, "/"),
-		"privacy": get(t, "/privacy"),
-		"asset":   get(t, "/style.css"),
-		"404":     get(t, "/nothing-here"),
+		"home":     get(t, "/"),
+		"privacy":  get(t, "/privacy"),
+		"asset":    get(t, "/style.css"),
+		"redirect": get(t, "/scanning"),
+		"404":      get(t, "/nothing-here"),
 	}
 
 	required := map[string]string{
@@ -250,42 +264,50 @@ func TestPageWorksWithoutScript(t *testing.T) {
 	}
 }
 
-// An administrator who finds this page from an address in their logs needs
-// two things immediately: what was sent, and how to stop it. Both must be on
-// the page rather than a link away.
-func TestScanningPageAnswersTheUrgentQuestions(t *testing.T) {
-	page := strings.ToLower(strings.Join(strings.Fields(get(t, "/scanning").Body.String()), " "))
+// One page now answers what used to be three. An administrator who arrives
+// from a scanning notice needs two things immediately — what was sent, and
+// how to stop it — and a reader worried about privacy needs a third. All must
+// be on this page rather than a link away.
+func TestPrivacyPageAnswersEveryUrgentQuestion(t *testing.T) {
+	page := strings.ToLower(strings.Join(strings.Fields(get(t, "/privacy").Body.String()), " "))
 
-	for _, required := range []string{
+	required := []string{
+		// Somebody who found this page from a log entry.
 		"abuse@denyfirst.dev",
 		"handshake",
 		"excluded",
 		"scanner.denyfirst.dev",
-	} {
-		if !strings.Contains(page, strings.ToLower(required)) {
-			t.Errorf("the scanning page does not mention %q", required)
+		"no page is requested",
+
+		// Somebody reading it as a privacy policy.
+		"three minutes",
+		"no cookies",
+		"network provider",
+		"rented server",
+
+		// The limits of what the tool claims.
+		"revocation is not checked",
+		"without warranty",
+	}
+
+	for _, phrase := range required {
+		if !strings.Contains(page, phrase) {
+			t.Errorf("the privacy page does not address %q", phrase)
 		}
 	}
 }
 
-// The privacy page has to state the boundary as well as the promise. A page
-// that claims nothing is visible anywhere would be wrong, and being wrong
-// about privacy is worse than being narrow about it.
-func TestPrivacyPageStatesItsBoundary(t *testing.T) {
-	// Whitespace is collapsed first. HTML wraps prose at whatever column the
-	// author stopped typing, so a phrase can be split across lines and a
-	// search for it would fail on formatting rather than on content. A test
-	// that breaks when a paragraph is rewrapped teaches people to ignore it.
-	page := strings.ToLower(strings.Join(strings.Fields(get(t, "/privacy").Body.String()), " "))
+// The jump links are what make one long page usable for a reader who wants
+// one section. Every one has to land somewhere.
+func TestJumpLinksHaveTargets(t *testing.T) {
+	body := get(t, "/privacy").Body.String()
 
-	for _, required := range []string{
-		"network provider",
-		"rented server",
-		"no analytics",
-		"cookies",
-	} {
-		if !strings.Contains(page, required) {
-			t.Errorf("the privacy page does not address %q", required)
+	for _, anchor := range []string{"kept", "logs", "scans", "stopping", "promises"} {
+		if !strings.Contains(body, `href="#`+anchor+`"`) {
+			t.Errorf("no jump link points to #%s", anchor)
+		}
+		if !strings.Contains(body, `id="`+anchor+`"`) {
+			t.Errorf("nothing on the page has id %q", anchor)
 		}
 	}
 }
@@ -298,6 +320,7 @@ func TestTermsPlaceResponsibility(t *testing.T) {
 		"permission",
 		"without warranty",
 		"agpl",
+		"run your own",
 	} {
 		if !strings.Contains(page, required) {
 			t.Errorf("the terms do not address %q", required)

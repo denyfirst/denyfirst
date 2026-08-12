@@ -10,8 +10,8 @@
 // listing what is allowed cannot be surprised by something nobody thought to
 // forbid.
 //
-// Pages share one layout. Four copies of a header would be four places for it
-// to drift, and a footer that disagrees with itself is a small thing that
+// Pages share one layout. Three copies of a header would be three places for
+// it to drift, and a footer that disagrees with itself is a small thing that
 // costs more than it looks on a site whose argument is that it can be
 // checked. Each page is a fragment; the shell is applied once at startup and
 // the result is served as fixed bytes.
@@ -65,6 +65,14 @@ type page struct {
 	Body template.HTML
 }
 
+// pages is the whole site.
+//
+// There were five of these and now there are three. Splitting the
+// explanation across separate pages for scanning, privacy and guarantees
+// meant a reader had to already know which one answered their question, and
+// somebody who arrives because a scan reached their server does not. One page
+// with headings and a set of jump links reads better than three that each
+// tell a third of the story.
 var pages = map[string]*page{
 	"/": {
 		Title:       "denyfirst — check what a server actually negotiates",
@@ -72,21 +80,25 @@ var pages = map[string]*page{
 		Fragment:    "assets/index.html",
 		Script:      true,
 	},
-	"/scanning": {
-		Title:       "About the scans from this service — denyfirst",
-		Description: "What a scan from denyfirst does, why it appears in your logs, and how to have your domain excluded.",
-		Fragment:    "assets/scanning.html",
+	"/privacy": {
+		Title:       "Privacy, and what a scan does — denyfirst",
+		Description: "What this service records, what a scan sends, what it never does, and how to have a domain excluded.",
+		Fragment:    "assets/privacy.html",
 	},
 	"/terms": {
 		Title:       "Terms of use — denyfirst",
 		Description: "What you agree to when you use this service, and what it does not promise.",
 		Fragment:    "assets/terms.html",
 	},
-	"/privacy": {
-		Title:       "Privacy — denyfirst",
-		Description: "What this service records, what it cannot record, and what it does not control.",
-		Fragment:    "assets/privacy.html",
-	},
+}
+
+// moved are paths that used to be pages of their own.
+//
+// A permanent redirect rather than a 404, because the old address is the one
+// printed on a scanning notice and may be sitting in somebody's notes.
+var moved = map[string]string{
+	"/scanning": "/privacy#scans",
+	"/about":    "/privacy",
 }
 
 // files are the assets served as they are.
@@ -137,6 +149,11 @@ func serve(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
 		http.Error(w, "Only GET and HEAD are served here.", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if to, found := moved[r.URL.Path]; found {
+		http.Redirect(w, r, to, http.StatusMovedPermanently)
 		return
 	}
 
