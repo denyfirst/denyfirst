@@ -1,98 +1,179 @@
 # denyfirst
 
-Security tools that deny by default. No logs, no tracking, no third parties.
+A TLS and certificate scanner that cites its sources and keeps no records.
 
-## What this is
+Point it at a server and it opens a real handshake at every TLS version, works
+out which cipher suites the server will actually accept, and reads the
+certificate chain it presents. Every verdict comes from a written rule set
+with the document behind it attached, and every report states what it could
+not measure.
 
-A small set of security and privacy tools, built on one rule: **nothing is
-permitted unless it is explicitly required.**
+Nothing about a scan is recorded. Not the hostname, not your address, not the
+result.
 
-That rule is not a slogan. It is the actual architecture:
+---
 
-- No analytics. Not self-hosted analytics either. None.
-- No cookies. No local storage. No session identifiers.
-- No third-party requests. No CDN, no web fonts, no hosted libraries. Open
-  DevTools and the network tab shows requests to this domain only.
-- No logs of what you scanned. Requests are served and forgotten.
-- No accounts, no sign-up, no email.
+## Why another one
 
-## How to verify that
+There are several TLS scanners and they work. Three things here are
+deliberately different.
 
-Do not take our word for it.
+**Every verdict names its source.** A finding that says a suite is insecure
+links to RFC 9325, to RFC 8446, to the CVE. Disagree with a grade and you are
+disagreeing with the document, not with us. The rules live in
+[`internal/policy`](internal/policy) and are versioned, so the same server
+graded by the same policy version gives the same answer next year.
 
-**In your browser.** Open the network tab before you use a tool. Every request
-should go to one origin. If you see a request to anywhere else, that is a bug —
-please open an issue.
+**Every report says what it did not check.** Go's TLS stack implements
+roughly twenty-seven of the three hundred suites in the IANA registry, and
+gives a client no way to choose among TLS 1.3 suites. Revocation is not
+checked at all. All of that is printed alongside the findings, because a short
+list of problems can mean a well-configured server or a scan that could not
+see very far, and a reader deserves to know which.
 
-**In the source.** Every tool is here. The Go backend depends only on the
-standard library where the task allows it, and every third-party module is
-listed in `go.mod` with a note in `docs/dependencies.md` explaining why it
-exists. The frontend has no build step: the JavaScript you receive is the
-JavaScript in this repository.
+**Nothing is recorded.** There is no log of what was scanned, by whom, or
+when. This is enforced by there being no code that could write one, and a test
+fails if any appears. The only thing kept is a count of scans, which is
+published on the site precisely because it identifies nobody.
 
-**In the build.** Releases are built by GitHub Actions from a tagged commit.
-The workflow is in `.github/workflows/`, the logs are public, and the
-artifacts are signed. You can rebuild from the same tag and compare hashes.
+---
 
-## Tools
+## Using it
 
-Nothing shipped yet. First release in progress:
+### The command line
 
-- **TLS inspector** — certificate chain, protocol versions, cipher suites,
-  HSTS, CAA records, certificate transparency. Server-side, nothing retained.
-- **Metadata stripper** — EXIF and document metadata, viewed and removed
-  entirely in your browser. The file never leaves your machine.
-
-## Design constraints
-
-These are decisions, not aspirations. They constrain what can be built here.
-
-**Client-side by default.** If a tool can run in the browser, it runs in the
-browser. Server-side work happens only when the task requires reaching the
-network — a TLS handshake cannot be performed from a page.
-
-**Strict Content-Security-Policy.** No `unsafe-inline`, no `unsafe-eval`, no
-external origins. This rules out most of the modern frontend toolchain, which
-is the point.
-
-**Refuse private targets.** Tools that make outbound connections refuse
-loopback, RFC 1918, link-local, and reserved ranges. A scanner that will
-connect anywhere is an SSRF proxy wearing a nice interface. See
-`internal/safedial`.
-
-**Small dependency surface.** Every dependency is a party you are trusting on
-behalf of the user. Each one has to earn its place.
-
-## Running it yourself
-
-The whole point of publishing this is that you do not have to trust the hosted
-version.
+```sh
+go build ./cmd/denyfirst-scan
+./denyfirst-scan example.com
+```
 
 ```
+denyfirst-scan example.com
+denyfirst-scan example.com:8443 another.example.com
+denyfirst-scan -json example.com
+denyfirst-scan -allow-private 10.0.0.5
+```
+
+The exit status is the worst verdict found, so it can gate a pipeline: `0`
+when everything is strong, `1` on a weak finding, `2` on an insecure one, and
+`3` when the scan could not be completed.
+
+The command line accepts bare addresses and any port. The hosted service does
+neither, and the reasons are in [`internal/scan/scan.go`](internal/scan/scan.go).
+
+### The service
+
+```sh
+go build ./cmd/denyfirstd
+./denyfirstd -listen 127.0.0.1:8080
+```
+
+Then open `http://127.0.0.1:8080`. It listens on loopback by default so that
+an accidental start is not immediately public.
+
+```sh
+./denyfirstd \
+  -listen :443 \
+  -tls-cert /etc/ssl/denyfirst.pem \
+  -tls-key /etc/ssl/denyfirst.key \
+  -stats-file /var/lib/denyfirst/stats.json
+```
+
+`denyfirstd -h` lists every limit and its default.
+
+---
+
+## Running your own
+
+This is a supported use rather than a workaround. The service makes a promise
+about what it keeps; running it yourself replaces that promise with a fact you
+control.
+
+```sh
 git clone https://github.com/denyfirst/denyfirst
 cd denyfirst
-go build ./cmd/denyfirst
-./denyfirst
+go build ./cmd/denyfirstd
 ```
 
-Requires Go 1.25.12 or later. No database, no configuration file, no environment
-variables required to start.
+There are no third-party dependencies. `go.mod` has no `require` block, so
+`go build` fetches nothing beyond the standard library and there is no supply
+chain to audit here beyond Go itself.
 
-## Contributing
+The service is licensed under AGPL-3.0. If you run a modified version and
+offer it to others, the modifications have to be available to them. That is
+the point of the licence for a tool whose value rests on being checkable.
 
-Issues and pull requests are welcome. Two things to know before you start:
+---
 
-Changes that add tracking, analytics, external requests, or data retention will
-be closed. This is not negotiable and is not a comment on the quality of the
-patch.
+## What it does not do
 
-Security issues go to `SECURITY.md`, not to the issue tracker.
+Named rather than left to be discovered.
+
+**No exploits.** No malformed packets, no Heartbleed probe, no ROBOT oracle,
+no padding oracle. Only a standard client hello at each version. Everything
+reported is what any client receives on connecting.
+
+**No HTTP request.** The connection is closed as soon as the handshake
+finishes. No path is tried, no header is sent, and the target's home page is
+never fetched.
+
+**No revocation check.** Asking a certificate authority whether a serial is
+still valid would tell it which certificate somebody is looking at. A chain
+reported as trusted reaches a root and is in date; it may still have been
+revoked, and the report says so.
+
+**No port scanning.** Only ports that speak TLS from the first byte: 443,
+8443, 465, 636, 990, 993, 995 and 5061.
+
+**No private addresses.** The dialler refuses private, loopback, link-local,
+multicast and reserved ranges, resolves each name once, and connects to the
+address it inspected rather than to the name.
+
+---
+
+## How it is put together
+
+```
+cmd/denyfirst-scan     the command line tool
+cmd/denyfirstd         the service
+
+internal/safedial      a dialler that refuses non-public addresses
+internal/tlsprobe      handshakes: versions, cipher suites, the chain
+internal/certinfo      what the certificate says, and whether it verifies
+internal/policy        the rules, and the documents behind them
+internal/scan          the pipeline both front ends share
+internal/httpapi       the HTTP surface and its limits
+internal/web           the pages
+```
+
+Two principles run through it.
+
+**Measurement and judgement are separate.** `tlsprobe` and `certinfo` gather
+facts; `policy` decides what they mean. That is why an upstream library
+changing its opinion about a cipher suite does not silently change ours.
+
+**Guards sit where the action happens, not where the request arrives.** The
+port list is enforced in `internal/scan`, not in the HTTP handler, so it
+survives a caller that does not exist yet.
+
+---
+
+## Verifying and contributing
+
+- [`docs/invariants.md`](docs/invariants.md) — what the project guarantees,
+  where each guarantee is enforced, and which test protects it
+- [`SECURITY.md`](SECURITY.md) — reporting a vulnerability
+
+Findings are welcome, particularly in input parsing: six bugs have been found
+there and none anywhere else.
+
+```sh
+go test ./...                                                    # everything
+go test ./internal/scan -run '^$' -fuzz FuzzSplitTarget           # one target
+```
+
+---
 
 ## Licence
 
-GNU Affero General Public License v3.0. See `LICENSE`.
-
-AGPL rather than MIT for one specific reason: if you run a modified version of
-this software as a network service, you must publish your modifications. A
-permissive licence would let someone take these tools, add the tracking we
-removed, and host them without disclosure. The licence is part of the promise.
+AGPL-3.0. See [`LICENSE`](LICENSE).

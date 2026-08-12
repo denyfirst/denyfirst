@@ -39,6 +39,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -72,10 +73,21 @@ type Limits struct {
 	// clients are refused rather than admitted.
 	MaxTrackedIPs int
 
-	// TrustedProxyHops is the number of reverse proxies in front of this
-	// service. Leave it at zero unless there really is one: a service that
-	// trusts X-Forwarded-For without a proxy lets every client choose its own
-	// rate limit key.
+	// TrustedProxies are the networks a reverse proxy connects from, and
+	// TrustedProxyHops is how many of them stand in front of this service.
+	//
+	// Both are required before X-Forwarded-For is read at all. The hop count
+	// alone says a proxy exists; the network list says the request in hand
+	// actually came through it.
+	//
+	// That second check is the one that is easy to omit. A reverse proxy
+	// hides an origin server but rarely removes it — the address turns up in
+	// certificate transparency logs, in old DNS records, or in a scanning
+	// service — and a client that reaches it directly writes whatever
+	// X-Forwarded-For it likes. Trusting the header on the strength of a
+	// configuration flag hands such a client a fresh rate limit key for every
+	// request, which is the same as having no limit.
+	TrustedProxies   []netip.Prefix
 	TrustedProxyHops int
 }
 
@@ -99,6 +111,12 @@ func (l Limits) withDefaults() Limits {
 		l.MaxTrackedIPs = DefaultMaxTrackedIPs
 	}
 	if l.TrustedProxyHops < 0 {
+		l.TrustedProxyHops = 0
+	}
+	if len(l.TrustedProxies) == 0 {
+		// A hop count with no network to check against would mean reading a
+		// header any client can write. Falling back to the connection's own
+		// address is the safe reading of an incomplete configuration.
 		l.TrustedProxyHops = 0
 	}
 	return l
@@ -200,7 +218,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !s.rate.allow(clientKey(r, s.limits.TrustedProxyHops)) {
+	if !s.rate.allow(clientKey(r, s.limits.TrustedProxies, s.limits.TrustedProxyHops)) {
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(s.limits.Refill)))
 		s.refuse(w, http.StatusTooManyRequests, "rate_limited",
 			"Too many scans from this address. Try again shortly.")

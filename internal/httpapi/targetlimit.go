@@ -30,22 +30,34 @@ const (
 	// targetRefill is how long one of those slots takes to return.
 	targetRefill = 30 * time.Second
 
-	// targetKeyBits is the width of the bucket identifier, and the whole
-	// privacy argument for this limiter.
+	// targetKeyBits is the width of the bucket identifier.
 	//
-	// A limiter has to recognise a repeated target, which normally means
+	// The narrowness is the mechanism, not a shortcut. Two reviewers have now
+	// read it as a defect and suggested widening it to sixty-four bits, so
+	// the reasoning is set out here at length: widening it would destroy the
+	// property this limiter exists to have.
+	//
+	// A rate limiter has to recognise a repeated target, which normally means
 	// keeping the target. Keeping hostnames would break the one promise this
-	// project is built on, so the key is a hash truncated to twelve bits:
+	// project is built on, so the key is an HMAC truncated to twelve bits:
 	// 4096 buckets for every hostname that exists.
 	//
-	// The collisions are the point. Two unrelated hosts sharing a bucket
-	// costs an occasional refusal, which a person retries. A bucket
-	// identifier, in a memory dump or anywhere else, narrows the possible
-	// hostnames to roughly one in four thousand of all of them — which is to
-	// say, to billions. There is nothing there to read.
+	// Collisions are what protects the hostname. At twelve bits, a bucket
+	// identifier is consistent with billions of names, so a memory dump
+	// yields a number and nothing else. At sixty-four bits it is consistent
+	// with roughly one, and since the key is in the same memory as the
+	// buckets, whoever has both can hash a list of a million domains and read
+	// off exactly what was scanned. The wider hash does not improve the
+	// limiter; it undoes it.
 	//
-	// Twelve bits also keeps false refusals rare: with twenty distinct hosts
-	// in flight, a new one collides about half a percent of the time.
+	// The cost is a false refusal when two unrelated hosts share a bucket,
+	// and it is small: the chance is the number of hosts whose budget is
+	// currently spent divided by 4096, so about half a percent with twenty in
+	// flight. A person waits thirty seconds and tries again.
+	//
+	// If that ever becomes a real nuisance, the answer is fourteen bits —
+	// 16384 buckets, a quarter of the collisions, and still billions of names
+	// per bucket. Never sixty-four.
 	targetKeyBits = 12
 	targetBuckets = 1 << targetKeyBits
 

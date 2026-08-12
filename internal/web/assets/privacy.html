@@ -26,7 +26,16 @@
       does.
     </p>
 
-    <h2>No logs</h2>
+    <p>
+      The figure served to a browser stands still for a minute at a time. A
+      counter holds no timestamps, but a counter anyone can poll is a clock:
+      reading it every second would turn "five scans" into "a scan happened at
+      14:32:08", which whoever holds the other end of that connection could
+      line up against their own records. Freezing it to the minute makes the
+      comparison useless.
+    </p>
+
+    <h2>No request logs</h2>
 
     <p>
       Nothing about a request is written anywhere: not the hostname you
@@ -41,12 +50,39 @@
       depending on it.
     </p>
 
+    <p>
+      Three lines are printed in the life of the process: that it started,
+      that it stopped, and a failure to write the counter file. None of them
+      describes a request. Under systemd they are collected by the journal,
+      which is where a claim of no logging at all would stop being true — so
+      the claim made here is the narrower and exact one.
+    </p>
+
+    <p>
+      Below the service, the operating system keeps its own records, as it
+      does on every machine. The firewall counts packets, the SSH daemon logs
+      administrative access, and the kernel notes packets arriving with a
+      forged source address; that last one holds addresses, and it is kept
+      because a service that could not see an attack on itself would be asking
+      you to trust an operator who is not watching. None of it can say which
+      host you asked about. That is only ever known inside a process that does
+      not write it down.
+    </p>
+
     <h2>Your address</h2>
 
     <p>
-      Held in memory only, to enforce a rate limit, and dropped once it stops
-      being useful for that. It is never written to disk and never appears in
-      a response.
+      Held in memory only, to enforce a rate limit, and dropped about three
+      minutes after your last request. It is never written to disk and never
+      appears in a response.
+    </p>
+
+    <p>
+      That figure is arithmetic rather than a policy. An allowance refills
+      completely in a minute, twice that is the point past which keeping the
+      address changes nothing, and the sweep that removes it runs once a
+      minute. A test checks the number against the same calculation the code
+      uses, so this page cannot drift away from what the service does.
     </p>
 
     <p>
