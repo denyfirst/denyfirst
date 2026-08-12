@@ -1,16 +1,5 @@
 # Security invariants
 
-This document states what the project guarantees and how each guarantee is
-kept. It is deliberately not a status report on unfinished work: a list of
-where a system is weakest, published together, is a prioritised target list
-even when each entry could be worked out separately. Weaknesses in our own
-defences are tracked privately and written up here once they are closed.
-
-Limitations of the tool's accuracy are a different matter and stay public.
-Rule R3 below requires every report to declare what it could not measure,
-because a reader who is not told what was skipped will read silence as a clean
-result.
-
 Every rule below states something that must be true of this project, where it
 is enforced, and which test would fail if it stopped being true.
 
@@ -84,6 +73,16 @@ caller's deadline is never extended.
 ---
 
 ## Input
+
+Every bug found in this project so far has been here. Six of them: an empty
+port, brackets left on a hostname, several colons, a signed port number, a
+name with no dot, and a path discarded in silence. None was reachable as an
+attack, and all six were the same shape — input that parsed into something
+other than what the person meant, so that the value checked was not the value
+dialled.
+
+Treat a change to `SplitTarget` as a change to a security boundary, whatever
+it looks like. Add a fuzz seed for anything new it accepts or refuses.
 
 ### I1 — One implementation of target parsing
 
@@ -179,8 +178,7 @@ default staying convenient is not a promise.
 
 *Enforced by:* the absence of logging in `internal/httpapi`, and
 `httpapi.SilentErrorLog` passed to `http.Server.ErrorLog`
-*Guarded by:* `TestNothingIsLogged`, `TestClientAddressesAreForgotten`,
-`TestSilentErrorLogDiscards`
+*Guarded by:* review — **there is no test for this yet**, which is a gap
 
 ### P2 — The target travels in a request body, not a URL
 
@@ -228,7 +226,22 @@ IANA registry, and gives no way to choose among TLS 1.3 suites. A report that
 omits this reads as exhaustive.
 
 *Enforced in:* `internal/tlsprobe`, the `Notes` field
-*Guarded by:* `TestSupportedVersionsCarryTheCoverageNote`
+*Guarded by:* review — **no test asserts the notes are present**, which is a gap
+
+### R3a — Revocation is not checked, and the report says so
+
+A chain reported as trusted reaches a root and is in date. It may still have
+been revoked.
+
+Checking would defeat the point of the service: asking a certificate
+authority whether a serial is still good tells that authority which
+certificate somebody is looking at, and querying a transparency log does the
+same. A stapled response could be validated without asking anyone, which is
+worth doing later; until then the gap is named in every report rather than
+left for a reader to discover.
+
+*Enforced in:* `internal/certinfo.Analyse`, in the notes
+*Guarded by:* `TestRevocationIsDeclaredUnchecked`
 
 ### R4 — Nothing measured is not the same as passing
 
@@ -302,3 +315,22 @@ working.
 *Guarded by:* the `Known vulnerabilities` job in CI
 
 ---
+
+## Known gaps
+
+Listed rather than hidden. An unnamed gap is a surprise; a named one is work.
+
+- **P1 and R3 have no tests.** Both are enforced by review, which is the
+  weakest form of enforcement this document argues against.
+- **No server binary exists yet.** `httpapi.Server` is an `http.Handler` with
+  nothing listening. The timeouts that matter against Slowloris —
+  `ReadHeaderTimeout` in particular — live on `http.Server` and are therefore
+  not yet set anywhere.
+- **CI installs its tools with `@latest`.** The Go module proxy verifies each
+  download against the checksum database, which is stronger than a git tag,
+  but the version is still whatever exists on the day.
+- **Release artifacts are not signed.** Nothing lets a user verify that a
+  binary came from a particular commit.
+- **No fuzzing.** The certificate and target parsers take untrusted input and
+  have only example-based tests.
+- **No independent review.** Nobody outside this project has read the code.
