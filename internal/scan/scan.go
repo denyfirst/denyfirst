@@ -135,6 +135,13 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 		return nil, errors.New("this takes a hostname rather than an address")
 	}
 
+	// Checked here rather than in the HTTP handler so that it holds for every
+	// caller, including the command line and anything written later. A guard
+	// in one entry point disappears the moment a second one is added.
+	if IsExcluded(host) {
+		return nil, ErrExcluded
+	}
+
 	prober := s.Prober
 	if prober == nil {
 		prober = &tlsprobe.Prober{}

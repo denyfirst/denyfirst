@@ -34,6 +34,7 @@ var refusalCodes = []string{
 	"payload_too_large",   // over the body limit
 	"unsupported_media",   // not application/json
 	"cross_site",          // a browser request originating on another site
+	"excluded",            // a name this service will not scan
 	"timeout",             // the scan outlasted its budget
 	"scan_failed",         // the target could not be reached
 }
