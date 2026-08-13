@@ -380,3 +380,52 @@ func TestCrossSiteRequestsAreRefused(t *testing.T) {
 		}
 	}
 }
+
+// The scan endpoint was limited from the first day; these two were not. That
+// was an omission: /api/v1/stats clones a map on every call, so a client
+// asking a few thousand times a second turns a health check into a way of
+// spending this machine's processor.
+func TestReadEndpointsAreLimited(t *testing.T) {
+	for _, path := range []string{"/healthz", "/api/v1/stats"} {
+		s := New(offlineScanner(), Limits{}, nil)
+
+		var limited bool
+		for range readBurst + 10 {
+			r := httptest.NewRequest(http.MethodGet, path, nil)
+			r.RemoteAddr = "203.0.113.90:5000"
+			w := httptest.NewRecorder()
+			s.ServeHTTP(w, r)
+
+			if w.Code == http.StatusTooManyRequests {
+				limited = true
+				break
+			}
+		}
+		if !limited {
+			t.Errorf("%s served %d requests without a limit", path, readBurst+10)
+		}
+	}
+}
+
+// A client that has spent its scan allowance must not be able to refill it by
+// asking for statistics, and a monitor polling a health check must not lose
+// the ability to scan.
+func TestReadAndScanBudgetsAreSeparate(t *testing.T) {
+	s := New(offlineScanner(), Limits{Burst: 1, Refill: time.Hour}, nil)
+
+	// Spend the scan allowance.
+	post(t, s, `{"target":"first.test"}`)
+	if w := post(t, s, `{"target":"second.test"}`); w.Code != http.StatusTooManyRequests {
+		t.Fatal("the scan allowance was not spent")
+	}
+
+	// The read endpoints still answer.
+	r := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	r.RemoteAddr = "203.0.113.7:5000"
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("healthz returned %d after the scan allowance was spent; the budgets are shared", w.Code)
+	}
+}

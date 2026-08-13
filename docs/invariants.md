@@ -125,6 +125,28 @@ A misspelled key fails loudly rather than being silently ignored.
 *Enforced in:* `internal/httpapi`, `Decoder.DisallowUnknownFields`
 *Guarded by:* `TestRejectsMalformedBodies`
 
+### I6 — Error messages do not describe this machine
+
+A published error names the shape of a failure and nothing else. Not the
+resolver this service uses, not the address that was dialled, not a path on
+disk.
+
+I3 covers the input side: what a caller sent is never repeated back. This is
+the output side, and it was open for longer because the leak arrives from a
+library rather than from our own formatting. Go writes network errors for an
+operator reading a terminal, so they name whatever helps there — and one of
+those things is the resolver's address, which belongs to whoever runs the
+machine.
+
+The rule is that every branch of `classifyHandshakeError` returns a phrase
+written in that function. There is no pass-through, and the default case is a
+phrase rather than the error: an unrecognised failure is the one most likely
+to carry an address, and the one nobody has reviewed.
+
+*Enforced in:* `internal/tlsprobe.classifyHandshakeError`
+*Guarded by:* `TestHandshakeErrorsCarryNoInfrastructure`,
+`TestReportFromAFailedProbeNamesNoAddress`
+
 ---
 
 ## Availability
@@ -161,6 +183,21 @@ target holds it for all of it.
 
 *Enforced in:* `internal/httpapi`, `semaphore`
 *Guarded by:* `TestConcurrencyLimit`
+
+### A4 — Every endpoint has a budget
+
+The scan endpoint was limited from the first day; the two read-only endpoints
+were not. That was an omission rather than a decision — `/api/v1/stats` clones
+a map on every call, so a client asking a few thousand times a second turns a
+health check into a way of spending this machine's processor.
+
+The two allowances are separate. A monitor polling every few seconds is the
+intended use of the read endpoints and must not consume a scan allowance; a
+client that has spent its scan budget must not be able to refill it by asking
+for statistics instead.
+
+*Enforced in:* `internal/httpapi.Server.readLimited`
+*Guarded by:* `TestReadEndpointsAreLimited`
 
 ---
 
