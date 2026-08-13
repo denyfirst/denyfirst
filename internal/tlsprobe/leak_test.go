@@ -91,7 +91,7 @@ func TestCommonFailuresAreDistinguished(t *testing.T) {
 		"unreachable":  {errors.New("dial tcp 203.0.113.7:443: connect: network is unreachable"), "could not be reached"},
 		"reset":        {errors.New("read tcp: connection reset by peer"), "closed during the handshake"},
 		"not tls":      {errors.New("tls: first record does not look like a TLS handshake"), "not TLS"},
-		"blocked":      {fmt.Errorf("%w: 127.0.0.1 is loopback", safedial.ErrBlocked), "will not connect to"},
+		"blocked":      {fmt.Errorf("%w: 127.0.0.1 is loopback", safedial.ErrBlocked), "not scanned"},
 	}
 
 	for name, tc := range cases {
