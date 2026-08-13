@@ -155,7 +155,14 @@ try {
         $allowed = Join-Path $repoRoot '.allowed_signers'
         if (Test-Path $allowed) {
             Write-Host 'Verifying the signature as a user would' -ForegroundColor Cyan
-            Get-Content $checksums -Raw | ssh-keygen -Y verify -f $allowed -I $Identity -n file -s "$checksums.sig"
+
+            # cmd's redirection rather than a PowerShell pipeline. Get-Content
+            # decodes the file and re-encodes it on the way out, which turns
+            # the LF endings written above into CRLF and changes the bytes the
+            # signature covers. The verification then fails on a file that is
+            # perfectly good, which is a worse outcome than not checking at
+            # all: it teaches whoever sees it to ignore the check.
+            cmd /c "ssh-keygen -Y verify -f `"$allowed`" -I $Identity -n file -s `"$checksums.sig`" < `"$checksums`""
             if ($LASTEXITCODE -ne 0) {
                 throw 'The signature did not verify against .allowed_signers. Check that the public key there matches the signing key.'
             }

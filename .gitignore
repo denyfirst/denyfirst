@@ -53,3 +53,7 @@ Thumbs.db
 stats.json
 stats.json.tmp
 dist/
+*.exe
+stats.json
+stats.json.tmp
+dist/
