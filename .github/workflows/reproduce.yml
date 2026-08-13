@@ -1,0 +1,101 @@
+name: Reproduce
+
+# Rebuilds a published release from its tag and checks that the result is
+# byte-identical to what was uploaded.
+#
+# The signature on a release says the maintainer produced those files. It says
+# nothing about whether those files correspond to the source anyone can read.
+# This closes that gap in public: a machine the maintainer does not control,
+# starting from the tagged commit, arrives at the same bytes.
+#
+# Nothing here signs anything. The signing key is deliberately absent from
+# GitHub, because a key stored here would let whoever compromised this account
+# sign a release, which is the attack the signature exists to prevent.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to reproduce"
+        required: true
+
+permissions: {}
+
+jobs:
+  reproduce:
+    name: Reproduce the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+
+    steps:
+      - name: Check out the tagged source
+        run: |
+          git init -q
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "refs/tags/${TAG}"
+          git checkout -q FETCH_HEAD
+
+      - name: Report the toolchain
+        run: |
+          go version
+          echo "The published BUILD file records the toolchain used. A"
+          echo "mismatch there explains a mismatch below without implying"
+          echo "the source differs."
+
+      - name: Build every target
+        run: |
+          set -euo pipefail
+          mkdir -p rebuilt
+
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+
+            for command in denyfirst-scan denyfirstd; do
+              name="${command}_${TAG}_${os}_${arch}"
+              [ "$os" = "windows" ] && name="${name}.exe"
+
+              CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+                go build -trimpath -buildvcs=false \
+                  -ldflags "-s -w -X main.version=${TAG}" \
+                  -o "rebuilt/${name}" "./cmd/${command}"
+            done
+          done
+
+          ls -la rebuilt
+
+      - name: Fetch the published checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${TAG}" --pattern SHA256SUMS --dir published
+
+      - name: Compare
+        run: |
+          set -euo pipefail
+
+          cd rebuilt
+          sha256sum * | sort > ../rebuilt.sums
+          cd ..
+
+          # The published file lists SHA256SUMS-adjacent artifacts too, so
+          # only the lines naming a binary are compared.
+          grep -v -E '(SHA256SUMS|BUILD)' published/SHA256SUMS | sort > published.sums
+
+          if diff -u published.sums rebuilt.sums; then
+            echo
+            echo "The published binaries match a build of the tagged source."
+          else
+            echo
+            echo "The published binaries do NOT match a build of the tagged source."
+            echo "Either the release was built from something other than this tag,"
+            echo "or the toolchain differed. Check the BUILD file in the release"
+            echo "against the version reported above before assuming the worst."
+            exit 1
+          fi
