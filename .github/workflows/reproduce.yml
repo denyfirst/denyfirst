@@ -42,6 +42,34 @@ jobs:
           git fetch -q --depth 1 origin "refs/tags/${TAG}"
           git checkout -q FETCH_HEAD
 
+      - name: Fetch the published checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${TAG}" --pattern SHA256SUMS --dir published
+
+      - name: Use the toolchain the release was built with
+        run: |
+          set -euo pipefail
+
+          # The BUILD file in the release records which Go produced those
+          # binaries. Reproducing them means using the same one: a different
+          # compiler is a legitimate reason for different bytes, and a check
+          # that cannot tell that apart from a tampered binary is not a check.
+          gh release download "${TAG}" --pattern BUILD --dir /tmp/release
+          want=$(grep '^toolchain ' /tmp/release/BUILD | awk '{print $3}')
+          echo "release used $want"
+
+          have=$(go version | awk '{print $3}')
+          if [ "$have" != "$want" ]; then
+            echo "runner has $have; installing $want"
+            curl -fsSLO "https://go.dev/dl/${want}.linux-amd64.tar.gz"
+            sudo rm -rf /usr/local/go
+            sudo tar -C /usr/local -xzf "${want}.linux-amd64.tar.gz"
+          fi
+          go version
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Report the toolchain
         run: |
           go version
@@ -70,11 +98,6 @@ jobs:
           done
 
           ls -la rebuilt
-
-      - name: Fetch the published checksums
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release download "${TAG}" --pattern SHA256SUMS --dir published
 
       - name: Compare
         run: |
