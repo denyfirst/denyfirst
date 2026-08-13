@@ -1,160 +1,237 @@
 <article class="prose">
 
-    <h1>What this<br>keeps.</h1>
+    <h1>What this keeps,<br>and what it does.</h1>
 
     <p class="lede">
-      A count of scans, and nothing else. Not the hostname, not your address,
-      not the result, not the time. This page explains how that is arranged and
-      where the boundary of it lies.
+      A count of scans, and nothing else. Not the hostname you asked about,
+      not your address, not the result, not the time. If you found this page
+      because a scan from here reached your server, the section on
+      <a href="#scans">what a scan does</a> is the one you want.
     </p>
 
-    <h2>The counter</h2>
+    <nav class="jump">
+      <a href="#kept">What is kept</a>
+      <a href="#logs">Logs</a>
+      <a href="#scans">What a scan does</a>
+      <a href="#stopping">Stopping a scan</a>
+      <a href="#promises">What is not promised</a>
+    </nav>
+
+    <h2 id="kept">What is kept</h2>
 
     <p>
       One number goes up per scan, along with how many came back strong, weak
-      or insecure. That is the whole record. It is written to a file so a
-      restart does not reset it, and the file reads like this:
+      or insecure. That is the whole record. It is written to a small file so
+      a restart does not reset it.
     </p>
-
-    <pre class="sample">{"scansTotal":87412,"strong":2100,"weak":35000,"insecure":50312,"since":"2026-08-10"}</pre>
 
     <p>
       Two scans a second apart and two a month apart leave the same trace.
-      There is no ordering, no timing, and nothing that distinguishes one from
-      another. It is shown at the foot of every page because a number nobody
-      can trace back to a person demonstrates the claim better than the claim
-      does.
+      Nothing distinguishes one from another, and nothing connects any of them
+      to a person. The total is shown at the foot of every page, because a
+      number nobody can trace back demonstrates the claim better than the
+      claim does.
     </p>
 
     <p>
-      The figure served to a browser stands still for a minute at a time. A
-      counter holds no timestamps, but a counter anyone can poll is a clock:
-      reading it every second would turn "five scans" into "a scan happened at
-      14:32:08", which whoever holds the other end of that connection could
-      line up against their own records. Freezing it to the minute makes the
-      comparison useless.
+      The figure shown to a browser stands still for a minute at a time. A
+      counter holds no clock, but a counter anyone can read repeatedly becomes
+      one — checking it every second would reveal the moment each scan
+      happened, which somebody could line up against their own records.
+      Freezing it removes that.
     </p>
 
-    <h2>No request logs</h2>
+    <h3>Your address</h3>
 
     <p>
-      Nothing about a request is written anywhere: not the hostname you
-      submitted, not your address, not what came back. This is enforced by
-      there being no code that could write it, and a test fails if any appears.
+      Held in memory to enforce a rate limit, and dropped about three minutes
+      after your last request. Never written to disk, never in a response. For
+      IPv6 the limit applies to the network block rather than the exact
+      address, because one subscriber is normally given a whole block.
     </p>
 
-    <p>
-      Go's HTTP server writes a line to standard error when a handler panics,
-      and that line contains a client address. The logger is replaced with one
-      that discards, so the promise survives a library default rather than
-      depending on it.
-    </p>
+    <h3>The hostname you ask about</h3>
 
     <p>
-      Three lines are printed in the life of the process: that it started,
-      that it stopped, and a failure to write the counter file. None of them
-      describes a request. Under systemd they are collected by the journal,
-      which is where a claim of no logging at all would stop being true — so
-      the claim made here is the narrower and exact one.
+      Sent in the request body, never in the address bar. A hostname in a URL
+      is written to your browser history, to the referrer of anything the page
+      loads next, and to the log of every proxy between you and here.
+      Promising not to record it while putting it in a URL would hand the
+      record to everyone else instead.
     </p>
 
     <p>
-      Below the service, the operating system keeps its own records, as it
-      does on every machine. The firewall counts packets, the SSH daemon logs
-      administrative access, and the kernel notes packets arriving with a
-      forged source address; that last one holds addresses, and it is kept
-      because a service that could not see an attack on itself would be asking
-      you to trust an operator who is not watching. None of it can say which
-      host you asked about. That is only ever known inside a process that does
-      not write it down.
-    </p>
-
-    <h2>Your address</h2>
-
-    <p>
-      Held in memory only, to enforce a rate limit, and dropped about three
-      minutes after your last request. It is never written to disk and never
-      appears in a response.
-    </p>
-
-    <p>
-      That figure is arithmetic rather than a policy. An allowance refills
-      completely in a minute, twice that is the point past which keeping the
-      address changes nothing, and the sweep that removes it runs once a
-      minute. A test checks the number against the same calculation the code
-      uses, so this page cannot drift away from what the service does.
-    </p>
-
-    <p>
-      For IPv6 the limit applies to the network block rather than the exact
-      address, because a single subscriber is normally given a whole block and
-      can present a new address for every request.
-    </p>
-
-    <h2>The hostname you submit</h2>
-
-    <p>
-      Sent in the request body, not in the address bar. A hostname in a URL is
-      written to your browser history, to the referrer of anything the page
-      loads afterwards, and to the access log of every proxy between you and
-      here. Undertaking not to record it while putting it in a URL would hand
-      the record to everyone else instead.
-    </p>
-
-    <p>
-      There is a limit on how often any one host is checked, which needs to
+      There is a limit on how often any one server is checked, which has to
       recognise a repeat without keeping the name. The hostname is hashed with
-      a key generated when the process starts and never written down, then cut
-      to twelve bits &mdash; about four thousand buckets for every hostname
-      that exists. Billions of names share each one. The limit works; the name
-      is not there to find.
+      a key created when the service starts and never written down, then cut
+      short enough that billions of names share every result. The limit works;
+      the name is not there to find.
     </p>
 
-    <h2>No third parties</h2>
+    <h3>Nothing from anyone else</h3>
 
     <p>
-      No analytics, no fonts loaded from elsewhere, no content delivery
-      network, no tag of any kind. The page loads one stylesheet and one
-      script, both from this server. There is nothing embedded here that could
-      report your visit to anyone, which you can confirm in your browser's
-      network panel or by reading the source.
+      No analytics, no fonts from elsewhere, no content delivery network, no
+      tag of any kind. The page loads one stylesheet and one script, both from
+      this server. Nothing here can report your visit to a third party, which
+      you can confirm in your browser's network panel.
     </p>
-
-    <h2>Cookies</h2>
 
     <p>
-      None. Nothing is stored in your browser at all.
+      No cookies. Nothing is stored in your browser at all.
     </p>
 
-    <h2>Where this runs</h2>
+    <h2 id="logs">Logs</h2>
+
+    <p>
+      There is no record of what was scanned, by whom, or when. This is
+      enforced by there being no code that could write one, and a test fails
+      if any appears.
+    </p>
+
+    <p>
+      Being exact about this matters more than sounding absolute. The service
+      prints three lines in its lifetime: that it started, that it stopped,
+      and a failure to save the counter. None describes a request, and the
+      system collects them as it collects anything else a program prints.
+      Below that, the operating system keeps its own records — the firewall
+      counts packets, administrative access is logged, and the kernel notes
+      packets arriving with a forged source address. That last one holds
+      addresses, and it is kept, because a service that could not see an
+      attack on itself would be asking you to trust an operator who is not
+      watching.
+    </p>
+
+    <p>
+      None of it can say which host you asked about. That is only ever known
+      inside a process that does not write it down.
+    </p>
+
+    <h3>Where this runs</h3>
 
     <p>
       On a rented server in Frankfurt. As with any hosted service, the network
-      provider carries the traffic and can see that connections are made,
-      including the ones this service opens when it checks a server on your
-      behalf. That is true of every scanner anywhere, and it is not something
-      this project can remove.
+      provider carries the traffic and can see that connections are made. That
+      is true of every scanner anywhere and is not something this project can
+      remove. What it can do is add nothing to it: anyone who took this
+      machine tomorrow would find a program, a certificate, and a file
+      containing a number.
+    </p>
+
+    <h2 id="scans">What a scan does</h2>
+
+    <p>
+      To find out how a server negotiates TLS, this opens connections and
+      completes handshakes — the same exchange every browser performs before
+      loading a page. A single check opens roughly thirty over a few seconds:
+      one per protocol version, several to work out which cipher suites are
+      accepted, and two to see whether the server imposes its own ordering.
+      Each is closed as soon as its handshake finishes.
     </p>
 
     <p>
-      What it can do is add nothing to it. There are no records here beyond
-      the counter above, so there is nothing to hand over, nothing to seize
-      and nothing to lose in a breach. Anyone who took this machine tomorrow
-      would find a binary, a certificate, and a file containing a number.
+      Nothing happens beyond the handshake. Not a single byte of application
+      data is sent. No page is requested, no path is tried, no header is sent.
     </p>
 
-    <h2>Verifying any of this</h2>
+    <ul class="plain">
+      <li>No authentication is attempted; there are no credentials here to try.</li>
+      <li>No vulnerability is tested for and no exploit is sent — only a standard client hello.</li>
+      <li>No administrative path is probed, because no request of any kind is made.</li>
+      <li>No malformed packets are constructed.</li>
+      <li>Only ports that speak TLS from the first byte: 443, 8443, 465, 636, 990, 993, 995 and 5061. This cannot be used as a port scanner.</li>
+      <li>No private or internal addresses. A hostname is resolved once and the address is checked before anything connects to it.</li>
+    </ul>
 
     <p>
-      None of the above needs to be taken on trust. The source is public, the
-      guarantees are listed with the test that protects each one, and the
-      whole thing can be run on a machine you control.
+      Everything a report contains is what any client receives on connecting.
+      None of it required asking for anything.
+    </p>
+
+    <h3>Nothing is asked of third parties either</h3>
+
+    <p>
+      Revocation is not checked, because asking a certificate authority
+      whether a certificate is still valid would tell that authority somebody
+      is looking at it. Transparency logs are not queried for the same reason.
+      A certificate is described from what the server sent and from nothing
+      else, and every report says so.
+    </p>
+
+    <h3>Why more than one connection</h3>
+
+    <p>
+      A server does not announce what it supports; it answers what it is
+      offered. Finding out whether an obsolete protocol version is still
+      accepted means offering it and seeing what comes back. That is why the
+      answer can be trusted, and also why the check is not a single
+      connection.
+    </p>
+
+    <h3>Load on the server being checked</h3>
+
+    <p>
+      Each host has its own budget, independent of who asks. Once a host has
+      been checked twice, further requests for it are refused for a while,
+      even from different people. That limit exists so this cannot be aimed at
+      one server in bulk, by accident or otherwise.
+    </p>
+
+    <h2 id="stopping">Stopping a scan</h2>
+
+    <p>
+      Write to <a href="mailto:abuse@denyfirst.dev">abuse@denyfirst.dev</a>
+      from an address at the domain, or from one listed in its WHOIS or
+      <code>security.txt</code>, and it will be excluded. No explanation
+      needed. A reply within two working days, and the exclusion applied
+      before the reply.
+    </p>
+
+    <p>
+      The same address reaches a person for anything else: an unexpected
+      pattern, a question about what was sent, or a request for exact timings
+      to match against your own records.
+    </p>
+
+    <p>
+      Connections come from addresses that resolve to
+      <code>scanner.denyfirst.dev</code> in reverse DNS. A scanner that hides
+      is a scanner nobody can ask about.
+    </p>
+
+    <h2 id="promises">What is not promised</h2>
+
+    <p>
+      A report describes what a server negotiated at one moment, graded
+      against a published rule set. It is not an audit, not a certification,
+      and not a statement that anything is safe. Every report names the limits
+      of what it covered — read that part, because a short list of findings
+      can mean a well-configured server or a scan that could not see very far.
+    </p>
+
+    <p>
+      This is offered as it is, without warranty of any kind. It may be wrong.
+      It may be unavailable. It may stop existing. What you do with a result
+      is yours to decide.
+    </p>
+
+    <p>
+      That is not a formality. Claiming otherwise would be the same kind of
+      overstatement this tool exists to identify.
+    </p>
+
+    <h3>None of this needs to be taken on trust</h3>
+
+    <p>
+      The source is public, every guarantee is listed with the test that
+      protects it, and the whole thing runs on a machine you control if you
+      would rather not rely on any of the above.
     </p>
 
     <p class="colophon-links">
       <a href="https://github.com/denyfirst/denyfirst">Source</a>
-      <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/invariants.md">What we guarantee</a>
-      <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/verify.md">Verifying a release</a>
+      <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/invariants.md">Guarantees and the tests behind them</a>
+      <a href="https://github.com/denyfirst/denyfirst/blob/main/SECURITY.md">Report a vulnerability</a>
     </p>
 
   </article>
