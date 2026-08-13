@@ -56,7 +56,12 @@ jobs:
           # compiler is a legitimate reason for different bytes, and a check
           # that cannot tell that apart from a tampered binary is not a check.
           gh release download "${TAG}" --pattern BUILD --dir /tmp/release
-          want=$(grep '^toolchain ' /tmp/release/BUILD | awk '{print $3}')
+          # The BUILD line reads "toolchain go version go1.26.5 windows/amd64",
+          # because it records what `go version` printed rather than a bare
+          # number. Match the version token wherever it sits: a fixed field
+          # position would break the day the line changes shape.
+          want=$(grep -oE 'go1\.[0-9]+(\.[0-9]+)?' /tmp/release/BUILD | head -1)
+          [ -n "$want" ] || { echo "no toolchain version in BUILD" >&2; exit 1; }
           echo "release used $want"
 
           have=$(go version | awk '{print $3}')

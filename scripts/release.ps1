@@ -133,7 +133,12 @@ try {
         $info = @(
             "tag $Tag",
             "commit $head",
+            # The whole line, because the host matters as much as the version:
+            # a Linux binary cross-compiled from Windows and one built on Linux
+            # are produced by the same compiler in different environments, and
+            # if they ever differ this is what explains it.
             "toolchain $goVersion",
+            "built-on $([System.Environment]::OSVersion.Platform)",
             "flags -trimpath -buildvcs=false -ldflags '-s -w'",
             "cgo disabled"
         )
