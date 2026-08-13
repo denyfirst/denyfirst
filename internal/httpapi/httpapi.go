@@ -285,6 +285,15 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A short list of defence and intelligence names, plus anyone who asked
+	// to be left out. The message does not repeat the name back.
+	if scan.IsExcluded(host) {
+		s.refuse(w, http.StatusForbidden, "excluded",
+			"This service does not scan that domain. A small number of names are "+
+				"excluded, and any domain owner can ask to be added.")
+		return
+	}
+
 	// Every other limit here protects this service. This one protects the
 	// server about to be scanned, which had no say in the matter: one request
 	// becomes roughly thirty handshakes at the other end, and several users
