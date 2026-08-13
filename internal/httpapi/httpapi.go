@@ -56,6 +56,12 @@ const (
 	DefaultBurst           = 5
 	DefaultRefill          = 12 * time.Second // five at once, then one per twelve
 	DefaultMaxTrackedIPs   = 20_000
+
+	// readBurst and readRefill govern /healthz and /api/v1/stats. Generous,
+	// because a monitor polling every few seconds is the intended use; bounded,
+	// because neither endpoint should be free to call in a loop.
+	readBurst  = 60
+	readRefill = time.Second
 )
 
 // Limits configures the guards. A zero value takes every default above.
@@ -127,6 +133,12 @@ type Server struct {
 	scanner *scan.Scanner
 	limits  Limits
 	rate    *limiter
+
+	// reads limits the endpoints that do no scanning. Kept apart from rate
+	// so that polling a health check can never consume a scan allowance, or
+	// the reverse.
+	reads *limiter
+
 	sem     semaphore
 	counts  *counters
 	targets *targetLimiter
@@ -145,6 +157,7 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 		scanner: scanner,
 		limits:  limits,
 		rate:    newLimiter(limits.Burst, limits.Refill, limits.MaxTrackedIPs, now),
+		reads:   newLimiter(readBurst, readRefill, limits.MaxTrackedIPs, now),
 		sem:     newSemaphore(limits.MaxConcurrent),
 		counts:  newCounters(now),
 		targets: newTargetLimiter(now),
@@ -152,8 +165,8 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 	}
 
 	s.mux.HandleFunc("POST /api/v1/scan", s.handleScan)
-	s.mux.HandleFunc("GET /healthz", s.handleHealth)
-	s.mux.HandleFunc("GET /api/v1/stats", s.handleStats)
+	s.mux.HandleFunc("GET /healthz", s.readLimited(s.handleHealth))
+	s.mux.HandleFunc("GET /api/v1/stats", s.readLimited(s.handleStats))
 
 	return s
 }
@@ -353,6 +366,30 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"status": "ok",
 		"policy": policy.Version,
 	})
+}
+
+// readLimited puts the cheap endpoints behind a limit of their own.
+//
+// Neither of them scans anything, so they were left open. That was a gap
+// rather than a decision: /api/v1/stats clones a map on every call, and a
+// client asking a few thousand times a second turns a health check into a way
+// of spending this machine's processor.
+//
+// The allowance is separate from the one that governs scans and far larger,
+// because a monitor polling every few seconds is exactly what these are for.
+// The key is the same, so a client cannot spend one budget to refill the
+// other.
+func (s *Server) readLimited(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		key := "read:" + clientKey(r, s.limits.TrustedProxies, s.limits.TrustedProxyHops)
+		if !s.reads.allow(key) {
+			w.Header().Set("Retry-After", "1")
+			s.refuse(w, http.StatusTooManyRequests, "rate_limited",
+				"Too many requests from this address. Try again shortly.")
+			return
+		}
+		next(w, r)
+	}
 }
 
 // setSecurityHeaders applies the same restrictions to every response.

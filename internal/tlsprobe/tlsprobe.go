@@ -38,6 +38,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 	"slices"
@@ -505,22 +506,95 @@ func versionName(v uint16) string {
 	}
 }
 
-// classifyHandshakeError separates a refusal by the server from a refusal by
-// our own client. Go disables TLS 1.0 and 1.1 by default and may drop them
-// entirely in a later release; reporting that as "the server does not support
-// it" would be a false negative.
+// classifyHandshakeError turns a failure into a phrase safe to publish.
+//
+// Two things have to be true of what comes back. It has to distinguish a
+// refusal by the server from a refusal by our own client, because Go disables
+// TLS 1.0 and 1.1 by default and reporting that as "the server does not
+// support it" would be a false negative. And it has to carry nothing that
+// describes this machine.
+//
+// The second requirement is the one that was missing. Go's network errors are
+// written for an operator reading a terminal and name whatever helps there:
+//
+//	safedial: resolve "example.test": lookup example.test on 185.12.64.2:53: no such host
+//	safedial: connect "example.test:443": dial tcp 203.0.113.7:443: i/o timeout
+//
+// The first repeats the address of the resolver this service uses, which
+// belongs to whoever runs the machine and not in a public reply. The second
+// repeats an address that is already reported deliberately in Report.Address,
+// but here it arrives through a path nobody reviewed.
+//
+// So nothing is passed through. Every branch returns a fixed phrase, and the
+// default is a phrase rather than the error. A caller who needs the detail can
+// run the command line tool, where the operator and the reader are the same
+// person.
 func classifyHandshakeError(err error, version uint16) string {
+	if err == nil {
+		return ""
+	}
 	msg := err.Error()
 
 	switch {
+	// Our own client would not offer this version, which is not the same as
+	// the server refusing it. Saying so keeps a false negative out of the
+	// report.
 	case strings.Contains(msg, "no supported versions"),
 		strings.Contains(msg, "unsupported protocol version"),
 		strings.Contains(msg, "no cipher suite supported"):
-		return fmt.Sprintf("not tested: this build of Go declined to offer %s (%v)", versionName(version), err)
+		return fmt.Sprintf("not tested: this build of Go declined to offer %s", versionName(version))
+
+	// The server answered and said no.
 	case strings.Contains(msg, "protocol version not supported"),
-		strings.Contains(msg, "handshake failure"):
+		strings.Contains(msg, "handshake failure"),
+		strings.Contains(msg, "no application protocol"),
+		strings.Contains(msg, "insufficient security"):
 		return fmt.Sprintf("server refused %s", versionName(version))
+
+	// Refused by policy before anything was dialled. The reason belongs in
+	// the report; the address that triggered it does not.
+	case errors.Is(err, safedial.ErrBlocked):
+		return "not scanned: this is not a destination the service will connect to"
+
+	case strings.Contains(msg, "no such host"),
+		strings.Contains(msg, "server misbehaving"),
+		strings.Contains(msg, "no addresses"):
+		return "the name did not resolve"
+
+	case errors.Is(err, context.DeadlineExceeded),
+		strings.Contains(msg, "i/o timeout"),
+		strings.Contains(msg, "context deadline exceeded"):
+		return "the connection timed out"
+
+	case errors.Is(err, context.Canceled):
+		return "the scan was cancelled before this version was reached"
+
+	case strings.Contains(msg, "connection refused"):
+		return "the connection was refused"
+
+	case strings.Contains(msg, "connection reset"),
+		strings.Contains(msg, "broken pipe"),
+		strings.Contains(msg, "EOF"):
+		return "the connection closed during the handshake"
+
+	case strings.Contains(msg, "network is unreachable"),
+		strings.Contains(msg, "no route to host"),
+		strings.Contains(msg, "host is down"):
+		return "the host could not be reached"
+
+	case strings.Contains(msg, "first record does not look like a TLS handshake"):
+		return "the server answered with something that is not TLS"
+
+	case strings.Contains(msg, "certificate"):
+		// Reached only if a certificate problem stops the handshake despite
+		// InsecureSkipVerify, which is unusual. The chain is described by
+		// certinfo when one arrives; here there is nothing to describe.
+		return "the handshake failed while the certificate was being processed"
+
 	default:
-		return err.Error()
+		// Deliberately not err.Error(). An unrecognised failure is the case
+		// most likely to carry an address or a path, and it is exactly the
+		// case nobody has reviewed.
+		return fmt.Sprintf("%s could not be established", versionName(version))
 	}
 }

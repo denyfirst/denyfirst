@@ -46,21 +46,29 @@ type limitListener struct {
 }
 
 func (l *limitListener) Accept() (net.Conn, error) {
-	conn, err := l.Listener.Accept()
-	if err != nil {
-		return nil, err
-	}
+	// A loop rather than a recursive call.
+	//
+	// The recursive form reads more neatly and is wrong under exactly the
+	// conditions this listener exists for: a flood arriving faster than
+	// connections close means one refusal after another, and Go does not
+	// optimise a tail call, so each refusal adds a stack frame. The loop
+	// refuses as many as arrive in constant space.
+	for {
+		conn, err := l.Listener.Accept()
+		if err != nil {
+			return nil, err
+		}
 
-	select {
-	case l.slots <- struct{}{}:
-		return &limitedConn{Conn: conn, release: l.release}, nil
-	default:
-		// At the cap. Closing at once tells the client to go away, which is
-		// a better answer than a connection that hangs and a user who waits.
-		_ = conn.Close()
-		// The listener keeps running: refusing one connection must not stop
-		// the server from taking the next.
-		return l.Accept()
+		select {
+		case l.slots <- struct{}{}:
+			return &limitedConn{Conn: conn, release: l.release}, nil
+		default:
+			// At the cap. Closing at once tells the client to go away, which
+			// is a better answer than a connection that hangs and a user who
+			// waits. The listener keeps running: refusing one connection must
+			// not stop the server taking the next.
+			_ = conn.Close()
+		}
 	}
 }
 
