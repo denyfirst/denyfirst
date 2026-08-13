@@ -3,10 +3,15 @@ name: Reproduce
 # Rebuilds a published release from its tag and checks that the result is
 # byte-identical to what was uploaded.
 #
-# The signature on a release says the maintainer produced those files. It says
-# nothing about whether those files correspond to the source anyone can read.
-# This closes that gap in public: a machine the maintainer does not control,
-# starting from the tagged commit, arrives at the same bytes.
+# The binaries are built by build-release.yml on a runner like this one, so
+# this is not a formality: it confirms that what was published is what the
+# build produced, and that neither the artifact nor the release assets were
+# altered between the two.
+#
+# What it cannot confirm on its own is that the source was not altered before
+# the build. That is what the signature is for, and the two together are the
+# whole claim: the maintainer signs, a public runner builds, and anyone can
+# repeat the build.
 #
 # Nothing here signs anything. The signing key is deliberately absent from
 # GitHub, because a key stored here would let whoever compromised this account
@@ -42,39 +47,6 @@ jobs:
           git fetch -q --depth 1 origin "refs/tags/${TAG}"
           git checkout -q FETCH_HEAD
 
-      - name: Fetch the published checksums
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release download "${TAG}" --pattern SHA256SUMS --dir published
-
-      - name: Use the toolchain the release was built with
-        run: |
-          set -euo pipefail
-
-          # The BUILD file in the release records which Go produced those
-          # binaries. Reproducing them means using the same one: a different
-          # compiler is a legitimate reason for different bytes, and a check
-          # that cannot tell that apart from a tampered binary is not a check.
-          gh release download "${TAG}" --pattern BUILD --dir /tmp/release
-          # The BUILD line reads "toolchain go version go1.26.5 windows/amd64",
-          # because it records what `go version` printed rather than a bare
-          # number. Match the version token wherever it sits: a fixed field
-          # position would break the day the line changes shape.
-          want=$(grep -oE 'go1\.[0-9]+(\.[0-9]+)?' /tmp/release/BUILD | head -1)
-          [ -n "$want" ] || { echo "no toolchain version in BUILD" >&2; exit 1; }
-          echo "release used $want"
-
-          have=$(go version | awk '{print $3}')
-          if [ "$have" != "$want" ]; then
-            echo "runner has $have; installing $want"
-            curl -fsSLO "https://go.dev/dl/${want}.linux-amd64.tar.gz"
-            sudo rm -rf /usr/local/go
-            sudo tar -C /usr/local -xzf "${want}.linux-amd64.tar.gz"
-          fi
-          go version
-        env:
-          GH_TOKEN: ${{ github.token }}
-
       - name: Report the toolchain
         run: |
           go version
@@ -103,6 +75,11 @@ jobs:
           done
 
           ls -la rebuilt
+
+      - name: Fetch the published checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${TAG}" --pattern SHA256SUMS --dir published
 
       - name: Compare
         run: |
