@@ -13,24 +13,13 @@ name: Reproduce
 # whole claim: a public runner builds, the maintainer signs, and anyone can
 # repeat the build.
 #
-# # Everything here must match build-release.yml exactly
+# # The build command lives in scripts/build.sh
 #
-# The flags, the target list, and the toolchain. Not approximately — exactly.
-# A single extra ldflag makes every binary differ, and the failure looks
-# identical to tampering: ten mismatched hashes and no indication which of the
-# two files is wrong.
-#
-# That has now happened twice. The first time, this file installed a toolchain
-# into /usr/local/go while the build used the one go.mod fetches into the
-# module cache, so GOROOT differed and -trimpath does not reach GOROOT. The
-# second, this file carried -X main.version and the build did not.
-#
-# So: no manual toolchain installation, and the flags below are copied from
-# build-release.yml rather than written again.
-#
-# Nothing here signs anything. The signing key is deliberately absent from
-# GitHub, because a key stored here would let whoever compromised this account
-# sign a release, which is the attack the signature exists to prevent.
+# Both this workflow and build-release.yml call it. That was not the original
+# arrangement: each had its own copy, and they drifted twice in one afternoon.
+# A reproduction check is only worth running if a mismatch means something,
+# and two copies of a build command guarantee that a mismatch eventually means
+# nothing at all.
 
 on:
   release:
@@ -93,27 +82,11 @@ jobs:
 
       - name: Build every target
         run: |
-          set -euo pipefail
-          mkdir -p rebuilt
-
-          # These two lines are the ones that must match build-release.yml.
-          # Change one and change the other in the same commit.
-          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
-            os="${target%/*}"
-            arch="${target#*/}"
-
-            for command in denyfirst-scan denyfirstd; do
-              name="${command}_${TAG}_${os}_${arch}"
-              [ "$os" = "windows" ] && name="${name}.exe"
-
-              CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-                go build -trimpath -buildvcs=false \
-                  -ldflags "-s -w" \
-                  -o "rebuilt/${name}" "./cmd/${command}"
-            done
-          done
-
-          ls -la rebuilt
+          # The same script the release build used. That is the whole point:
+          # a difference in flags between the two is indistinguishable from a
+          # difference in the binaries themselves.
+          chmod +x scripts/build.sh
+          ./scripts/build.sh "${TAG}" rebuilt
 
       - name: Compare
         run: |
