@@ -199,6 +199,29 @@ for statistics instead.
 *Enforced in:* `internal/httpapi.Server.readLimited`
 *Guarded by:* `TestReadEndpointsAreLimited`
 
+### A5 — A full limiter does not become a lock
+
+Every limiter here has a bounded map, because an unbounded one turns a rate
+limit into a way of exhausting memory. The bound has its own failure mode: if
+reaching it means refusing every client the service has not already seen, then
+one client able to produce many keys can shut the door on everybody.
+
+So a full map is swept first — it is usually stale rather than busy — and then
+one entry is dropped to make room. Which entry does not matter much; losing a
+bucket costs its owner a fresh allowance and nothing else. The map stays
+bounded and the service stays open, which is the pair of properties that has
+to hold together.
+
+The same reasoning governs what may become a key. X-Forwarded-For is written
+by the first client in the chain, so an entry that is not an address is not an
+identity: the connection's own address stands instead. Otherwise a client
+willing to send different nonsense on each request fills the map by itself.
+
+*Enforced in:* `internal/httpapi.limiter.makeRoomLocked`,
+`internal/httpapi.clientKey`
+*Guarded by:* `TestFullLimiterStillAdmitsNewClients`,
+`TestForgedForwardedForCannotMakeNewKeys`
+
 ---
 
 ## Privacy
@@ -233,6 +256,24 @@ A shared cache would hold what somebody scanned.
 
 *Enforced in:* `internal/httpapi.setSecurityHeaders`, `Cache-Control: no-store`
 *Guarded by:* `TestSecurityHeadersOnEveryResponse`
+
+### P4 — Session resumption is not offered
+
+A TLS session ticket is state the server hands to the client and reads back on
+its next connection. Nothing is stored here — the state travels inside the
+ticket — so it does not breach the promise about records directly.
+
+It breaches it indirectly, which is worse for being harder to see. Anyone
+watching the wire sees the same ticket presented twice and learns that two
+connections are the same person: across a change of address, across a change
+of network, across days. This project undertakes that nobody learns who asked
+about what from us. Handing a third party the means to work it out instead is
+the same undertaking broken by somebody else.
+
+What it costs is a full handshake per connection. The site is four small files
+and the certificate is ECDSA, so the exchange is one nobody will notice.
+
+*Enforced in:* `cmd/denyfirstd` — `SessionTicketsDisabled`
 
 ---
 

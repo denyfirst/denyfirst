@@ -125,3 +125,38 @@ func TestForgedEntryAtTheTrustedPositionFallsBack(t *testing.T) {
 		t.Errorf("clientKey = %q; a non-address at the trusted position must not become a key", got)
 	}
 }
+
+// The forced sweep walks the whole map under the lock. During a flood the map
+// is full continuously, so a sweep on every admission would be a cheaper
+// attack than the one it was added to prevent.
+func TestFloodDoesNotSweepOnEveryRequest(t *testing.T) {
+	const cap = 500
+
+	clock := time.Now()
+	l := newLimiter(5, time.Minute, cap, func() time.Time { return clock })
+
+	for i := range cap {
+		l.allow(fmt.Sprintf("resident:%d", i))
+	}
+
+	// The first admission past the cap forces a sweep, which is what it is
+	// for. What matters is the ones after it: everything in the map is fresh,
+	// so no sweep can reclaim anything, and every further admission needs an
+	// eviction instead.
+	l.allow("flood:first")
+	after := l.lastForced
+
+	// The clock does not move, which is the worst case: a burst arriving
+	// faster than the forced interval.
+	for i := range 2000 {
+		l.allow(fmt.Sprintf("flood:%d", i))
+	}
+
+	if l.lastForced != after {
+		t.Error("the forced sweep ran again inside one interval; a flood can buy a map walk per request")
+	}
+
+	if size := l.size(); size > cap {
+		t.Errorf("the map grew to %d against a cap of %d", size, cap)
+	}
+}
