@@ -5,8 +5,7 @@ name: Reproduce
 #
 # The binaries are built by build-release.yml on a runner like this one, so
 # this is not a formality: it confirms that what was published is what the
-# build produced, and that neither the assets nor anything between the two was
-# altered.
+# build produced, and that nothing between the two altered it.
 #
 # What it cannot confirm on its own is that the source was not altered before
 # the build. That is what the signature is for, and the two together are the
@@ -16,10 +15,18 @@ name: Reproduce
 # # The build command lives in scripts/build.sh
 #
 # Both this workflow and build-release.yml call it. That was not the original
-# arrangement: each had its own copy, and they drifted twice in one afternoon.
+# arrangement: each had its own copy, and they drifted twice in one afternoon
+# — once over which toolchain was installed and where, once over an ldflag
+# that one carried and the other did not. Each time ten hashes disagreed and
+# the failure looked exactly like a tampered binary.
+#
 # A reproduction check is only worth running if a mismatch means something,
 # and two copies of a build command guarantee that a mismatch eventually means
 # nothing at all.
+#
+# Nothing here signs anything. The signing key is deliberately absent from
+# GitHub, because a key stored here would let whoever compromised this account
+# sign a release, which is the attack the signature exists to prevent.
 
 on:
   release:
@@ -65,6 +72,30 @@ jobs:
           echo "── how the release was built ──"
           cat published/BUILD
 
+      - name: Fetch the build script from the default branch
+        run: |
+          set -euo pipefail
+
+          # Taken from the default branch rather than from the tag, because it
+          # may not exist there: the script was introduced after v0.1.0 was
+          # cut, and a release from before it would otherwise be
+          # unreproducible for ever.
+          #
+          # This is defensible on its own terms. The question a reproduction
+          # answers is whether the binaries correspond to the source, and a
+          # build command is not source — it is procedure. Both the release
+          # build and this one read the same procedure from the same place,
+          # which is what makes a mismatch mean something.
+          #
+          # The BUILD record names the script's hash, so a release built with
+          # an older procedure can say so rather than failing silently.
+          mkdir -p scripts
+          curl -fsSL \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/scripts/build.sh" \
+            -o scripts/build.sh
+          chmod +x scripts/build.sh
+          echo "buildscript $(sha256sum scripts/build.sh | cut -d' ' -f1)"
+
       - name: Report this toolchain
         run: |
           set -euo pipefail
@@ -81,12 +112,7 @@ jobs:
           echo "runner ${RUNNER_OS} ${RUNNER_ARCH}"
 
       - name: Build every target
-        run: |
-          # The same script the release build used. That is the whole point:
-          # a difference in flags between the two is indistinguishable from a
-          # difference in the binaries themselves.
-          chmod +x scripts/build.sh
-          ./scripts/build.sh "${TAG}" rebuilt
+        run: ./scripts/build.sh "${TAG}" rebuilt
 
       - name: Compare
         run: |
@@ -110,11 +136,11 @@ jobs:
           echo "The published binaries do NOT match a build of the tagged source."
           echo
           echo "Before assuming tampering, compare the two records printed above."
-          echo "A different Go version, a different GOROOT, or a different set of"
-          echo "build flags each produce ten mismatched hashes and look exactly"
-          echo "like an altered binary. Both have happened here, and neither was"
-          echo "an attack."
+          echo "A different Go version, a different GOROOT, or a different build"
+          echo "script each produce ten mismatched hashes and look exactly like an"
+          echo "altered binary. All three have happened here, and none was an"
+          echo "attack."
           echo
-          echo "If the toolchain and the flags agree and the hashes still do not,"
-          echo "that is the case this check exists for."
+          echo "If the toolchain and the build script agree and the hashes still"
+          echo "do not, that is the case this check exists for."
           exit 1
