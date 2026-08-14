@@ -41,6 +41,10 @@ type limiter struct {
 	mu        sync.Mutex
 	buckets   map[string]*bucket
 	lastSweep time.Time
+	// lastForced is separate from lastSweep because the two are rate limited
+	// for different reasons: one bounds routine housekeeping, the other
+	// bounds work an attacker can ask for.
+	lastForced time.Time
 }
 
 type bucket struct {
@@ -139,8 +143,24 @@ func (l *limiter) sweepLocked(now time.Time) {
 // thousand entries on every request during exactly the flood this exists to
 // survive.
 func (l *limiter) makeRoomLocked(now time.Time) {
-	l.lastSweep = time.Time{}
-	l.sweepLocked(now)
+	// A forced sweep, but not on every call.
+	//
+	// Walking the map is the expensive thing here and it happens under the
+	// lock. During a flood the map is full continuously, so forcing a sweep
+	// each time an entry is wanted would mean twenty thousand iterations per
+	// request — a cheaper attack than the one this function was added to
+	// prevent.
+	//
+	// Once a second is often enough to reclaim entries as they expire, and
+	// rare enough that the flood pays for eviction alone, which is constant
+	// time.
+	const forcedSweepEvery = time.Second
+
+	if now.Sub(l.lastForced) >= forcedSweepEvery {
+		l.lastForced = now
+		l.lastSweep = time.Time{}
+		l.sweepLocked(now)
+	}
 
 	if len(l.buckets) < l.maxKeys {
 		return
