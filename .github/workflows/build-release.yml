@@ -26,7 +26,7 @@ name: Build release artifacts
 # # Why a draft release rather than an artifact
 #
 # upload-artifact is a third-party action and this organisation allows none.
-# That is not caution about this particular action; it is that every step in
+# That is not caution about that particular action; it is that every step in
 # every workflow here is a shell command, so the only thing to audit is this
 # repository. The first attempt at this file used it and was refused before
 # the job started, which is the policy doing its work.
@@ -75,40 +75,55 @@ jobs:
           git checkout -q FETCH_HEAD
           echo "commit $(git rev-parse HEAD)"
 
+      - name: Fetch the build script from the default branch
+        run: |
+          set -euo pipefail
+
+          # From the default branch rather than the tag, so that this workflow
+          # and reproduce.yml read the same procedure even when the tag
+          # predates the script. Its hash goes into the BUILD record below, so
+          # a release built with an older procedure can say so.
+          mkdir -p scripts
+          curl -fsSL \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/scripts/build.sh" \
+            -o scripts/build.sh
+          chmod +x scripts/build.sh
+          echo "buildscript $(sha256sum scripts/build.sh | cut -d' ' -f1)"
+
       - name: Report the toolchain
         run: |
           go version
           go env GOROOT
 
       - name: Build
-        run: |
-          # One copy of this command, in scripts/build.sh, called by both this
-          # workflow and reproduce.yml. Two copies drifted twice in one
-          # afternoon and each time produced ten mismatched hashes that looked
-          # exactly like tampering.
-          chmod +x scripts/build.sh
-          ./scripts/build.sh "${TAG}" dist
+        run: ./scripts/build.sh "${TAG}" dist
 
       - name: Write the checksums and the build record
         run: |
           set -euo pipefail
+
+          # The record exists so a reproduction that fails can say why. Two Go
+          # versions produce different bytes from identical source, and so do
+          # two build scripts; without this, a mismatch is indistinguishable
+          # from tampering.
+          script_hash=$(sha256sum scripts/build.sh | cut -d' ' -f1)
+          commit=$(git rev-parse HEAD)
+          toolchain=$(go version)
+          goroot=$(go env GOROOT)
+
           cd dist
 
           # sha256sum's own format, so a reader can check it with sha256sum -c
           # and nothing else. Sorted by name for a stable file.
           sha256sum * | sort -k2 > SHA256SUMS
 
-          # The record exists so that a reproduction which fails can say why.
-          # Two Go versions produce different bytes from identical source, and
-          # so do two operating systems; without this, a mismatch is
-          # indistinguishable from tampering.
           {
             echo "tag ${TAG}"
-            echo "commit $(git rev-parse HEAD)"
-            echo "toolchain $(go version)"
-            echo "goroot $(go env GOROOT)"
+            echo "commit ${commit}"
+            echo "toolchain ${toolchain}"
+            echo "goroot ${goroot}"
             echo "runner ${RUNNER_OS} ${RUNNER_ARCH}"
-            echo "flags -trimpath -buildvcs=false -ldflags '-s -w'"
+            echo "buildscript ${script_hash}"
             echo "cgo disabled"
             echo "workflow ${GITHUB_RUN_ID}"
           } > BUILD
