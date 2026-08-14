@@ -2,21 +2,14 @@
 #
 # Builds every release artifact into a directory.
 #
-# This exists because the same command lived in two workflows and drifted
-# twice in one afternoon: once when one of them installed a toolchain to a
-# different GOROOT, and once when one carried -X main.version and the other
-# did not. Both times ten hashes disagreed, and both times the failure looked
-# exactly like a tampered binary.
+# One copy, called by both build-release.yml and reproduce.yml. Two copies of
+# a build command drift, and when they do, every hash disagrees and the
+# failure is indistinguishable from a tampered release. A reproduction check
+# is only worth running if a mismatch means something.
 #
-# A reproduction check is only worth running if a mismatch means something.
-# Two copies of a build command guarantee that a mismatch eventually means
-# nothing, and then nobody looks at it. So there is one copy, here, and both
-# build-release.yml and reproduce.yml call it.
-#
-# Nothing about the toolchain is arranged here either. The go directive in
-# go.mod names the version and Go's own mechanism fetches it into the module
-# cache; installing one somewhere else gives a different GOROOT, and -trimpath
-# does not reach GOROOT.
+# The toolchain is not arranged here either: the go directive in go.mod names
+# the version and Go's own mechanism fetches it. Installing one elsewhere
+# gives a different GOROOT, which -trimpath does not reach.
 #
 # Usage:
 #   scripts/build.sh v0.1.0 dist
