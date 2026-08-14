@@ -347,20 +347,17 @@ func loadStats(path string) (httpapi.Snapshot, error) {
 // was used and by how much, which is already published on the site, and
 // learns nothing about who used it or what they looked at.
 //
-// The write goes to a temporary file and is then renamed, because a process
-// killed mid-write would otherwise leave a truncated file that the next start
-// cannot read. Rename is atomic on the filesystems this runs on, so a reader
-// sees either the old file or the new one.
+// The write goes to a temporary file, is synced, and is then renamed. A
+// process killed mid-write would otherwise leave a truncated file the next
+// start cannot read, and a machine that loses power would otherwise come back
+// to a rename the disk never received. Rename is atomic on the filesystems
+// this runs on, so a reader sees either the old file or the new one.
 func saveStats(path string, snapshot httpapi.Snapshot) error {
 	body, err := json.Marshal(snapshot)
 	if err != nil {
 		return err
 	}
 
-	// Written to a temporary file and renamed, so a reader never sees a
-	// half-written figure, and synced before the rename, so a machine that
-	// loses power does not come back to a file the rename promised and the
-	// disk never received.
 	temporary := path + ".tmp"
 
 	// #nosec G304 -- the path is a command line flag, set by whoever started
