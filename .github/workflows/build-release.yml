@@ -1,33 +1,43 @@
 name: Build release artifacts
 
-# Builds the binaries for a tag and publishes them as an artifact, in public,
-# on a machine the maintainer does not control.
+# Builds the binaries for a tag on a machine the maintainer does not control,
+# in a log anyone can read, and leaves them in a draft release for signing.
 #
 # # Why the build is not done on the maintainer's machine
 #
-# The signature says a release came from whoever holds the key. It says
-# nothing about whether the binaries correspond to the source anyone can read,
-# and that is the more valuable claim: a compromised laptop could sign a
-# subtly altered scanner — a grading rule that always reports one server as
-# strong would be worth more to an attacker than a backdoor and far harder to
-# notice.
+# A signature says a release came from whoever holds the key. It says nothing
+# about whether the binaries correspond to the source anyone can read, and
+# that is the more valuable claim: a compromised laptop could sign a subtly
+# altered scanner, and a grading rule that always reports one server as strong
+# would be worth more to an attacker than a backdoor and far harder to notice.
 #
-# The reproduction check exists to close that, and it only closes it if it
-# actually runs. Cross-compiling from Windows produces different bytes to
+# The reproduction check exists to close that gap, and it closes nothing
+# unless it runs. Cross-compiling from Windows produces different bytes to
 # building on Linux, because GOROOT ends up in the runtime package and
 # -trimpath does not reach it. The check therefore failed on every honest
-# release, which is worse than having no check: a red mark nobody can act on
-# teaches everyone to ignore it.
+# release, which is worse than having no check at all: a red mark nobody can
+# act on teaches everyone to ignore it.
 #
-# So the build happens here, in a log anyone can read, and the maintainer
-# signs the result rather than producing it. Two separate parties are now
-# involved in a release: this workflow, which builds but cannot sign, and the
-# maintainer, who signs but does not build. Compromising either one alone
-# yields nothing.
+# So the build happens here and the maintainer signs the result rather than
+# producing it. Two parties are now involved in a release: this workflow,
+# which builds but cannot sign, and the maintainer, who signs but does not
+# build. Compromising either alone yields nothing.
 #
-# Nothing here signs anything. The key is deliberately absent from GitHub,
-# because a key stored in these secrets would let whoever took the account
-# sign a release, which is the attack the signature exists to prevent.
+# # Why a draft release rather than an artifact
+#
+# upload-artifact is a third-party action and this organisation allows none.
+# That is not caution about this particular action; it is that every step in
+# every workflow here is a shell command, so the only thing to audit is this
+# repository. The first attempt at this file used it and was refused before
+# the job started, which is the policy doing its work.
+#
+# A draft is invisible to anyone but the maintainer until published, so the
+# binaries wait here until every hash has been checked and the list signed.
+# Nothing reaches a user unsigned.
+#
+# Nothing here signs anything. The key is deliberately absent from GitHub: one
+# stored in these secrets would let whoever took the account sign a release,
+# which is the attack the signature exists to prevent.
 
 on:
   push:
@@ -46,8 +56,11 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    # Write, because this creates a draft release. Narrower is not possible:
+    # the release API has no read-only way to stage assets.
     permissions:
-      contents: read
+      contents: write
 
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
@@ -98,6 +111,10 @@ jobs:
           # and nothing else. Sorted by name for a stable file.
           sha256sum * | sort -k2 > SHA256SUMS
 
+          # The record exists so that a reproduction which fails can say why.
+          # Two Go versions produce different bytes from identical source, and
+          # so do two operating systems; without this, a mismatch is
+          # indistinguishable from tampering.
           {
             echo "tag ${TAG}"
             echo "commit $(git rev-parse HEAD)"
@@ -109,14 +126,34 @@ jobs:
             echo "workflow ${GITHUB_RUN_ID}"
           } > BUILD
 
+          echo "── SHA256SUMS ──"
           cat SHA256SUMS
           echo
+          echo "── BUILD ──"
           cat BUILD
 
-      - name: Publish the artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: denyfirst-${{ env.TAG }}
-          path: dist/
-          retention-days: 30
-          if-no-files-found: error
+      - name: Stage a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # Replaced rather than added to, so a rerun after a failed build does
+          # not leave half of one attempt beside half of another.
+          if gh release view "${TAG}" > /dev/null 2>&1; then
+            echo "a release for ${TAG} already exists; deleting it to rebuild"
+            gh release delete "${TAG}" --yes
+          fi
+
+          gh release create "${TAG}" dist/* \
+            --draft \
+            --title "${TAG}" \
+            --notes "Built by workflow run ${GITHUB_RUN_ID} from $(git rev-parse HEAD).
+
+          This draft has no signature yet. It becomes a release once the
+          maintainer has checked every hash against SHA256SUMS, signed that
+          file, and uploaded SHA256SUMS.sig."
+
+          echo
+          echo "Draft staged. The maintainer signs it with:"
+          echo "  .\\scripts\\release.ps1 -Tag ${TAG}"
