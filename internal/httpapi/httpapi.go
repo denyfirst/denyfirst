@@ -307,10 +307,26 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx, cancel := context.WithTimeout(r.Context(), s.limits.RequestTimeout)
+	defer cancel()
+
+	if err := s.sem.acquire(ctx); err != nil {
+		w.Header().Set("Retry-After", "5")
+		s.refuse(w, http.StatusServiceUnavailable, "too_busy",
+			"Too many scans are in flight. Try again shortly.")
+		return
+	}
+	defer s.sem.release()
+
 	// Every other limit here protects this service. This one protects the
 	// server about to be scanned, which had no say in the matter: one request
 	// becomes roughly thirty handshakes at the other end, and several users
 	// aiming at one host multiply that.
+	//
+	// Checked after the semaphore rather than before it. A slot spent on a
+	// request that is then turned away for being too busy is a slot the
+	// target loses for a scan that never reached it — a small unfairness in
+	// the one budget here that belongs to somebody else.
 	//
 	// The message does not name the target, and the limiter does not keep it
 	// either. See targetlimit.go for how a repeated host is recognised
@@ -323,17 +339,6 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 				"server in bulk. Try again in a moment.")
 		return
 	}
-
-	ctx, cancel := context.WithTimeout(r.Context(), s.limits.RequestTimeout)
-	defer cancel()
-
-	if err := s.sem.acquire(ctx); err != nil {
-		w.Header().Set("Retry-After", "5")
-		s.refuse(w, http.StatusServiceUnavailable, "too_busy",
-			"Too many scans are in flight. Try again shortly.")
-		return
-	}
-	defer s.sem.release()
 
 	result, err := s.scanner.Scan(ctx, net.JoinHostPort(host, port))
 	if err != nil {

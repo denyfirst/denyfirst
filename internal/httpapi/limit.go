@@ -75,8 +75,11 @@ func (l *limiter) allow(key string) bool {
 	b, found := l.buckets[key]
 	if !found {
 		if len(l.buckets) >= l.maxKeys {
-			// Refusing a new client is a worse outcome than serving it, and
-			// a better one than running out of memory.
+			l.makeRoomLocked(now)
+		}
+		if len(l.buckets) >= l.maxKeys {
+			// Nothing could be freed, which means the map is genuinely full
+			// of active clients. Refusing is the last resort.
 			return false
 		}
 		l.buckets[key] = &bucket{tokens: l.burst - 1, seen: now}
@@ -117,6 +120,34 @@ func (l *limiter) sweepLocked(now time.Time) {
 		if now.Sub(b.seen) > idle {
 			delete(l.buckets, key)
 		}
+	}
+}
+
+// makeRoomLocked frees a slot when the map has reached its cap.
+//
+// Refusing outright was the original behaviour and it had a failure mode
+// worth naming: one client able to produce many distinct keys fills the map,
+// and from then on every client the service has not seen before is turned
+// away. The limiter stops limiting anybody and starts excluding everybody,
+// which is a denial of service built out of a defence against one.
+//
+// So: sweep first, since a full map is usually a stale one and the periodic
+// sweep may not be due for another minute. If that frees nothing, drop a
+// single entry. Which entry hardly matters — Go randomises map iteration, so
+// this takes an arbitrary one, and losing a bucket costs its owner nothing
+// worse than a fresh allowance. Finding the oldest instead would walk twenty
+// thousand entries on every request during exactly the flood this exists to
+// survive.
+func (l *limiter) makeRoomLocked(now time.Time) {
+	l.lastSweep = time.Time{}
+	l.sweepLocked(now)
+
+	if len(l.buckets) < l.maxKeys {
+		return
+	}
+	for key := range l.buckets {
+		delete(l.buckets, key)
+		return
 	}
 }
 
@@ -168,7 +199,16 @@ func clientKey(r *http.Request, trustedProxies []netip.Prefix, trustedHops int) 
 			// usual mistake — reads whatever the client chose to send.
 			idx := len(parts) - trustedHops
 			if idx >= 0 && idx < len(parts) {
-				if candidate := strings.TrimSpace(parts[idx]); candidate != "" {
+				candidate := strings.TrimSpace(parts[idx])
+				// Only if it is an address. A proxy passes on what the
+				// previous hop sent, and the first hop is a client that
+				// writes whatever it likes — including a different piece of
+				// nonsense on every request. Each one would become a key of
+				// its own, and enough of them fill the map.
+				//
+				// Falling back to the connection's address keeps such a
+				// client limited as the single client it is.
+				if _, err := netip.ParseAddr(candidate); err == nil {
 					host = candidate
 				}
 			}
@@ -177,8 +217,10 @@ func clientKey(r *http.Request, trustedProxies []netip.Prefix, trustedHops int) 
 
 	addr, err := netip.ParseAddr(host)
 	if err != nil {
-		// Unparseable: key on the raw string so the request is still limited
-		// rather than escaping the limiter entirely.
+		// Reached only when the connection's own address is unparseable,
+		// which a working server does not produce. Keyed on the literal
+		// string so the request is still limited rather than escaping
+		// entirely, and constant so it cannot be used to make new keys.
 		return "raw:" + host
 	}
 

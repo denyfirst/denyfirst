@@ -211,6 +211,23 @@ func run() int {
 			GetCertificate: reloader.get,
 
 			MinVersion: tls.VersionTLS12,
+
+			// Session resumption is switched off.
+			//
+			// A ticket is a token the server hands out and the client
+			// presents on its next connection. Nothing is written down here
+			// — the state travels inside the ticket — but anyone watching
+			// the wire sees the same token twice and learns that two
+			// connections are the same person, across a change of address
+			// and across days.
+			//
+			// This service undertakes not to record who asked about what. A
+			// mechanism that lets somebody else do the correlating instead
+			// is the same promise broken by a different party, and the site
+			// is small enough that a full handshake each time costs nothing
+			// worth having.
+			SessionTicketsDisabled: true,
+
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
@@ -340,8 +357,25 @@ func saveStats(path string, snapshot httpapi.Snapshot) error {
 		return err
 	}
 
+	// Written to a temporary file and renamed, so a reader never sees a
+	// half-written figure, and synced before the rename, so a machine that
+	// loses power does not come back to a file the rename promised and the
+	// disk never received.
 	temporary := path + ".tmp"
-	if err := os.WriteFile(temporary, append(body, '\n'), 0o600); err != nil {
+
+	f, err := os.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(append(body, '\n')); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
 		return err
 	}
 	return os.Rename(temporary, path)
