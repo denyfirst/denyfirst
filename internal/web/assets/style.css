@@ -22,6 +22,12 @@
 
   --navy:        #22346b;
 
+  /* The brand red, the same value as the insecure verdict. A second red would
+     be a second thing to keep in step, and the palette is already as small as
+     it can usefully be. Named separately so that changing what a verdict looks
+     like does not silently change the masthead. */
+  --brand:       #9b1b24;
+
   --strong:      #1f5d3e;
   --weak:        #a6740c;
   --insecure:    #9b1b24;
@@ -45,6 +51,8 @@
     --rule:       #2b2f37;
 
     --navy:       #93a7e0;
+
+    --brand:      #e8757e;
 
     --strong:     #6fbf92;
     --weak:       #d9a23c;
@@ -101,6 +109,21 @@ a:hover { text-decoration-thickness: 2px; }
   letter-spacing: 0.02em;
   color: var(--ink);
   text-decoration: none;
+}
+
+/*
+  The name explains itself when the first half is set apart: deny, then first.
+  The dot closes it, so the mark reads as a finished statement rather than a
+  word — which is what the project is.
+
+  Red is also the colour of an insecure verdict, and the two appear on the same
+  screen. They do not read as the same thing: a verdict is boxed, capitalised
+  and widely spaced, and the masthead is none of those. The shape carries the
+  distinction, not the hue.
+*/
+.wordmark-deny,
+.wordmark-dot {
+  color: var(--brand);
 }
 
 .masthead-note {
