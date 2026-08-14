@@ -363,6 +363,10 @@ func saveStats(path string, snapshot httpapi.Snapshot) error {
 	// disk never received.
 	temporary := path + ".tmp"
 
+	// #nosec G304 -- the path is a command line flag, set by whoever started
+	// this process. No request reaches it, and an operator who can pass a
+	// flag can already write anywhere this process can. The rule is aimed at
+	// paths that come from a caller; this one has no caller.
 	f, err := os.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
