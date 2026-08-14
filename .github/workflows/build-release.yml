@@ -82,25 +82,12 @@ jobs:
 
       - name: Build
         run: |
-          set -euo pipefail
-          mkdir -p dist
-
-          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
-            os="${target%/*}"
-            arch="${target#*/}"
-
-            for command in denyfirst-scan denyfirstd; do
-              name="${command}_${TAG}_${os}_${arch}"
-              [ "$os" = "windows" ] && name="${name}.exe"
-
-              CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-                go build -trimpath -buildvcs=false \
-                  -ldflags "-s -w" \
-                  -o "dist/${name}" "./cmd/${command}"
-            done
-          done
-
-          ls -la dist
+          # One copy of this command, in scripts/build.sh, called by both this
+          # workflow and reproduce.yml. Two copies drifted twice in one
+          # afternoon and each time produced ten mismatched hashes that looked
+          # exactly like tampering.
+          chmod +x scripts/build.sh
+          ./scripts/build.sh "${TAG}" dist
 
       - name: Write the checksums and the build record
         run: |
