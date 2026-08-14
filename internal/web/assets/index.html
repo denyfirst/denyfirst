@@ -1,11 +1,11 @@
 <section class="ask">
-    <h1>Check what a server<br>actually negotiates.</h1>
-
-    <p class="lede">
-      Not what it advertises. This opens a real handshake at every TLS version,
-      works out which cipher suites the server will accept, and reads the
-      certificate chain it presents.
-    </p>
+    <!--
+      The whole claim in one sentence. It used to be a heading and a paragraph
+      beneath it, which said the same thing twice at two sizes; the second
+      half is the half that distinguishes this from every other checker, so it
+      belongs in the line people read rather than the line they skim past.
+    -->
+    <h1>Check what a server<br>actually negotiates,<br>not what it advertises.</h1>
 
     <form class="ask-form" id="scan-form" autocomplete="off">
       <label class="field-label" for="target">Hostname</label>
@@ -25,14 +25,23 @@
       </div>
       <p class="field-help" id="field-help">
         Port 443 unless you name another. Public hosts only. Scan only what you
-        are entitled to scan &mdash; see the <a href="/terms">terms</a>.
+        own, administer, or have permission to scan &mdash; the decision is
+        yours and the <a href="/terms">terms</a> say so plainly.
       </p>
     </form>
 
+    <!--
+      The explanation used to sit here in full: what a scan sends, where the
+      hostname travels, what is kept. All of it is now on the privacy page,
+      said better and at length, and a paragraph that repeats a link is a
+      paragraph the reader learns to skip.
+
+      What is left is the link, and the link says what is behind it. A reader
+      who wants the detail finds more than this could hold; a reader who does
+      not is no longer paying for it in screen space.
+    -->
     <p class="promise">
-      The hostname travels in the request body, never in the address bar, so it
-      stays out of your history and out of every proxy log on the way here.
-      Nothing about the scan is written down at this end either.
+      <a href="/privacy#scans">What a scan sends, and what this keeps</a>
     </p>
 
     <noscript>
