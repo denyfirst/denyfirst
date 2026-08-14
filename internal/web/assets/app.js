@@ -60,6 +60,13 @@ function sectionTitle(text) {
   return el("h2", "section-title", text);
 }
 
+// The verdict as the page should treat it. The field is omitted from the
+// response when nothing could be graded, and an absent value is not the same
+// as an unknown one: it means the scan reached nothing.
+function verdictOf(data) {
+  return data && data.verdict ? data.verdict : "ungraded";
+}
+
 function summary(data) {
   const wrap = el("div", "summary");
 
@@ -74,7 +81,7 @@ function summary(data) {
 
   wrap.appendChild(left);
 
-  const verdict = data.verdict || "ungraded";
+  const verdict = verdictOf(data);
   const stamp = el("div", "stamp " + verdictClass("stamp", verdict), verdict);
   if (!data.verdict) stamp.textContent = "not graded";
   wrap.appendChild(stamp);
@@ -82,12 +89,23 @@ function summary(data) {
   return wrap;
 }
 
-function findings(list) {
+function findings(list, verdict) {
   const frag = document.createDocumentFragment();
   frag.appendChild(sectionTitle("Findings"));
 
   if (!list || list.length === 0) {
-    frag.appendChild(el("p", "finding-body", "Nothing here fell short of the rules."));
+    // An empty list means two entirely different things and the difference is
+    // the one this project exists to insist on.
+    //
+    // After a scan that reached the server, it means nothing fell short. After
+    // one that reached nothing — a name that does not resolve, a port that
+    // refused every version — it means there was nothing to fall short of, and
+    // saying "nothing fell short of the rules" there reads as a pass. It is
+    // true and it is misleading, which is the worst combination a report can
+    // manage.
+    frag.appendChild(el("p", "finding-body", verdict === "ungraded"
+      ? "Nothing was measured, so nothing could be graded. This is not a clean result; it is an absent one."
+      : "Nothing here fell short of the rules."));
     return frag;
   }
 
@@ -245,18 +263,38 @@ function certificate(cert) {
   return frag;
 }
 
-function notes(list) {
+/*
+  What was not measured, kept in proportion to how much it matters.
+
+  A reader who is not told what was skipped will read silence as a clean
+  result, so this is never omitted. But three paragraphs of caveat under a
+  clean report is its own kind of noise, and a reader who meets it every time
+  stops reading it — which produces the same silence by a longer route.
+
+  So the summary is always visible and always counts them, and the detail
+  opens on request. Except where it is the whole story: a report that graded
+  nothing has nothing else to say, and there the limits are the finding.
+*/
+function notes(list, verdict) {
   if (!list || !list.length) return document.createDocumentFragment();
 
   const frag = document.createDocumentFragment();
-  // Given the same weight as the findings. A reader who is not told what was
-  // skipped will read silence as a clean result.
-  frag.appendChild(sectionTitle("What this did not measure"));
+  const alwaysOpen = verdict === "ungraded" || verdict === "insecure";
+
+  const box = el("details", "not-measured");
+  box.open = alwaysOpen;
+
+  const head = el("summary", "not-measured-head");
+  head.appendChild(el("span", "not-measured-title", "What this did not measure"));
+  head.appendChild(el("span", "not-measured-count",
+    list.length === 1 ? "1 limit" : list.length + " limits"));
+  box.appendChild(head);
 
   const ul = el("ul", "notes");
   for (const note of list) ul.appendChild(el("li", null, note));
-  frag.appendChild(ul);
+  box.appendChild(ul);
 
+  frag.appendChild(box);
   return frag;
 }
 
@@ -276,13 +314,19 @@ function show(node) {
 }
 
 function render(data) {
+  // Read once. data.verdict is absent rather than "ungraded" when nothing was
+  // graded, so every section that cares has to be given the resolved value —
+  // passing data.verdict straight through would hand them undefined at
+  // exactly the moment the distinction matters most.
+  const verdict = verdictOf(data);
+
   const frag = document.createDocumentFragment();
   frag.appendChild(summary(data));
-  frag.appendChild(findings(data.findings));
+  frag.appendChild(findings(data.findings, verdict));
   frag.appendChild(versions(data.tls));
   frag.appendChild(ciphers(data.tls));
   frag.appendChild(certificate(data.certificate));
-  frag.appendChild(notes(data.notes));
+  frag.appendChild(notes(data.notes, verdict));
   show(frag);
 }
 
@@ -378,8 +422,7 @@ async function showTally() {
     }
 
     tally.textContent =
-      total + " scans" + since +
-      ". This count is the only trace any of them left: no hostname, no address, no time.";
+      total + " scans" + since + ". The only trace any of them left.";
     tally.hidden = false;
   } catch {
     // A missing counter is not worth an error on the page.

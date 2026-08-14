@@ -264,6 +264,71 @@ func TestPageWorksWithoutScript(t *testing.T) {
 	}
 }
 
+// The home page carries the tool and a link, and the explanation lives on the
+// page written for it. A paragraph that repeats a link is a paragraph the
+// reader learns to skip, and the skipping generalises.
+func TestHomePageDoesNotRepeatThePrivacyPage(t *testing.T) {
+	page := get(t, "/").Body.String()
+
+	if !strings.Contains(page, `href="/privacy#scans"`) {
+		t.Error("the home page does not link to the explanation of what a scan sends")
+	}
+
+	// Wording that used to be duplicated here and is now only on /privacy.
+	for _, moved := range []string{
+		"out of every proxy log",
+		"real handshake at every TLS version",
+		"written down at this end",
+	} {
+		if strings.Contains(page, moved) {
+			t.Errorf("the home page still repeats %q, which the privacy page says at length", moved)
+		}
+	}
+
+	// The one line that has to stay: it is what the tool is for.
+	//
+	// Matched without regard to case, because the line lives in the heading
+	// now and lost its capital when it moved there. What matters is that the
+	// claim is still made, not where the sentence happens to break.
+	if !strings.Contains(strings.ToLower(page), "not what it advertises") {
+		t.Error("the home page no longer says what it is for")
+	}
+}
+
+// An empty findings list means two different things, and the script has to
+// tell them apart. "Nothing fell short of the rules" under a scan that
+// reached nothing is true and reads as a pass, which is the single worst
+// thing a report of this kind can do.
+//
+// This checks the script rather than a rendered page, because the page is
+// assembled in the browser. It is a shape check: the wording is there and the
+// branch that chooses it is there.
+func TestEmptyFindingsDistinguishesCleanFromAbsent(t *testing.T) {
+	script, err := assets.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("reading the script: %v", err)
+	}
+	source := string(script)
+
+	for _, required := range []string{
+		"Nothing here fell short of the rules.",
+		"Nothing was measured, so nothing could be graded.",
+		`verdict === "ungraded"`,
+	} {
+		if !strings.Contains(source, required) {
+			t.Errorf("the script does not contain %q", required)
+		}
+	}
+
+	// The resolved verdict has to reach both sections. Passing data.verdict
+	// straight through hands them undefined exactly when the distinction
+	// matters, because the field is omitted rather than set to "ungraded".
+	if strings.Contains(source, "notes(data.notes, data.verdict)") ||
+		strings.Contains(source, "findings(data.findings, data.verdict)") {
+		t.Error("a section is given data.verdict, which is absent for an ungraded scan; give it the resolved value")
+	}
+}
+
 // One page now answers what used to be three. An administrator who arrives
 // from a scanning notice needs two things immediately — what was sent, and
 // how to stop it — and a reader worried about privacy needs a third. All must

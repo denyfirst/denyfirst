@@ -442,6 +442,53 @@ h1 {
   border-left: 1px solid var(--rule);
 }
 
+/*
+  The limits of a scan, folded.
+
+  They are never hidden — the count is in the summary line, so a reader sees
+  that there are three of them before deciding whether to read three of them.
+  Silence would be the failure; a heading that has to be opened is not
+  silence.
+
+  The marker is the browser's own triangle, kept rather than replaced. It is
+  the one affordance every reader already knows, and a redrawn one would be a
+  smaller triangle that means the same thing.
+*/
+.not-measured {
+  margin: 2.6rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--rule);
+}
+
+.not-measured-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+  padding: 0.35rem 0;
+  list-style-position: outside;
+}
+
+.not-measured-head::-webkit-details-marker { color: var(--ink-faint); }
+.not-measured-head::marker { color: var(--ink-faint); }
+
+.not-measured-title,
+.not-measured-count {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--ink-faint);
+}
+
+.not-measured-count { flex: 0 0 auto; }
+
+.not-measured:hover .not-measured-title,
+.not-measured[open] .not-measured-title { color: var(--ink-soft); }
+
+.not-measured .notes { margin-top: 0.7rem; }
+
 .failure {
   max-width: var(--measure);
   margin: 2rem 0 0;
