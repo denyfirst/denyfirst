@@ -73,27 +73,21 @@ try {
 
     # ── Fetch what the workflow built ──────────────────────────────────────
     #
-    # The run is found by tag rather than by number, so this cannot
-    # accidentally sign the artifacts of a different release.
+    # The workflow leaves a draft release. A draft is invisible to anyone but
+    # the maintainer, so the binaries sit there unsigned without anybody being
+    # able to download them, which is the property that makes this safe to do
+    # in two steps.
 
-    Write-Host "Looking for a completed build of $Tag" -ForegroundColor Cyan
+    Write-Host "Downloading the draft release for $Tag" -ForegroundColor Cyan
 
-    $runs = gh run list --workflow=build-release.yml --json databaseId,headBranch,status,conclusion --limit 20 | ConvertFrom-Json
-    $run = $runs | Where-Object { $_.headBranch -eq $Tag -and $_.conclusion -eq 'success' } | Select-Object -First 1
-
-    if (-not $run) {
-        throw "No successful build for $Tag. Push the tag and wait for the workflow, or start it with:`n  gh workflow run build-release.yml -f tag=$Tag"
+    New-Item -ItemType Directory -Path $dist | Out-Null
+    gh release download $Tag --dir $dist --clobber
+    if ($LASTEXITCODE -ne 0) {
+        throw "No release found for $Tag. Push the tag and wait for build-release.yml, or start it with:`n  gh workflow run build-release.yml -f tag=$Tag"
     }
 
-    Write-Host "  run $($run.databaseId)" -ForegroundColor DarkGray
-    gh run download $run.databaseId --dir $dist
-    if ($LASTEXITCODE -ne 0) { throw 'Could not download the artifact.' }
-
-    # upload-artifact nests the files under the artifact name.
-    $inner = Get-ChildItem -Path $dist -Directory | Select-Object -First 1
-    if ($inner) {
-        Get-ChildItem -Path $inner.FullName | Move-Item -Destination $dist
-        Remove-Item -Recurse -Force $inner.FullName
+    if (Test-Path (Join-Path $dist 'SHA256SUMS.sig')) {
+        Write-Warning "This release already carries a signature. Signing again replaces it."
     }
 
     $checksums = Join-Path $dist 'SHA256SUMS'
@@ -212,9 +206,10 @@ try {
         Write-Warning ".allowed_signers is missing, so the signature was not checked the way a user would."
     }
 
-    Write-Host "`nReady in dist\" -ForegroundColor Green
-    Write-Host "Publish with:" -ForegroundColor Green
-    Write-Host "  gh release create $Tag dist\* --title $Tag --notes 'notes'" -ForegroundColor DarkGray
+    Write-Host "`nSigned." -ForegroundColor Green
+    Write-Host "Upload the signature and publish:" -ForegroundColor Green
+    Write-Host "  gh release upload $Tag dist\SHA256SUMS.sig --clobber" -ForegroundColor DarkGray
+    Write-Host "  gh release edit $Tag --draft=false" -ForegroundColor DarkGray
 }
 finally {
     Pop-Location
