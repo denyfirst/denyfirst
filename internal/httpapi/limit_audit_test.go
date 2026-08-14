@@ -139,17 +139,23 @@ func TestFloodDoesNotSweepOnEveryRequest(t *testing.T) {
 		l.allow(fmt.Sprintf("resident:%d", i))
 	}
 
-	// Everything is fresh, so no sweep can reclaim anything and every
-	// admission needs an eviction. The clock does not move, which is the
-	// worst case: a burst arriving faster than the forced interval.
-	before := l.lastForced
+	// The first admission past the cap forces a sweep, which is what it is
+	// for. What matters is the ones after it: everything in the map is fresh,
+	// so no sweep can reclaim anything, and every further admission needs an
+	// eviction instead.
+	l.allow("flood:first")
+	after := l.lastForced
+
+	// The clock does not move, which is the worst case: a burst arriving
+	// faster than the forced interval.
 	for i := range 2000 {
 		l.allow(fmt.Sprintf("flood:%d", i))
 	}
 
-	if l.lastForced != before {
-		t.Error("the forced sweep ran more than once inside one interval")
+	if l.lastForced != after {
+		t.Error("the forced sweep ran again inside one interval; a flood can buy a map walk per request")
 	}
+
 	if size := l.size(); size > cap {
 		t.Errorf("the map grew to %d against a cap of %d", size, cap)
 	}
