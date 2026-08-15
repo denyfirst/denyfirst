@@ -47,6 +47,12 @@ const contentSecurityPolicy = "default-src 'none'; " +
 	"frame-ancestors 'none'; " +
 	"base-uri 'none'"
 
+// SecurityTxtPath is where RFC 9116 requires the file to be served.
+//
+// Exported because the test parses the same file the handler serves, and a
+// second copy of this string is a second thing to keep in step.
+const SecurityTxtPath = "/.well-known/security.txt"
+
 // page is one rendered document.
 type page struct {
 	Title       string
@@ -92,13 +98,21 @@ var pages = map[string]*page{
 	},
 }
 
-// moved are paths that used to be pages of their own.
+// moved are paths that used to be pages of their own, or that a reader is
+// likely to guess.
 //
 // A permanent redirect rather than a 404, because the old address is the one
 // printed on a scanning notice and may be sitting in somebody's notes.
+//
+// /security.txt is here for a different reason. RFC 9116 puts the file under
+// /.well-known/ and treats the top-level path as legacy, but a person looking
+// for a way to report a vulnerability will try the short one, and answering
+// that with a 404 costs a report. Redirecting rather than serving two copies
+// keeps the canonical URL in the file true.
 var moved = map[string]string{
-	"/scanning": "/privacy#scans",
-	"/about":    "/privacy",
+	"/scanning":     "/privacy#scans",
+	"/about":        "/privacy",
+	"/security.txt": SecurityTxtPath,
 }
 
 // files are the assets served as they are.
@@ -106,9 +120,10 @@ var files = map[string]struct {
 	name        string
 	contentType string
 }{
-	"/style.css":   {"assets/style.css", "text/css; charset=utf-8"},
-	"/app.js":      {"assets/app.js", "text/javascript; charset=utf-8"},
-	"/favicon.svg": {"assets/favicon.svg", "image/svg+xml"},
+	"/style.css":    {"assets/style.css", "text/css; charset=utf-8"},
+	"/app.js":       {"assets/app.js", "text/javascript; charset=utf-8"},
+	"/favicon.svg":  {"assets/favicon.svg", "image/svg+xml"},
+	SecurityTxtPath: {"assets/security.txt", "text/plain; charset=utf-8"},
 }
 
 // rendered holds every page as finished bytes.
