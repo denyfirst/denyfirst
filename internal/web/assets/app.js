@@ -76,6 +76,11 @@ function summary(data) {
   const address = data.tls && data.tls.address;
   const meta = [];
   if (address) meta.push(address);
+  // The negotiated application protocol, when one was agreed. It costs a
+  // word and answers a question a reader would otherwise open a terminal
+  // for. Attacker-chosen, like every other value here, and reaching
+  // textContent rather than a parser for the same reason.
+  if (data.tls && data.tls.alpn) meta.push(data.tls.alpn);
   if (data.policy) meta.push("graded by " + data.policy);
   if (meta.length) left.appendChild(el("p", "summary-meta", meta.join("  ·  ")));
 
@@ -212,7 +217,28 @@ function ciphers(tls) {
   return frag;
 }
 
-function certificate(cert) {
+// The four states a reader has to be able to tell apart. Returns undefined
+// when the report says nothing about revocation, so the row is left out
+// entirely rather than filled with a guess.
+function revocationText(revocation, tls) {
+  if (!revocation) return undefined;
+
+  const stapled = !!(tls && tls.ocspStapled);
+  const mustStaple = !!revocation.mustStaple;
+  const responders = Number(revocation.responderCount) || 0;
+
+  if (mustStaple && !stapled) {
+    return "the certificate requires a stapled response and none was sent";
+  }
+  if (mustStaple) return "stapled, and the certificate requires it";
+  if (stapled) return "a status response was stapled";
+  if (responders > 0) {
+    return "not stapled; the certificate names a responder a client would have to ask";
+  }
+  return "not stapled; the certificate names no responder, so there is none to send";
+}
+
+function certificate(cert, tls) {
   if (!cert || !Array.isArray(cert.chain) || !cert.chain.length) {
     return document.createDocumentFragment();
   }
@@ -257,6 +283,15 @@ function certificate(cert) {
   }
 
   pair("Chain", cert.chain.length + (cert.trusted ? " certificates, trusted" : " certificates, not trusted"));
+
+  // What the certificate asks for, and what the handshake carried.
+  //
+  // Four states rather than a tick. "Not stapled" alone reads as a fault,
+  // and for a certificate issued now it usually is not one: authorities are
+  // no longer required to run OCSP, and several have stopped. The
+  // distinction between a server that could staple and did not and one that
+  // has nothing to staple is the whole content of this line.
+  pair("Revocation", revocationText(cert.revocation, tls));
   pair("SHA-256", leaf.fingerprintSha256);
 
   frag.appendChild(pairs);
@@ -325,7 +360,7 @@ function render(data) {
   frag.appendChild(findings(data.findings, verdict));
   frag.appendChild(versions(data.tls));
   frag.appendChild(ciphers(data.tls));
-  frag.appendChild(certificate(data.certificate));
+  frag.appendChild(certificate(data.certificate, data.tls));
   frag.appendChild(notes(data.notes, verdict));
   show(frag);
 }

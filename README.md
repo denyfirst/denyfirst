@@ -122,6 +122,15 @@ still valid would tell it which certificate somebody is looking at. A chain
 reported as trusted reaches a root and is in date; it may still have been
 revoked, and the report says so.
 
+The report does say whether the server stapled a status response, because
+that arrives in the handshake and costs nobody anything to observe. It says
+no more: the response is not parsed, its signature is not verified, and its
+serial is not matched against the certificate. A missing staple is a fact
+rather than a fault — certificate authorities are no longer required to run
+OCSP and several have stopped — so it is not graded. The one graded case is a
+certificate that demands stapling under RFC 7633 and does not get it, which
+breaks the connection for every client that honours the extension.
+
 **No port scanning.** Only ports that speak TLS from the first byte: 443,
 8443, 465, 636, 990, 993, 995 and 5061.
 
@@ -160,6 +169,8 @@ survives a caller that does not exist yet.
 
 ## Verifying and contributing
 
+- [`/.well-known/security.txt`](https://denyfirst.dev/.well-known/security.txt)
+  — the machine-readable contact, in the RFC 9116 format
 - [`docs/invariants.md`](docs/invariants.md) — what the project guarantees,
   where each guarantee is enforced, and which test protects it
 - [`SECURITY.md`](SECURITY.md) — reporting a vulnerability

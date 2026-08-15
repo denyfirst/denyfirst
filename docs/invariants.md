@@ -30,14 +30,32 @@ Private, loopback, link-local, multicast, and reserved ranges are refused
 before any connection is made. IPv4-mapped IPv6 forms are unmapped first, so
 `::ffff:169.254.169.254` is treated as the link-local address it is.
 
+An IPv6 address can also carry an IPv4 address without being mapped, and no
+predicate in the standard library looks inside one. `::127.0.0.1` is the
+deprecated IPv4-compatible form from RFC 4291: `IsLoopback` returns false for
+it, `Unmap` leaves it alone, and before this was written it reached the
+dialler as an ordinary global address. Teredo does the same at a different
+offset, 6to4 and NAT64 at two more. Each family needs a prefix of its own, and
+`2001::/23` covers several at once because IANA reserved that block for
+exactly this kind of assignment.
+
 The hostname is resolved once and the resolved literal is dialled, so a name
 that answers differently on a second lookup cannot redirect the connection
 after it was checked.
 
+This is a deny list, which is the shape this document argues against. The
+reason is stated rather than hidden: the standard library has no predicate for
+"inside a range IANA has delegated to somebody", so an allow list would mean
+carrying the delegation registry and keeping it current. A range added to the
+special-purpose registry after the list was written is not covered until
+somebody adds it.
+
 *Enforced in:* `internal/safedial`, by default in `safedial.Dialer`
 *Reached through:* `tlsprobe.Prober.dial`, which selects safedial when
 `Dial` is nil
-*Guarded by:* `TestCheckAddrBlocks`, `TestDefaultDialerRefusesPrivateTargets`,
+*Guarded by:* `TestCheckAddrBlocks`, `TestEmbeddedIPv4FormsAreBlocked`,
+`TestSpecialPurposeBlockDoesNotReachDelegatedSpace`,
+`TestDefaultDialerRefusesPrivateTargets`,
 `TestZeroScannerRefusesPrivateTargets`, `TestPrivateTargetsAreRefused`
 
 ### N2 — The HTTP service cannot be configured to reach private addresses
@@ -304,7 +322,8 @@ IANA registry, and gives no way to choose among TLS 1.3 suites. A report that
 omits this reads as exhaustive.
 
 *Enforced in:* `internal/tlsprobe`, the `Notes` field
-*Guarded by:* review — **no test asserts the notes are present**, which is a gap
+*Guarded by:* `TestSupportedVersionsCarryTheCoverageNote`,
+`TestZeroTimestampCountIsExplained`
 
 ### R3a — Revocation is not checked, and the report says so
 
@@ -314,12 +333,60 @@ been revoked.
 Checking would defeat the point of the service: asking a certificate
 authority whether a serial is still good tells that authority which
 certificate somebody is looking at, and querying a transparency log does the
-same. A stapled response could be validated without asking anyone, which is
-worth doing later; until then the gap is named in every report rather than
-left for a reader to discover.
+same. No connection is ever opened to a responder.
 
 *Enforced in:* `internal/certinfo.Analyse`, in the notes
 *Guarded by:* `TestRevocationIsDeclaredUnchecked`
+
+### R3b — A stapled response is reported, not believed
+
+A status response that arrives in the handshake costs nothing to observe: it
+is already on the wire and no third party learns anything. So the report says
+whether one arrived.
+
+It says no more than that. The response is not parsed, its signature is not
+verified against the issuer, its dates are not compared against the clock, and
+the serial it describes is not matched against the certificate in hand. A
+report that prints "stapled" and stops has told a reader that revocation was
+checked, which is the distance between an observation and a guarantee.
+
+Absence of a staple is reported and not graded. The CA/Browser Forum no longer
+requires certificate authorities to run OCSP and several have withdrawn it, so
+a certificate issued now may name no responder at all; marking a server down
+for failing to send a response nothing exists to produce would penalise a
+correct configuration, which R6 forbids. The certificate's own CRL
+distribution points decide which of the three sentences a reader gets, so the
+report does not claim a list exists where none does.
+
+One thing here is graded. A certificate carrying the RFC 7633 TLS Feature
+extension has instructed clients to refuse the connection without a status
+response. A server that then sends none is not falling short of an outside
+recommendation; it is falling short of its own certificate, and clients that
+honour the extension close the connection.
+
+*Enforced in:* `internal/policy.GradeStapling`, joined in `internal/scan.Scan`
+from `tlsprobe`'s observation and `certinfo`'s reading of the leaf
+*Guarded by:* `TestGradeStaplingGradesOnlyTheBrokenPromise`,
+`TestStapledNoteDoesNotClaimTheResponseWasChecked`,
+`TestUnstapledNotesDistinguishThreeSituations`,
+`TestListClaimIsNotMadeWithoutAList`, `TestMissingStapleIsNotAFinding`
+
+### R3c — A count of zero timestamps says what it excludes
+
+Signed certificate timestamps reach a client one of two ways: delivered in the
+handshake, or embedded in the certificate. This probe reads the first and not
+the second, and almost every authority uses the second — so a certificate that
+is properly logged, and that every browser accepts on exactly those grounds,
+reports none.
+
+The figure is published in the JSON, so somebody will read it. Either it is
+explained or it is a claim that most of the web is absent from certificate
+transparency. Counting the embedded timestamps is the honest fix and is listed
+under Known gaps until it is written.
+
+*Enforced in:* `internal/tlsprobe.Probe`, in the notes
+*Guarded by:* `TestZeroTimestampCountIsExplained`,
+`TestTimestampNoteIsAbsentWhenNothingWasReached`
 
 ### R4 — Nothing measured is not the same as passing
 
@@ -373,6 +440,41 @@ misissuance.
 
 ---
 
+## Disclosure
+
+### D1 — A reporter can find a way to reach us, and the way is current
+
+`security.txt` is served at `/.well-known/security.txt` over HTTPS, in the
+format RFC 9116 defines. `/security.txt` redirects there rather than serving a
+second copy, so the canonical URL in the file stays true.
+
+The `Expires` date in that file is the only copy of it, and a test parses the
+served bytes rather than a constant beside them. The test fails sixty days
+before the date passes.
+
+An expired `security.txt` is worse than none. A parser treats it as stale, and
+a person reads it as a project that stopped paying attention — which is the
+opposite of what publishing one is for. Sixty days is enough to notice a
+failing build, decide the contacts are still right, and merge a change without
+hurrying.
+
+The file names `security@denyfirst.dev` for vulnerabilities and points a
+domain owner at `abuse@denyfirst.dev` for exclusion requests. Those are
+different queues: a takedown request sitting behind an embargoed report helps
+nobody.
+
+There is deliberately no `Encryption` field. RFC 9116 recommends one, and
+pointing it at a key that does not exist would be worse than omitting it — a
+reporter would encrypt to whatever is published and believe the message was
+protected. The absence is stated in the file rather than left silent, and is
+listed under Known gaps.
+
+*Enforced in:* `internal/web`, the route table and `assets/security.txt`
+*Guarded by:* `TestSecurityTxtIsServedAtTheWellKnownPath`,
+`TestLegacySecurityTxtPathRedirects`, `TestSecurityTxtHasTheRequiredFields`,
+`TestSecurityTxtExpiryIsMovedByAPerson`,
+`TestSecurityTxtDoesNotSendExclusionRequestsToSecurity`
+
 ## Supply chain
 
 ### S1 — No third-party dependencies
@@ -398,17 +500,31 @@ working.
 
 Listed rather than hidden. An unnamed gap is a surprise; a named one is work.
 
-- **P1 and R3 have no tests.** Both are enforced by review, which is the
-  weakest form of enforcement this document argues against.
-- **No server binary exists yet.** `httpapi.Server` is an `http.Handler` with
-  nothing listening. The timeouts that matter against Slowloris —
-  `ReadHeaderTimeout` in particular — live on `http.Server` and are therefore
-  not yet set anywhere.
-- **CI installs its tools with `@latest`.** The Go module proxy verifies each
-  download against the checksum database, which is stronger than a git tag,
-  but the version is still whatever exists on the day.
-- **Release artifacts are not signed.** Nothing lets a user verify that a
-  binary came from a particular commit.
-- **No fuzzing.** The certificate and target parsers take untrusted input and
-  have only example-based tests.
+A stale list is worse than no list, because a reader takes it as current. Four
+entries were removed when this was last read: the server binary, the pinned CI
+tools, release signing, and fuzzing all exist now. Anything below is open
+today.
+
+- **Embedded certificate timestamps are not counted.** R3c states the
+  consequence in every report, which is the weaker half of the fix. Reading
+  the SignedCertificateTimestampList extension would let the figure mean what
+  a reader assumes it means.
+- **A stapled response is observed, not validated.** R3b. Verifying one needs
+  an OCSP parser and a signature check against the issuer, and this project
+  carries no dependency that would provide either.
+- **`security.txt` publishes no key.** D1. A reporter with something sensitive
+  has no way to encrypt a first message.
+- **`-trusted-proxy-hops` is a flag that cannot take effect.** `TrustedProxies`
+  is never populated from the command line, so `withDefaults` silently returns
+  the hop count to zero. It fails safe and it misleads: an operator who sets it
+  believes X-Forwarded-For is being read and it is not.
+- **An address family that cannot be reached is not named.** The dialler
+  resolves both families and tries up to eight addresses. On a host with IPv6
+  disabled, a target with many AAAA records can spend that budget on
+  unreachable addresses and be reported as unreachable, with no note saying
+  why. R3 requires the opposite.
+- **HSTS asserts `preload` without a redirect on port 80.** The header claims
+  membership the site cannot currently apply for.
+- **P1 has no test.** Enforced by review, which is the weakest form of
+  enforcement this document argues against.
 - **No independent review.** Nobody outside this project has read the code.

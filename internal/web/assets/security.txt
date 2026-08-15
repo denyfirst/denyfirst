@@ -1,0 +1,40 @@
+# denyfirst — how to report a security problem
+#
+# RFC 9116. Everything after a # is a comment and is ignored by parsers;
+# the machine-readable fields are the unindented lines below.
+#
+# This file is embedded in the binary and served from /.well-known/
+# security.txt only. /security.txt redirects here, because a reporter who
+# guesses the old location should not meet a 404.
+#
+# The Expires date below is the only copy of it. A test in internal/web
+# parses this file and fails sixty days before the date passes, so it is
+# moved by somebody who has re-read the contacts rather than by a timer.
+# An expired security.txt is worse than none: a parser treats it as stale
+# and a reporter reads it as abandoned.
+
+Contact: mailto:security@denyfirst.dev
+Expires: 2027-08-01T00:00:00Z
+Preferred-Languages: en, az
+Canonical: https://denyfirst.dev/.well-known/security.txt
+Policy: https://github.com/denyfirst/denyfirst/blob/main/SECURITY.md
+
+# There is deliberately no Encryption field yet.
+#
+# RFC 9116 recommends one, and pointing it at a key that does not exist
+# would be worse than omitting it: a reporter would encrypt to whatever is
+# published and believe the message was protected. Until a key is published
+# and its fingerprint can be checked against a second source, this field
+# stays absent and the absence is stated here rather than left silent.
+#
+# A report that needs encryption should say so in a first message that
+# contains nothing sensitive.
+#
+# This file is not signed for the same reason. A clearsigned security.txt
+# is worth having only once the verifying key is reachable independently
+# of this domain.
+
+# A domain owner asking to be excluded from scanning should write to
+# abuse@denyfirst.dev instead. That is an operational request rather than a
+# vulnerability report and is answered separately.
+# See https://denyfirst.dev/privacy

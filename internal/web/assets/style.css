@@ -460,14 +460,31 @@ h1 {
   border-top: 1px solid var(--rule);
 }
 
+/*
+  Two display declarations, and the order is the point.
+
+  A summary draws its triangle because the user agent gives it
+  display: list-item. Setting display: flex replaces that outer display and
+  the triangle goes with it — which is how the comment above came to promise
+  a marker the stylesheet had already removed.
+
+  The two-value syntax keeps both: list-item for the marker, flex for the
+  layout. A browser that does not understand it ignores the second line and
+  keeps the first, which is exactly the behaviour this file had before.
+
+  The marker becomes the first flex item when it is drawn, so the count is
+  pushed right with margin-left rather than with justify-content. That places
+  it correctly whether there are two items or three, so the fallback and the
+  modern path lay out the same.
+*/
 .not-measured-head {
   display: flex;
+  display: list-item flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: 0.55rem;
   cursor: pointer;
   padding: 0.35rem 0;
-  list-style-position: outside;
+  list-style-position: inside;
 }
 
 .not-measured-head::-webkit-details-marker { color: var(--ink-faint); }
@@ -482,7 +499,7 @@ h1 {
   color: var(--ink-faint);
 }
 
-.not-measured-count { flex: 0 0 auto; }
+.not-measured-count { flex: 0 0 auto; margin-left: auto; }
 
 .not-measured:hover .not-measured-title,
 .not-measured[open] .not-measured-title { color: var(--ink-soft); }
