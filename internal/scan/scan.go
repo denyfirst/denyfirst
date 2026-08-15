@@ -65,6 +65,14 @@ type Result struct {
 
 	TLS         *tlsprobe.Report `json:"tls,omitempty"`
 	Certificate *certinfo.Report `json:"certificate,omitempty"`
+
+	// Stapling grades the status response against what the certificate asked
+	// for. It is neither a transport property nor a certificate property: the
+	// request is written in the certificate and the answer arrives in the
+	// handshake, so it can only be judged once both are in hand. Absent when
+	// no handshake completed, because a question about a response nobody
+	// could have sent has no answer.
+	Stapling *policy.StapleFinding `json:"stapling,omitempty"`
 }
 
 // Scanner runs one scan. The zero value is usable, dials through safedial,
@@ -166,6 +174,21 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 		}
 		out.Certificate = certReport
 		out.Verdict = policy.Worst(out.Verdict, certReport.Verdict)
+
+		// The join. tlsprobe saw whether a response arrived; certinfo read
+		// whether one was demanded and whether one could exist. Grading
+		// either half alone produces the two mistakes this rule is written to
+		// avoid: marking a server down for not stapling a response no
+		// authority publishes, or passing one that ignores its own
+		// certificate's instruction to staple.
+		stapling := policy.GradeStapling(policy.StapleFacts{
+			Stapled:      tlsReport.OCSPStapled,
+			MustStaple:   certReport.Revocation.MustStaple,
+			HasResponder: certReport.Revocation.ResponderCount > 0,
+			HasCRL:       certReport.Revocation.CRLCount > 0,
+		})
+		out.Stapling = &stapling
+		out.Verdict = policy.Worst(out.Verdict, stapling.Verdict)
 	}
 
 	return out, nil
@@ -202,6 +225,9 @@ func (r *Result) Findings() []policy.Finding {
 	if r.Certificate != nil {
 		collect(r.Certificate.Grade.Findings)
 	}
+	if r.Stapling != nil {
+		collect(r.Stapling.Findings)
+	}
 	return out
 }
 
@@ -213,6 +239,9 @@ func (r *Result) Notes() []string {
 	}
 	if r.Certificate != nil {
 		out = append(out, r.Certificate.Notes...)
+	}
+	if r.Stapling != nil {
+		out = append(out, r.Stapling.Notes...)
 	}
 	return out
 }

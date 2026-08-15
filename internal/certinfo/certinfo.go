@@ -33,9 +33,11 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -91,8 +93,40 @@ type Report struct {
 	// CheckedAt is the moment the validity window was judged against.
 	CheckedAt time.Time `json:"checkedAt"`
 
+	// Revocation is what the leaf says about how its status may be checked.
+	//
+	// These are facts read from the certificate, not a judgement and not a
+	// check: nothing here contacts a responder. Whether a response actually
+	// arrived is a property of the handshake and is joined to these in
+	// internal/scan, because neither half means anything alone.
+	Revocation Revocation `json:"revocation"`
+
 	// Notes records what could not be established, and what was cut.
 	Notes []string `json:"notes,omitempty"`
+}
+
+// Revocation describes the revocation machinery a certificate asks for.
+type Revocation struct {
+	// MustStaple is true when the leaf carries the RFC 7633 TLS Feature
+	// extension naming status_request. It is an instruction to the client to
+	// refuse the connection unless a status response accompanies it.
+	MustStaple bool `json:"mustStaple"`
+
+	// ResponderCount is how many OCSP responders the leaf names in its
+	// Authority Information Access extension.
+	//
+	// A count rather than the URLs. The URLs are chosen by whoever issued the
+	// certificate being examined, which on a hostile target means they are
+	// chosen by the target, and this report does not repeat attacker-supplied
+	// strings back to a reader when a number answers the question. What a
+	// reader needs to know is whether a responder exists at all.
+	ResponderCount int `json:"responderCount"`
+
+	// CRLCount is the same for CRL distribution points. Since the
+	// CA/Browser Forum made OCSP optional and CRLs mandatory, a certificate
+	// with no responder and no distribution point is the interesting case,
+	// and it cannot be told from one with a list without counting both.
+	CRLCount int `json:"crlCount"`
 }
 
 // Certificate is one parsed certificate, rendered for display.
@@ -258,6 +292,21 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 		report.Notes = append(report.Notes, fmt.Sprintf(
 			"Public key algorithm %q is not recognised, so key strength was not graded.",
 			leaf.PublicKeyAlgorithm.String()))
+	}
+
+	required, malformed := mustStaple(leaf)
+	report.Revocation = Revocation{
+		MustStaple:     required,
+		ResponderCount: len(leaf.OCSPServer),
+		CRLCount:       len(leaf.CRLDistributionPoints),
+	}
+	if malformed {
+		// Stated rather than assumed either way. Reading it as absent would
+		// hide a certificate that may be demanding stapling; reading it as
+		// present would invent a requirement out of a parse failure.
+		report.Notes = append(report.Notes,
+			"The certificate carries a TLS Feature extension that could not be parsed, so whether it "+
+				"requires a stapled status response could not be established.")
 	}
 
 	report.Grade = policy.GradeLeaf(facts, now)
@@ -461,4 +510,39 @@ func (r *Report) Summary() string {
 		fmt.Fprintf(&b, ", %d finding(s)", n)
 	}
 	return b.String()
+}
+
+// tlsFeatureOID is the RFC 7633 TLS Feature extension, id-pe-tlsfeature.
+var tlsFeatureOID = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 24}
+
+// statusRequestExtension is the TLS ExtensionType for status_request, from
+// the IANA registry. A TLS Feature extension listing it is what the world
+// calls "must-staple"; there is no extension by that name.
+const statusRequestExtension = 5
+
+// mustStaple reports whether the leaf demands a stapled status response.
+//
+// The second return value separates "the extension is not there" from "the
+// extension is there and this parser could not read it". Collapsing the two
+// into one boolean is how a certificate that requires stapling comes to be
+// reported as one that does not, on the strength of a byte nobody looked at.
+//
+// The extension body is a SEQUENCE OF INTEGER. Nothing else is accepted:
+// trailing bytes after a valid sequence are a sign that the certificate was
+// assembled by something other than a conforming encoder, and this returns
+// malformed rather than reading the part it happens to understand.
+func mustStaple(leaf *x509.Certificate) (required, malformed bool) {
+	for _, ext := range leaf.Extensions {
+		if !ext.Id.Equal(tlsFeatureOID) {
+			continue
+		}
+
+		var features []int
+		rest, err := asn1.Unmarshal(ext.Value, &features)
+		if err != nil || len(rest) != 0 {
+			return false, true
+		}
+		return slices.Contains(features, statusRequestExtension), false
+	}
+	return false, false
 }
