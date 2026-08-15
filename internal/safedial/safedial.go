@@ -45,20 +45,61 @@ var ErrBlocked = errors.New("safedial: destination not permitted")
 // blockedPrefixes covers ranges that netip.Addr has no predicate for.
 // Loopback, private (RFC 1918 and RFC 4193 ULA), link-local, multicast and
 // unspecified are handled by the predicates in checkAddr.
+//
+// The IPv6 entries that embed an IPv4 address are the ones that matter, and
+// they are the ones easiest to leave out. A predicate such as IsLoopback
+// answers for the address it is given, not for the address hidden inside it:
+// ::127.0.0.1 is an IPv4-compatible IPv6 address whose low thirty-two bits
+// are loopback, and every predicate in checkAddr says it is an ordinary
+// global address. Unmap does not help either — it rewrites ::ffff:a.b.c.d and
+// nothing else. Each family of embedded address therefore needs its own line
+// here, and 2001::/23 covers several at once because IANA reserved that block
+// for exactly this kind of protocol assignment.
+//
+// This is a deny list, which is the shape this file argues against elsewhere.
+// The honest reason is that the standard library offers no predicate for "in
+// a range IANA has delegated to somebody", so an allow list would mean
+// carrying a copy of the delegation registry and keeping it current. The
+// exchange is stated rather than hidden: a range added to the special-purpose
+// registry after this line was written is not covered until somebody adds it,
+// and security-watch.yml exists partly to make that a thing somebody looks at.
 var blockedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("0.0.0.0/8"),       // "this network"
 	netip.MustParsePrefix("100.64.0.0/10"),   // RFC 6598 carrier-grade NAT
 	netip.MustParsePrefix("192.0.0.0/24"),    // IETF protocol assignments
 	netip.MustParsePrefix("192.0.2.0/24"),    // TEST-NET-1
+	netip.MustParsePrefix("192.31.196.0/24"), // AS112-v4
+	netip.MustParsePrefix("192.52.193.0/24"), // AMT relay anycast
 	netip.MustParsePrefix("192.88.99.0/24"),  // 6to4 relay anycast
+	netip.MustParsePrefix("192.175.48.0/24"), // direct delegation AS112
 	netip.MustParsePrefix("198.18.0.0/15"),   // benchmarking
 	netip.MustParsePrefix("198.51.100.0/24"), // TEST-NET-2
 	netip.MustParsePrefix("203.0.113.0/24"),  // TEST-NET-3
 	netip.MustParsePrefix("240.0.0.0/4"),     // reserved, includes broadcast
-	netip.MustParsePrefix("2001:db8::/32"),   // documentation
-	netip.MustParsePrefix("2002::/16"),       // 6to4, can embed IPv4
-	netip.MustParsePrefix("64:ff9b::/96"),    // NAT64, can embed IPv4
-	netip.MustParsePrefix("100::/64"),        // discard-only
+
+	// ::/96 is the deprecated IPv4-compatible form from RFC 4291. It is the
+	// one that matters most here: ::127.0.0.1 and ::10.0.0.1 are written this
+	// way, no predicate in checkAddr recognises either, and some stacks have
+	// historically routed them to the embedded address. Nothing legitimate is
+	// reachable inside it, so blocking the whole /96 costs nothing.
+	netip.MustParsePrefix("::/96"),
+
+	netip.MustParsePrefix("64:ff9b::/96"),   // NAT64, embeds IPv4
+	netip.MustParsePrefix("64:ff9b:1::/48"), // local-use NAT64, embeds IPv4
+	netip.MustParsePrefix("100::/64"),       // discard-only
+
+	// 2001::/23 is IANA's special-purpose block, the IPv6 counterpart of
+	// 192.0.0.0/24. One prefix covers Teredo (2001::/32, which carries an
+	// IPv4 client address in its low bits), benchmarking, AMT, AS112-v6, both
+	// ORCHID versions and DRIP. Global unicast begins well above it —
+	// 2001:db8::/32 and 2001:4860::/32 are both outside — so the documentation
+	// range below still needs its own line.
+	netip.MustParsePrefix("2001::/23"),
+
+	netip.MustParsePrefix("2001:db8::/32"), // documentation
+	netip.MustParsePrefix("2002::/16"),     // 6to4, embeds IPv4
+	netip.MustParsePrefix("3fff::/20"),     // documentation, RFC 9637
+	netip.MustParsePrefix("5f00::/16"),     // SRv6 segment identifiers, RFC 9602
 }
 
 const (
