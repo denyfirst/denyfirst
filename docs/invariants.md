@@ -295,6 +295,35 @@ and the certificate is ECDSA, so the exchange is one nobody will notice.
 
 ---
 
+### P5 — No plaintext listener exists
+
+Nothing listens on port 80. A request that arrives there is refused by the
+firewall, not answered by a redirect.
+
+A redirect looks like the safer choice and is not. By the time a server can
+answer, the client has already sent a request line and a `Host` header in
+cleartext, and anyone on the path has read them. A closed port means the
+request was never composed. The cost is that a client typing `http://` sees a
+connection refused rather than a redirect, and for this domain no browser ever
+will: `.dev` is on the HSTS preload list as a whole top-level domain, with
+`include_subdomains` and `force-https`, so every browser rewrites the scheme
+before a packet leaves the machine. There is no first insecure request to
+protect.
+
+The `preload` directive stays in the header even though this domain will never
+be submitted, because it is already covered by its TLD. It is there for
+whoever runs this code on a domain that is not: the correct header should be
+the default rather than something an operator has to know to add.
+
+Command line clients and HTTP libraries have no standardised HSTS handling, so
+they do not benefit from either mechanism. They also do not type a scheme by
+accident.
+
+*Enforced in:* nftables, which opens 443 and nothing else; `denyfirstd` binds
+one listener
+*Guarded by:* `TestHeadersOnEveryResponse` covers the header; the absence of a
+second listener is enforced by there being no flag that would create one
+
 ## Correctness of the report
 
 ### R1 — Verdicts come from the policy package and name their version
@@ -523,8 +552,6 @@ today.
   disabled, a target with many AAAA records can spend that budget on
   unreachable addresses and be reported as unreachable, with no note saying
   why. R3 requires the opposite.
-- **HSTS asserts `preload` without a redirect on port 80.** The header claims
-  membership the site cannot currently apply for.
 - **P1 has no test.** Enforced by review, which is the weakest form of
   enforcement this document argues against.
 - **No independent review.** Nobody outside this project has read the code.
