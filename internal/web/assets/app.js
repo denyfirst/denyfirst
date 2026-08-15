@@ -309,12 +309,19 @@ function certificate(cert, tls) {
   So the summary is always visible and always counts them, and the detail
   opens on request. Except where it is the whole story: a report that graded
   nothing has nothing else to say, and there the limits are the finding.
+
+  That exception was once extended to an insecure verdict as well, and the
+  reasoning above never covered it. A report that graded a server insecure
+  has findings, a version table, a cipher list and a certificate: the limits
+  are a footnote there exactly as they are under a strong verdict, and
+  opening them by default said otherwise. Nothing is hidden either way —
+  the count sits in the summary line whether the block is open or shut.
 */
 function notes(list, verdict) {
   if (!list || !list.length) return document.createDocumentFragment();
 
   const frag = document.createDocumentFragment();
-  const alwaysOpen = verdict === "ungraded" || verdict === "insecure";
+  const alwaysOpen = verdict === "ungraded";
 
   const box = el("details", "not-measured");
   box.open = alwaysOpen;
