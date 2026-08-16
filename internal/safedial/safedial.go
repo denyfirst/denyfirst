@@ -171,10 +171,7 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 	}
 
 	limit := d.maxAddrs()
-	truncated := len(addrs) > limit
-	if truncated {
-		addrs = addrs[:limit]
-	}
+	addrs, truncated := interleaveFamilies(addrs, limit)
 
 	inner := net.Dialer{Timeout: d.perAttemptTimeout()}
 
@@ -332,4 +329,60 @@ func lookupNetwork(network string) string {
 	default:
 		return "ip"
 	}
+}
+
+// interleaveFamilies orders addresses so both families are represented, then
+// caps the list.
+//
+// The cap exists so one hostname cannot spend the whole budget, and taking the
+// first n in resolver order looked like a fair way to apply it. It is not. A
+// resolver returns AAAA and A records in whatever order it likes, and a large
+// content network answers with many of each. Take the first eight and they can
+// all be one family — which matters because a host may have no route for that
+// family at all.
+//
+// This is the failure that follows. Every attempt fails with "network
+// unreachable", the dialler reports the target as unreachable, and the person
+// reading the report concludes the server they scanned is down. It is not. Ours
+// is the machine that cannot reach it, and the report accuses the wrong party.
+// A scanner whose argument is that it says only what it measured cannot afford
+// to say that.
+//
+// Alternating between the families before cutting means a budget of eight
+// always carries at least four of each, wherever the resolver put them, so a
+// reachable address is always tried. This is the ordering RFC 8305 describes
+// and browsers have used for years.
+//
+// Order within a family is preserved: a resolver that rotates records for load
+// balancing keeps doing so.
+func interleaveFamilies(addrs []netip.Addr, limit int) (out []netip.Addr, truncated bool) {
+	if len(addrs) <= limit {
+		return addrs, false
+	}
+
+	var v4, v6 []netip.Addr
+	for _, addr := range addrs {
+		if addr.Unmap().Is4() {
+			v4 = append(v4, addr)
+		} else {
+			v6 = append(v6, addr)
+		}
+	}
+
+	// One family absent is the ordinary case, and alternating with nothing is
+	// the same list back again.
+	if len(v4) == 0 || len(v6) == 0 {
+		return addrs[:limit], true
+	}
+
+	out = make([]netip.Addr, 0, limit)
+	for i := 0; len(out) < limit; i++ {
+		if i < len(v4) {
+			out = append(out, v4[i])
+		}
+		if len(out) < limit && i < len(v6) {
+			out = append(out, v6[i])
+		}
+	}
+	return out, true
 }
