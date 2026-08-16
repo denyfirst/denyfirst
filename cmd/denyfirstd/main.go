@@ -87,10 +87,25 @@ func run() int {
 		maxTracked = flag.Int("max-tracked-clients", httpapi.DefaultMaxTrackedIPs,
 			"how many clients the rate limiter remembers before refusing new ones")
 
-		trustedProxyHops = flag.Int("trusted-proxy-hops", 0,
-			"number of reverse proxies in front of this service; leave at zero unless\n"+
-				"\tthere really is one, because trusting X-Forwarded-For without a proxy\n"+
-				"\tlets every client choose its own rate limit key")
+		// There is no -trusted-proxy-hops flag, and the omission is the point.
+		//
+		// Reading X-Forwarded-For needs two things: how many proxies stand in
+		// front, and which networks they connect from. httpapi.Limits carries
+		// both, and clientKey ignores the header entirely unless the second is
+		// set — otherwise any client could pick its own rate limit key by
+		// inventing a header.
+		//
+		// A flag for the hop count alone could never take effect. It looked
+		// like a setting and silently did nothing, which is worse than not
+		// offering it: an operator would believe the real client address was
+		// being used when the connection address was.
+		//
+		// This service runs with no proxy in front of it, deliberately, so
+		// that the promise to record nothing lives in code rather than in
+		// somebody else's configuration file. TrustedProxies stays on
+		// httpapi.Limits for a caller embedding the package behind a proxy of
+		// their own. If a proxy is ever put here, both fields come back
+		// together, with a test.
 
 		statsFile = flag.String("stats-file", "",
 			"path to a file holding the aggregate counters; empty keeps them in\n"+
@@ -117,12 +132,11 @@ func run() int {
 	}
 
 	limits := httpapi.Limits{
-		RequestTimeout:   *requestTimeout,
-		MaxConcurrent:    *maxConcurrent,
-		Burst:            *burst,
-		Refill:           *refill,
-		MaxTrackedIPs:    *maxTracked,
-		TrustedProxyHops: *trustedProxyHops,
+		RequestTimeout: *requestTimeout,
+		MaxConcurrent:  *maxConcurrent,
+		Burst:          *burst,
+		Refill:         *refill,
+		MaxTrackedIPs:  *maxTracked,
 	}
 
 	// The scanner is left at its defaults on purpose. It dials through
