@@ -238,6 +238,32 @@ function revocationText(revocation, tls) {
   return "not stapled; the certificate names no responder, so there is none to send";
 }
 
+// Two numbers, because one cannot answer the question.
+//
+// Browsers ask for receipts from several distinct logs, so that one log
+// misbehaving cannot satisfy the requirement alone. Three receipts from one
+// log and three from three are different situations and a single count cannot
+// tell them apart. Returns undefined when the report says nothing, so the row
+// is left out rather than filled with a guess.
+function transparencyText(transparency, tls) {
+  if (!transparency) return undefined;
+
+  const embedded = Number(transparency.embeddedCount) || 0;
+  const logs = Number(transparency.logCount) || 0;
+  const handshake = Number(tls && tls.sctCount) || 0;
+  const total = embedded + handshake;
+
+  if (total === 0) return "no timestamps in the certificate or the handshake";
+
+  const stamps = total === 1 ? "1 timestamp" : total + " timestamps";
+  const from = logs === 1 ? "1 log" : logs + " logs";
+  const where = handshake > 0 && embedded > 0
+    ? " (" + embedded + " embedded, " + handshake + " in the handshake)"
+    : "";
+
+  return stamps + " from " + from + where + ", not verified";
+}
+
 function certificate(cert, tls) {
   if (!cert || !Array.isArray(cert.chain) || !cert.chain.length) {
     return document.createDocumentFragment();
@@ -292,6 +318,7 @@ function certificate(cert, tls) {
   // distinction between a server that could staple and did not and one that
   // has nothing to staple is the whole content of this line.
   pair("Revocation", revocationText(cert.revocation, tls));
+  pair("Transparency", transparencyText(cert.transparency, tls));
   pair("SHA-256", leaf.fingerprintSha256);
 
   frag.appendChild(pairs);

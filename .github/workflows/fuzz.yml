@@ -29,6 +29,64 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A target that exists and is not listed below is a target nobody fuzzes.
+  #
+  # The matrix is written by hand, which is deliberate: one job per target
+  # names the failing one in the job list. The cost is that adding a target is
+  # two edits in two files, and the second is easy to forget — and forgetting
+  # it fails quietly. The target still runs against its seeds in the ordinary
+  # test job, so everything looks green while the generative run that would
+  # actually find something never happens.
+  #
+  # This compares the two lists and fails when they disagree.
+  listed:
+    name: Every target is listed
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out the commit under test
+        run: |
+          git init -q
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "${GITHUB_SHA}"
+          git checkout -q FETCH_HEAD
+
+      - name: Compare the targets in the tree against the matrix
+        run: |
+          set -eu
+
+          grep -rhoE '^func (Fuzz[A-Za-z0-9_]+)\(' --include='*_test.go' . \
+            | sed -E 's/^func //; s/\($//' \
+            | sort -u > /tmp/in-tree
+
+          grep -oE 'target: (Fuzz[A-Za-z0-9_]+)' .github/workflows/fuzz.yml \
+            | sed -E 's/^target: //' \
+            | sort -u > /tmp/in-matrix
+
+          missing="$(comm -23 /tmp/in-tree /tmp/in-matrix)"
+          stale="$(comm -13 /tmp/in-tree /tmp/in-matrix)"
+
+          if [ -n "${missing}" ]; then
+            echo "These fuzz targets exist and are never fuzzed on the schedule:"
+            echo "${missing}"
+            echo
+            echo "Add each to the matrix in .github/workflows/fuzz.yml."
+          fi
+
+          if [ -n "${stale}" ]; then
+            echo "These are listed in the matrix and no longer exist:"
+            echo "${stale}"
+          fi
+
+          if [ -n "${missing}" ] || [ -n "${stale}" ]; then
+            exit 1
+          fi
+
+          echo "Every fuzz target in the tree is in the matrix."
+
   fuzz:
     name: Fuzz
     runs-on: ubuntu-latest
@@ -54,6 +112,8 @@ jobs:
             target: FuzzMaxValidityDays
           - package: ./internal/certinfo
             target: FuzzAnalyse
+          - package: ./internal/certinfo
+            target: FuzzParseSCTList
           - package: ./internal/httpapi
             target: FuzzScanHandler
 
