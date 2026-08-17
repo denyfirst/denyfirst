@@ -104,6 +104,67 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
           "$(go env GOPATH)/bin/govulncheck" ./...
 
+  # A fuzz target that exists and is not in the matrix is a target nobody
+  # fuzzes.
+  #
+  # The matrix in fuzz.yml is written by hand, deliberately: one job per target
+  # names the failing one in the job list. The cost is that adding a target
+  # takes two edits in two files, and the second is easy to forget — and
+  # forgetting it fails quietly. The target still runs against its seeds here,
+  # so everything looks green while the generative run that would actually find
+  # something never happens.
+  #
+  # This lives in CI rather than in fuzz.yml for the reason fuzz.yml gives for
+  # keeping the seed corpus here: the check is deterministic, so it belongs on
+  # the critical path. Generative fuzzing is not, so it does not. A guard that
+  # only runs on a nightly schedule tells somebody about their mistake the
+  # morning after they stopped thinking about it.
+  fuzz-targets:
+    name: Every fuzz target is listed
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the commit under test
+        run: |
+          git init -q
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "${GITHUB_SHA}"
+          git checkout -q FETCH_HEAD
+
+      - name: Compare the targets in the tree against the matrix
+        run: |
+          set -eu
+
+          grep -rhoE '^func (Fuzz[A-Za-z0-9_]+)\(' --include='*_test.go' . \
+            | sed -E 's/^func //; s/\($//' \
+            | sort -u > /tmp/in-tree
+
+          grep -oE 'target: (Fuzz[A-Za-z0-9_]+)' .github/workflows/fuzz.yml \
+            | sed -E 's/^target: //' \
+            | sort -u > /tmp/in-matrix
+
+          missing="$(comm -23 /tmp/in-tree /tmp/in-matrix)"
+          stale="$(comm -13 /tmp/in-tree /tmp/in-matrix)"
+
+          if [ -n "${missing}" ]; then
+            echo "These fuzz targets exist and are never fuzzed on the schedule:"
+            echo "${missing}"
+            echo
+            echo "Add each to the matrix in .github/workflows/fuzz.yml."
+          fi
+
+          if [ -n "${stale}" ]; then
+            echo "These are listed in the matrix and no longer exist:"
+            echo "${stale}"
+          fi
+
+          if [ -n "${missing}" ] || [ -n "${stale}" ]; then
+            exit 1
+          fi
+
+          echo "Every fuzz target in the tree is in the matrix."
+
   staticcheck:
     name: Static analysis
     runs-on: ubuntu-latest
