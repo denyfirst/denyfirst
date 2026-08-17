@@ -400,22 +400,54 @@ from `tlsprobe`'s observation and `certinfo`'s reading of the leaf
 `TestUnstapledNotesDistinguishThreeSituations`,
 `TestListClaimIsNotMadeWithoutAList`, `TestMissingStapleIsNotAFinding`
 
-### R3c — A count of zero timestamps says what it excludes
+### R3c — Transparency receipts are counted, not believed
 
-Signed certificate timestamps reach a client one of two ways: delivered in the
-handshake, or embedded in the certificate. This probe reads the first and not
-the second, and almost every authority uses the second — so a certificate that
-is properly logged, and that every browser accepts on exactly those grounds,
-reports none.
+A publicly trusted certificate has to be recorded in append-only logs, and each
+log answers with a signed receipt. Those receipts reach a client three ways:
+embedded in the certificate, sent as a handshake extension, or carried inside a
+stapled status response.
 
-The figure is published in the JSON, so somebody will read it. Either it is
-explained or it is a claim that most of the web is absent from certificate
-transparency. Counting the embedded timestamps is the honest fix and is listed
-under Known gaps until it is written.
+Two of the three are read. The count and the number of distinct logs come from
+the certificate and the handshake together, because a figure from either alone
+misleads: almost every authority embeds them, so counting only the handshake
+reports zero for a properly logged certificate, which is a claim that most of
+the web is absent from certificate transparency.
 
-*Enforced in:* `internal/tlsprobe.Probe`, in the notes
-*Guarded by:* `TestZeroTimestampCountIsExplained`,
-`TestTimestampNoteIsAbsentWhenNothingWasReached`
+Both numbers are reported rather than one. Browsers ask for receipts from
+distinct logs so that a single misbehaving log cannot satisfy the requirement
+alone, and three receipts from one log is a different situation from three from
+three.
+
+Nothing is verified. Checking a receipt needs the issuing log's public key, and
+the set of qualified logs is a list browsers ship and revise; carrying a copy
+would be a dependency on somebody else's judgement that goes stale between
+releases. The report says the receipts were counted and not checked.
+
+Nothing is graded either, for the same reason as R3b. The third delivery
+channel is not read, so a certificate showing none by the first two may still
+be presenting them by the third — and grading on two channels out of three
+would fail a working configuration, which R6 forbids. How many receipts and
+from which logs is in any case each browser's policy, revised on their
+schedule, not ours to enforce.
+
+Four situations are distinguished, because they look alike and are not: a
+logged certificate, one outside the public authorities that owes nobody a
+receipt, one whose receipts may be inside a stapled response nobody read, and
+one a browser will refuse.
+
+The list is parsed from attacker-chosen lengths — the certificate comes from
+whatever host was named in the request — so every declared length is checked
+against what remains rather than trusted, and a mismatch ends the parse rather
+than being clamped to fit. There is a fuzz target.
+
+*Enforced in:* `internal/certinfo.embeddedSCTs` for the count,
+`internal/policy.DescribeTransparency` for what it means, joined in
+`internal/scan.Scan`
+*Guarded by:* `TestParseSCTListCountsTimestampsAndLogs`,
+`TestParseSCTListRefusesMalformedInput`, `FuzzParseSCTList`,
+`TestDescribeTransparencySeparatesTheFourSituations`,
+`TestLoggedNoteDoesNotClaimTheReceiptsWereVerified`,
+`TestBothCountsAreReported`, `TestTransparencyReachesThePage`
 
 ### R4 — Nothing measured is not the same as passing
 
@@ -534,10 +566,9 @@ entries were removed when this was last read: the server binary, the pinned CI
 tools, release signing, and fuzzing all exist now. Anything below is open
 today.
 
-- **Embedded certificate timestamps are not counted.** R3c states the
-  consequence in every report, which is the weaker half of the fix. Reading
-  the SignedCertificateTimestampList extension would let the figure mean what
-  a reader assumes it means.
+- **Transparency receipts are counted and not verified.** R3c. Checking one
+  needs the issuing log's public key, and the qualified-log list is maintained
+  by browsers on their own schedule.
 - **A stapled response is observed, not validated.** R3b. Verifying one needs
   an OCSP parser and a signature check against the issuer, and this project
   carries no dependency that would provide either.

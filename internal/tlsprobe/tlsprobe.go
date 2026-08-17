@@ -246,25 +246,6 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 			"No handshake completed, so no certificate chain was retrieved.")
 	}
 
-	// Certificate transparency, and the figure that would mislead without
-	// this sentence.
-	//
-	// SCTCount counts timestamps that arrived in the handshake. Almost every
-	// authority embeds them in the certificate instead, where this probe does
-	// not read them, so a properly logged certificate routinely reports zero.
-	// A reader who sees a count of none and is told nothing else concludes
-	// the certificate is in no transparency log, which for most of the web
-	// would be exactly wrong.
-	//
-	// The honest fix is to count the embedded ones too. Until that is
-	// written, the gap is stated rather than left for a reader to fall into.
-	if len(report.Certificates) > 0 && report.SCTCount == 0 {
-		report.Notes = append(report.Notes,
-			"No signed certificate timestamps arrived in the handshake. That is not evidence the "+
-				"certificate is missing from a transparency log: most authorities embed the timestamps "+
-				"in the certificate itself, and this probe does not read those.")
-	}
-
 	// Preference detection needs a version where we control the ordering.
 	if idx := slices.IndexFunc(results, func(v VersionResult) bool {
 		return v.Supported && v.Version != tls.VersionTLS13 && len(v.Ciphers) >= 2

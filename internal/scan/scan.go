@@ -189,6 +189,21 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 		})
 		out.Stapling = &stapling
 		out.Verdict = policy.Worst(out.Verdict, stapling.Verdict)
+
+		// The second join, and the same shape as the first. Timestamps reach a
+		// client three ways and this sees two of them, so what the report can
+		// say depends on facts held in three different places: the leaf, the
+		// handshake, and whether a response was stapled that might carry the
+		// rest. The sentence belongs with the certificate, which is what a
+		// reader is looking at when the question occurs to them.
+		certReport.Notes = append(certReport.Notes,
+			policy.DescribeTransparency(policy.TransparencyFacts{
+				Embedded:    certReport.Transparency.EmbeddedCount,
+				FromLogs:    certReport.Transparency.LogCount,
+				InHandshake: tlsReport.SCTCount,
+				Stapled:     tlsReport.OCSPStapled,
+				Trusted:     certReport.Trusted,
+			})...)
 	}
 
 	return out, nil

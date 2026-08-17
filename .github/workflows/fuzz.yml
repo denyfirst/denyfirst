@@ -54,6 +54,8 @@ jobs:
             target: FuzzMaxValidityDays
           - package: ./internal/certinfo
             target: FuzzAnalyse
+          - package: ./internal/certinfo
+            target: FuzzParseSCTList
           - package: ./internal/httpapi
             target: FuzzScanHandler
 

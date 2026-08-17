@@ -34,6 +34,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -101,8 +102,38 @@ type Report struct {
 	// internal/scan, because neither half means anything alone.
 	Revocation Revocation `json:"revocation"`
 
+	// Transparency is what the leaf carries about certificate transparency.
+	Transparency Transparency `json:"transparency"`
+
 	// Notes records what could not be established, and what was cut.
 	Notes []string `json:"notes,omitempty"`
+}
+
+// Transparency counts the signed certificate timestamps embedded in the leaf.
+//
+// A publicly trusted certificate has to be recorded in append-only logs, and
+// the logs answer with a signed receipt saying when. Browsers refuse a
+// certificate that arrives without enough of those receipts, which is what
+// makes the count worth reporting rather than a curiosity.
+//
+// Counted and not verified. Checking a receipt's signature needs the log's
+// public key, and the set of qualified logs is a list that browsers ship and
+// revise; carrying a copy of it would be a dependency on somebody else's
+// judgement that could go stale between releases. The count and the number of
+// distinct logs are read from the certificate itself and need nothing external,
+// which is the part that can be stated without qualification.
+type Transparency struct {
+	// EmbeddedCount is how many timestamps the leaf carries.
+	EmbeddedCount int `json:"embeddedCount"`
+
+	// LogCount is how many distinct logs those timestamps came from.
+	//
+	// Browsers require several receipts from different logs rather than
+	// several from one, because one log that misbehaves should not be able to
+	// satisfy the requirement alone. A count of three from one log is a
+	// different situation from three from three, and one number cannot say
+	// which.
+	LogCount int `json:"logCount"`
 }
 
 // Revocation describes the revocation machinery a certificate asks for.
@@ -307,6 +338,17 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 		report.Notes = append(report.Notes,
 			"The certificate carries a TLS Feature extension that could not be parsed, so whether it "+
 				"requires a stapled status response could not be established.")
+	}
+
+	embedded, logs, sctMalformed := embeddedSCTs(leaf)
+	report.Transparency = Transparency{EmbeddedCount: embedded, LogCount: logs}
+	if sctMalformed {
+		// Same reasoning as above. A count of zero and an unreadable list are
+		// different facts, and reporting the second as the first would say a
+		// certificate is absent from every log when nobody managed to look.
+		report.Notes = append(report.Notes,
+			"The certificate carries a transparency timestamp list that could not be parsed, so the "+
+				"timestamps embedded in it could not be counted.")
 	}
 
 	report.Grade = policy.GradeLeaf(facts, now)
@@ -545,4 +587,104 @@ func mustStaple(leaf *x509.Certificate) (required, malformed bool) {
 		return slices.Contains(features, statusRequestExtension), false
 	}
 	return false, false
+}
+
+// sctListOID is the RFC 6962 extension holding embedded timestamps.
+var sctListOID = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 2}
+
+const (
+	// sctVersionV1 is the only version RFC 6962 defines. A list announcing
+	// anything else is a format this parser has not seen, and guessing at the
+	// layout of a structure whose version it does not know is how a parser
+	// reads past the end of one field into another.
+	sctVersionV1 = 0
+
+	// minSerializedSCT is version (1) + log id (32) + timestamp (8) +
+	// extensions length (2). A signature follows, so a real one is longer;
+	// this is the floor below which the fields read here are not all present.
+	minSerializedSCT = 43
+
+	// logIDLen is the SHA-256 of a log's public key.
+	logIDLen = 32
+)
+
+// embeddedSCTs counts the transparency timestamps carried by the leaf.
+//
+// The second return value separates a certificate with no timestamps from one
+// whose list could not be read. Collapsing them would report a certificate as
+// absent from every transparency log on the strength of a parse failure, which
+// is a serious accusation to make by accident.
+func embeddedSCTs(leaf *x509.Certificate) (count, logs int, malformed bool) {
+	for _, ext := range leaf.Extensions {
+		if !ext.Id.Equal(sctListOID) {
+			continue
+		}
+
+		// Two wrappings, and missing the inner one is the usual mistake.
+		// RFC 6962 puts the TLS-encoded list inside an ASN.1 OCTET STRING,
+		// and Go has already removed the outer one that X.509 requires of
+		// every extension. What remains is DER and has to be unwrapped again
+		// before a single byte of it means what it looks like.
+		var list []byte
+		rest, err := asn1.Unmarshal(ext.Value, &list)
+		if err != nil || len(rest) != 0 {
+			return 0, 0, true
+		}
+		return parseSCTList(list)
+	}
+	return 0, 0, false
+}
+
+// parseSCTList reads a TLS-encoded SignedCertificateTimestampList.
+//
+// Every length in this format is attacker-chosen: the bytes come from a
+// certificate presented by whatever host was named in the request. Each one is
+// therefore checked against what is actually left rather than trusted, and a
+// declared length that does not match the buffer ends the parse rather than
+// being clamped to fit. Clamping is how a parser is made to read one field as
+// another.
+//
+// The loop terminates on its own: every iteration consumes at least two length
+// bytes plus minSerializedSCT, so the number of passes is bounded by the input
+// divided by 45. There is no counter to get wrong.
+//
+// Only the version and the log identifier are read. The timestamp and the
+// signature are skipped over rather than interpreted, because nothing here
+// verifies a signature and a timestamp nobody checked is a number with a date
+// painted on it.
+func parseSCTList(list []byte) (count, logs int, malformed bool) {
+	if len(list) < 2 {
+		return 0, 0, true
+	}
+	if int(binary.BigEndian.Uint16(list)) != len(list)-2 {
+		return 0, 0, true
+	}
+	list = list[2:]
+
+	seen := make(map[[logIDLen]byte]struct{}, 4)
+
+	for len(list) > 0 {
+		if len(list) < 2 {
+			return 0, 0, true
+		}
+		size := int(binary.BigEndian.Uint16(list))
+		list = list[2:]
+
+		if size < minSerializedSCT || size > len(list) {
+			return 0, 0, true
+		}
+		sct := list[:size]
+		list = list[size:]
+
+		if sct[0] != sctVersionV1 {
+			return 0, 0, true
+		}
+
+		var id [logIDLen]byte
+		copy(id[:], sct[1:1+logIDLen])
+		seen[id] = struct{}{}
+		count++
+	}
+
+	return count, len(seen), false
 }
