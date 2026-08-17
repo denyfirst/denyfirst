@@ -126,14 +126,18 @@ type Transparency struct {
 	// EmbeddedCount is how many timestamps the leaf carries.
 	EmbeddedCount int `json:"embeddedCount"`
 
-	// LogCount is how many distinct logs those timestamps came from.
+	// LogIDs identifies the logs those timestamps came from, hex encoded.
 	//
-	// Browsers require several receipts from different logs rather than
-	// several from one, because one log that misbehaves should not be able to
-	// satisfy the requirement alone. A count of three from one log is a
-	// different situation from three from three, and one number cannot say
-	// which.
-	LogCount int `json:"logCount"`
+	// Identifiers rather than a count, because the same certificate can also
+	// deliver receipts through the handshake and the two sets have to be
+	// combined before "how many distinct logs" can be answered. Two counts
+	// added together would double whichever log appears in both.
+	//
+	// Browsers require receipts from different logs rather than several from
+	// one, so that a log which misbehaves cannot satisfy the requirement
+	// alone. Three from one log is a different situation from three from
+	// three, and a total cannot say which.
+	LogIDs []string `json:"logIds,omitempty"`
 }
 
 // Revocation describes the revocation machinery a certificate asks for.
@@ -340,8 +344,8 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 				"requires a stapled status response could not be established.")
 	}
 
-	embedded, logs, sctMalformed := embeddedSCTs(leaf)
-	report.Transparency = Transparency{EmbeddedCount: embedded, LogCount: logs}
+	embedded, logIDs, sctMalformed := embeddedSCTs(leaf)
+	report.Transparency = Transparency{EmbeddedCount: embedded, LogIDs: logIDs}
 	if sctMalformed {
 		// Same reasoning as above. A count of zero and an unreadable list are
 		// different facts, and reporting the second as the first would say a
@@ -614,7 +618,7 @@ const (
 // whose list could not be read. Collapsing them would report a certificate as
 // absent from every transparency log on the strength of a parse failure, which
 // is a serious accusation to make by accident.
-func embeddedSCTs(leaf *x509.Certificate) (count, logs int, malformed bool) {
+func embeddedSCTs(leaf *x509.Certificate) (count int, logIDs []string, malformed bool) {
 	for _, ext := range leaf.Extensions {
 		if !ext.Id.Equal(sctListOID) {
 			continue
@@ -628,11 +632,11 @@ func embeddedSCTs(leaf *x509.Certificate) (count, logs int, malformed bool) {
 		var list []byte
 		rest, err := asn1.Unmarshal(ext.Value, &list)
 		if err != nil || len(rest) != 0 {
-			return 0, 0, true
+			return 0, nil, true
 		}
 		return parseSCTList(list)
 	}
-	return 0, 0, false
+	return 0, nil, false
 }
 
 // parseSCTList reads a TLS-encoded SignedCertificateTimestampList.
@@ -652,39 +656,41 @@ func embeddedSCTs(leaf *x509.Certificate) (count, logs int, malformed bool) {
 // signature are skipped over rather than interpreted, because nothing here
 // verifies a signature and a timestamp nobody checked is a number with a date
 // painted on it.
-func parseSCTList(list []byte) (count, logs int, malformed bool) {
+func parseSCTList(list []byte) (count int, logIDs []string, malformed bool) {
 	if len(list) < 2 {
-		return 0, 0, true
+		return 0, nil, true
 	}
 	if int(binary.BigEndian.Uint16(list)) != len(list)-2 {
-		return 0, 0, true
+		return 0, nil, true
 	}
 	list = list[2:]
 
-	seen := make(map[[logIDLen]byte]struct{}, 4)
+	seen := make(map[string]struct{}, 4)
 
 	for len(list) > 0 {
 		if len(list) < 2 {
-			return 0, 0, true
+			return 0, nil, true
 		}
 		size := int(binary.BigEndian.Uint16(list))
 		list = list[2:]
 
 		if size < minSerializedSCT || size > len(list) {
-			return 0, 0, true
+			return 0, nil, true
 		}
 		sct := list[:size]
 		list = list[size:]
 
 		if sct[0] != sctVersionV1 {
-			return 0, 0, true
+			return 0, nil, true
 		}
 
-		var id [logIDLen]byte
-		copy(id[:], sct[1:1+logIDLen])
-		seen[id] = struct{}{}
+		id := hex.EncodeToString(sct[1 : 1+logIDLen])
+		if _, dup := seen[id]; !dup {
+			seen[id] = struct{}{}
+			logIDs = append(logIDs, id)
+		}
 		count++
 	}
 
-	return count, len(seen), false
+	return count, logIDs, false
 }

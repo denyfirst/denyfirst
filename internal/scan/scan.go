@@ -199,8 +199,8 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 		certReport.Notes = append(certReport.Notes,
 			policy.DescribeTransparency(policy.TransparencyFacts{
 				Embedded:    certReport.Transparency.EmbeddedCount,
-				FromLogs:    certReport.Transparency.LogCount,
 				InHandshake: tlsReport.SCTCount,
+				FromLogs:    distinctLogs(certReport.Transparency.LogIDs, tlsReport.SCTLogIDs),
 				Stapled:     tlsReport.OCSPStapled,
 				Trusted:     certReport.Trusted,
 			})...)
@@ -489,4 +489,20 @@ func CheckPort(port string) error {
 func IsIPTarget(host string) bool {
 	_, err := netip.ParseAddr(host)
 	return err == nil
+}
+
+// distinctLogs counts the logs named by either delivery route, once each.
+//
+// A certificate can carry receipts and the handshake can carry more, and
+// nothing stops both from naming the same log — the usual arrangement is that
+// they do. Adding the two counts reports that log twice, which is how a
+// certificate logged in two places comes to be described as logged in four.
+func distinctLogs(sets ...[]string) int {
+	seen := make(map[string]struct{}, 8)
+	for _, set := range sets {
+		for _, id := range set {
+			seen[id] = struct{}{}
+		}
+	}
+	return len(seen)
 }

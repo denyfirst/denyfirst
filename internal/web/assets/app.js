@@ -249,9 +249,17 @@ function transparencyText(transparency, tls) {
   if (!transparency) return undefined;
 
   const embedded = Number(transparency.embeddedCount) || 0;
-  const logs = Number(transparency.logCount) || 0;
   const handshake = Number(tls && tls.sctCount) || 0;
   const total = embedded + handshake;
+
+  // The union, not the sum. A certificate can carry receipts and the
+  // handshake can carry more, and the usual arrangement is that both name the
+  // same logs. Adding two counts reports one log twice, which is how a
+  // certificate logged in two places comes to be described as logged in four.
+  const ids = new Set();
+  for (const id of transparency.logIds || []) ids.add(id);
+  for (const id of (tls && tls.sctLogIds) || []) ids.add(id);
+  const logs = ids.size;
 
   if (total === 0) return "no timestamps in the certificate or the handshake";
 

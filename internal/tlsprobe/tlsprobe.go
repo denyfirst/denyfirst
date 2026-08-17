@@ -38,6 +38,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -124,6 +125,12 @@ type Report struct {
 	ALPN        string `json:"alpn,omitempty"`
 	OCSPStapled bool   `json:"ocspStapled"`
 	SCTCount    int    `json:"sctCount"`
+
+	// SCTLogIDs identifies the logs behind the handshake timestamps, hex
+	// encoded. Reported alongside the count because the same logs may also
+	// appear embedded in the certificate, and adding two counts would report
+	// one log twice.
+	SCTLogIDs []string `json:"sctLogIds,omitempty"`
 
 	// Duration is the wall time the probe took, for Go callers.
 	//
@@ -236,6 +243,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 		report.ALPN = state.NegotiatedProtocol
 		report.OCSPStapled = len(state.OCSPResponse) > 0
 		report.SCTCount = len(state.SignedCertificateTimestamps)
+		report.SCTLogIDs = handshakeLogIDs(state.SignedCertificateTimestamps)
 		break
 	}
 
@@ -597,4 +605,40 @@ func classifyHandshakeError(err error, version uint16) string {
 		// case nobody has reviewed.
 		return fmt.Sprintf("%s could not be established", versionName(version))
 	}
+}
+
+// handshakeLogIDs reads the log identifier out of each timestamp the
+// handshake carried.
+//
+// Go has already split the list into its entries, so what arrives here is a
+// bare SerializedSCT: a version byte, then a 32-byte identifier. Nothing else
+// is read and no signature is checked; the identifier is wanted only so that a
+// log appearing both here and inside the certificate is counted once.
+//
+// An entry too short to hold those fields, or announcing a version this has
+// not seen, is skipped rather than guessed at. The count beside this reports
+// how many arrived, so a skipped entry shows up as a difference between the
+// two rather than disappearing.
+func handshakeLogIDs(scts [][]byte) []string {
+	const (
+		versionV1 = 0
+		idLen     = 32
+		minSCT    = 1 + idLen + 8 + 2
+	)
+
+	var out []string
+	seen := make(map[string]struct{}, len(scts))
+
+	for _, sct := range scts {
+		if len(sct) < minSCT || sct[0] != versionV1 {
+			continue
+		}
+		id := hex.EncodeToString(sct[1 : 1+idLen])
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
