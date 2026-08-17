@@ -82,15 +82,15 @@ func TestParseSCTListCountsTimestampsAndLogs(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			count, logs, malformed := parseSCTList(tc.list)
+			count, logIDs, malformed := parseSCTList(tc.list)
 			if malformed {
 				t.Fatal("a well-formed list was reported as malformed")
 			}
 			if count != tc.wantCount {
 				t.Errorf("counted %d timestamps, want %d", count, tc.wantCount)
 			}
-			if logs != tc.wantLogs {
-				t.Errorf("counted %d logs, want %d", logs, tc.wantLogs)
+			if len(logIDs) != tc.wantLogs {
+				t.Errorf("named %d logs, want %d: %v", len(logIDs), tc.wantLogs, logIDs)
 			}
 		})
 	}
@@ -123,12 +123,12 @@ func TestParseSCTListRefusesMalformedInput(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			count, logs, malformed := parseSCTList(tc.list)
+			count, logIDs, malformed := parseSCTList(tc.list)
 			if !malformed {
-				t.Errorf("accepted malformed input and reported %d timestamps from %d logs", count, logs)
+				t.Errorf("accepted malformed input and reported %d timestamps from %d logs", count, len(logIDs))
 			}
-			if count != 0 || logs != 0 {
-				t.Errorf("returned %d/%d alongside the malformed flag; a refusal must count nothing", count, logs)
+			if count != 0 || len(logIDs) != 0 {
+				t.Errorf("returned %d/%d alongside the malformed flag; a refusal must count nothing", count, len(logIDs))
 			}
 		})
 	}
@@ -146,7 +146,8 @@ func FuzzParseSCTList(f *testing.F) {
 	f.Add([]byte{0xff, 0xff})
 
 	f.Fuzz(func(t *testing.T, list []byte) {
-		count, logs, malformed := parseSCTList(list)
+		count, logIDs, malformed := parseSCTList(list)
+		logs := len(logIDs)
 
 		if malformed {
 			if count != 0 || logs != 0 {

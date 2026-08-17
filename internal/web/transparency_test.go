@@ -23,7 +23,8 @@ func TestTransparencyReachesThePage(t *testing.T) {
 	for _, required := range []string{
 		"transparencyText",
 		"embeddedCount",
-		"logCount",
+		"logIds",
+		"sctLogIds",
 		"sctCount",
 		`pair("Transparency"`,
 	} {

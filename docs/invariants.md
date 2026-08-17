@@ -418,6 +418,11 @@ distinct logs so that a single misbehaving log cannot satisfy the requirement
 alone, and three receipts from one log is a different situation from three from
 three.
 
+The second number is a union rather than a sum. Each route names the logs
+behind its own receipts, and the usual arrangement is that both name the same
+ones; adding two counts reports a log twice, which is how a certificate logged
+in two places comes to be described as logged in four.
+
 Nothing is verified. Checking a receipt needs the issuing log's public key, and
 the set of qualified logs is a list browsers ship and revise; carrying a copy
 would be a dependency on somebody else's judgement that goes stale between
