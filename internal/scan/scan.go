@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/certinfo"
+	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
 )
@@ -65,6 +66,16 @@ type Result struct {
 
 	TLS         *tlsprobe.Report `json:"tls,omitempty"`
 	Certificate *certinfo.Report `json:"certificate,omitempty"`
+
+	// Issuance is what a resolver said about which authorities may issue a
+	// certificate for this name.
+	//
+	// Alone among the sections here, it does not come from the connection.
+	// Everything else is read off a handshake this service performed; this is
+	// a third party's answer about a system the person who configured the
+	// server often does not administer. It is reported and not graded for
+	// that reason, and the notes say where it came from.
+	Issuance *policy.Issuance `json:"issuance,omitempty"`
 
 	// Stapling grades the status response against what the certificate asked
 	// for. It is neither a transport property nor a certificate property: the
@@ -122,6 +133,18 @@ type Scanner struct {
 	// so whatever they do is theirs rather than laundered through somebody
 	// else's service.
 	AllowIPTargets bool
+
+	// Resolver looks up which authorities a name allows to issue for it.
+	//
+	// Nil means one reading the system configuration, which is what the
+	// service uses. On a machine with no resolver — Windows, where the
+	// command line tool also runs — the lookup fails and the report says the
+	// check did not happen, which is different from saying nothing was found.
+	//
+	// There is no option to turn this off, because there is no reason to
+	// want one: the queries go to the resolver this machine already asks
+	// about every target, and the scanned host learns nothing from them.
+	Resolver *dnsclient.Client
 
 	// Now supplies the current time, so certificate arithmetic is
 	// reproducible in tests. Nil means time.Now.
@@ -206,7 +229,67 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 			})...)
 	}
 
+	// Asked last, and bounded by whatever is left of the caller's deadline.
+	//
+	// That ordering is the budget. A scan that spent its time on handshakes
+	// has none left here, the lookups fail quickly, and the report says the
+	// check did not happen — which is a worse report than a complete one and
+	// a better one than a scan that ran out of time before describing the
+	// transport it was asked about.
+	//
+	// It runs even when no handshake completed. A name that refused every
+	// connection still has a policy about who may issue for it, and that is
+	// worth reading.
+	out.Issuance = s.checkIssuance(ctx, host)
+
 	return out, nil
+}
+
+// checkIssuance asks a resolver which authorities may issue for the name.
+//
+// Every failure produces the same thing: a description saying the check did
+// not happen. None of them is a fault of the name being scanned, and none of
+// them changes the verdict, so none of them is worth an error return that a
+// caller would have to decide what to do with.
+func (s *Scanner) checkIssuance(ctx context.Context, host string) *policy.Issuance {
+	resolver := s.Resolver
+	if resolver == nil {
+		resolver = &dnsclient.Client{}
+	}
+
+	answer, err := resolver.LookupCAA(ctx, host)
+	if err != nil {
+		unchecked := policy.DescribeIssuance(policy.IssuanceFacts{})
+		return &unchecked
+	}
+
+	facts := policy.IssuanceFacts{
+		Checked:    true,
+		Exists:     answer.Existed,
+		Validated:  answer.Validated,
+		FoundAt:    answer.Name,
+		SearchedTo: answer.Name,
+	}
+	if len(answer.Records) == 0 {
+		facts.FoundAt = ""
+	}
+
+	for _, record := range answer.Records {
+		switch strings.ToLower(record.Tag) {
+		case "issue":
+			facts.Authorities = append(facts.Authorities, record.Value)
+		case "issuewild":
+			facts.Wildcards = append(facts.Wildcards, record.Value)
+		default:
+			// iodef, contactemail, and anything published since. Counted
+			// rather than listed, because what a reader needs from them is
+			// whether a record set exists that names nobody.
+			facts.Other++
+		}
+	}
+
+	described := policy.DescribeIssuance(facts)
+	return &described
 }
 
 func (s *Scanner) now() time.Time {
