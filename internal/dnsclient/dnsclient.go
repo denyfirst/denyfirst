@@ -303,11 +303,12 @@ func (c *Client) exchangeTCP(ctx context.Context, server string, query []byte) (
 	// a CAA question is a few dozen bytes — but the conversion below is
 	// narrowing, and a narrowing conversion that nothing checks is how a
 	// length silently becomes a different, smaller length.
-	if len(query) > maxMessage {
-		return nil, fmt.Errorf("dnsclient: the query is %d bytes, more than %d", len(query), maxMessage)
+	size := len(query)
+	if size > maxMessage {
+		return nil, fmt.Errorf("dnsclient: the query is %d bytes, more than %d", size, maxMessage)
 	}
-	framed := make([]byte, 2+len(query))
-	binary.BigEndian.PutUint16(framed, uint16(len(query)))
+	framed := make([]byte, 2+size)
+	binary.BigEndian.PutUint16(framed, uint16(size))
 	copy(framed[2:], query)
 
 	if _, err := conn.Write(framed); err != nil {
