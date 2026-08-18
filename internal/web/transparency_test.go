@@ -33,12 +33,15 @@ func TestTransparencyReachesThePage(t *testing.T) {
 		}
 	}
 
-	// Both numbers, and the caveat. A page that prints a count of receipts
-	// without saying they went unverified has told the reader the certificate
-	// is provably logged, which counting bytes in an extension does not
-	// establish.
-	if !strings.Contains(source, "not verified") {
-		t.Error("the transparency line does not say the receipts went unverified")
+	// The caveat is not on this line, and that is deliberate.
+	//
+	// The count is something this service measured and measured accurately.
+	// That the receipts were not checked against the issuing log's key is
+	// something it did not do, and it belongs with the other things it did
+	// not do — in the note, which says so at length. On the line it read as
+	// though the count itself were uncertain.
+	if strings.Contains(source, `+ ", not verified"`) {
+		t.Error("the transparency line still hedges a count that was measured exactly")
 	}
 
 	// Singular and plural both handled. "1 logs" is where a reader stops

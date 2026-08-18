@@ -445,6 +445,12 @@ whatever host was named in the request — so every declared length is checked
 against what remains rather than trusted, and a mismatch ends the parse rather
 than being clamped to fit. There is a fuzz target.
 
+The count sits on a line of the report and the caveat sits in the note, which
+is not an accident of layout. The count is something this service measured and
+measured exactly; that the receipts went unchecked against the issuing log's
+key is something it did not do. On the same line the second reads as though
+the first were uncertain.
+
 *Enforced in:* `internal/certinfo.embeddedSCTs` for the count,
 `internal/policy.DescribeTransparency` for what it means, joined in
 `internal/scan.Scan`
@@ -554,6 +560,86 @@ key it points at, which answers nothing a forger could not arrange.
 `TestLegacySecurityTxtPathRedirects`, `TestSecurityTxtHasTheRequiredFields`,
 `TestSecurityTxtExpiryIsMovedByAPerson`,
 `TestSecurityTxtDoesNotSendExclusionRequestsToSecurity`
+
+### R9 — Issuance policy is reported and not graded
+
+A CAA record names the authorities allowed to issue certificates for a domain.
+Without one, any of around a hundred publicly trusted authorities may, which
+means the weakest of them sets the standard. Checking it has been mandatory
+for authorities since 2017, and it is one of the few controls a domain owner
+can apply to authorities they have no relationship with.
+
+It is reported and not graded, and the reason is where it comes from rather
+than what it says. Everything else this policy grades arrives in the
+handshake: a protocol version, a cipher suite, a certificate. This arrives
+from a resolver, over a path nothing here authenticates, describing a system
+the person who configured the server often does not administer. A verdict on
+the transport that moved because of a DNS record would be a verdict about
+somebody else's zone.
+
+The answer is reported as what it is. Not "this could not be measured" — it
+was measured, by asking a resolver, and the resolver answered. The note says
+which resolver, how far up the tree the search went, and whether the answer
+carried the AD bit. That bit is the resolver's claim to have verified the
+DNSSEC chain and not this service's, and its absence is ambiguous by
+construction: an unsigned zone and an answer nobody validated look the same
+from here, and most zones are unsigned.
+
+Nine states are distinguished, and a test fails when two of them read the
+same. One exists because `microsoft.com` publishes a record set carrying only
+`contactemail`: a CAA record set exists, no `issue` property is in it, and
+nothing is restricted. A report saying CAA is present would have been true and
+useless. That state was found by pointing the client at live hosts, not by
+reading the RFC.
+
+The line goes on the face of the report rather than into the notes, which fold
+shut under every verdict but ungraded. For a name with no CAA it is often the
+most useful sentence in the report: one DNS record, nothing to break by adding
+it, and a hundred authorities that stop being able to issue.
+
+It sits above the transparency line because the two are halves of one question
+in the order the halves happen. A restriction is checked by an authority at
+the moment it issues, so it does not help against a resolver poisoned at that
+moment or an authority that has itself been compromised; the logs record the
+result either way.
+
+The lookup runs last and is bounded by what remains of the caller's deadline,
+so a scan that spent its time on handshakes reports the check as not made
+rather than running over. Every failure produces the same description, because
+none of them is a fault of the name being scanned.
+
+*Enforced in:* `internal/dnsclient` for the query,
+`internal/policy.DescribeIssuance` for what it means, joined in
+`internal/scan.Scan`
+*Guarded by:* `TestDescribeIssuanceSeparatesEveryState`,
+`TestNotCheckedIsNotAnAccusation`, `TestProvenanceIsAlwaysStated`,
+`TestEveryCheckedStateMentionsTransparency`, `TestNoRecordSaysWhatFollowsFromIt`,
+`TestIssuanceIsOnTheFaceOfTheReport`, `TestIssuanceSitsAboveTransparency`
+
+### N5 — A resolver's reply is treated as hostile
+
+The CAA lookup builds its own DNS message, because the standard library
+exposes no general query. Everything it reads comes over plaintext UDP, where
+whoever answers first is the resolver.
+
+The question carries a random identifier and randomised letter case, and the
+reply is compared against it byte for byte: a forger who did not see the
+request cannot reproduce it, and DNS comparison is case-insensitive so the
+randomisation costs nothing. Compression pointers may only point backwards and
+their number is capped — two rules where one would do, because a name pointing
+at itself is the bug every hand-written DNS parser has had at least once.
+Every declared length is checked against what remains rather than clamped to
+fit. A CAA value that is not printable is refused rather than passed on.
+
+SERVFAIL is not an empty answer. It is what a validating resolver returns when
+a signature does not check out, and reporting it as no records would turn a
+broken DNSSEC chain into a clean result.
+
+*Enforced in:* `internal/dnsclient`
+*Guarded by:* `TestReplyMustAnswerTheQuestionAsked`,
+`TestResponseCodesAreNotAllTheSame`, `TestCompressionPointersCannotLoop`,
+`TestMalformedRecordsAreRefused`, `TestQuestionCaseIsRandomised`,
+`FuzzParseReply`, `FuzzSkipName`
 
 ## Supply chain
 

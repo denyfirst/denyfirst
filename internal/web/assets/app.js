@@ -269,7 +269,15 @@ function transparencyText(transparency, tls) {
     ? " (" + embedded + " embedded, " + handshake + " in the handshake)"
     : "";
 
-  return stamps + " from " + from + where + ", not verified";
+  // The caveat about verification lives in the note, not here.
+  //
+  // A count of receipts is something this service measured, and measured
+  // accurately; that they were not checked against the issuing log's key is
+  // something it did not do. Putting the second on the same line as the first
+  // reads as though the count itself were uncertain, which it is not. The
+  // Issuance line above already sets the pattern: state what was found, and
+  // let the note say how it was learnt and what was not built.
+  return stamps + " from " + from + where;
 }
 
 function certificate(cert, tls, issuance) {
