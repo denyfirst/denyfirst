@@ -144,6 +144,16 @@
     </ul>
 
     <p>
+      One thing does happen away from the handshake. The same resolver that
+      turns the hostname into an address is also asked which certificate
+      authorities that name allows to issue for it — between one and four
+      further questions, about a name it has already been asked about, because
+      the answer is inherited from parent domains and the search stops at the
+      first one that carries it. The scanned host is not involved and learns
+      nothing from them.
+    </p>
+
+    <p>
       Everything a report contains is what any client receives on connecting.
       None of it required asking for anything.
     </p>
