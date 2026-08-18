@@ -89,10 +89,16 @@ type Answer struct {
 	// attempt look identical from here.
 	Validated bool
 
-	// Existed is false when the resolver said the name does not exist.
-	// Separate from an empty Records, which means the name exists and has no
-	// CAA — the walk up the tree treats those the same but a report should
-	// not have to guess which happened.
+	// Existed is false when the resolver said the name asked about does not
+	// exist. Separate from an empty Records, which means the name exists and
+	// has no CAA: the walk up the tree treats those the same, and a report
+	// should not have to guess which happened.
+	//
+	// It describes the name that was asked about and nothing else. The walk
+	// continues past a name that does not exist, because a parent may carry a
+	// policy that would have governed it, and taking this from wherever the
+	// walk ended would report a name as existing on the strength of its
+	// grandparent existing.
 	Existed bool
 
 	// Queries counts the lookups the walk took, so a caller can charge them
@@ -183,17 +189,18 @@ func (c *Client) LookupCAA(ctx context.Context, name string) (Answer, error) {
 		}
 
 		out.Validated = reply.validated
-		out.Existed = reply.existed
+		if i == 0 {
+			out.Existed = reply.existed
+		}
 		if len(reply.records) > 0 {
 			out.Records = reply.records
 			out.Name = at
 			return out, nil
 		}
 
-		// A name that does not exist has no parent worth asking about either,
-		// but the parent may still carry a policy that would have governed it
-		// had it existed, so the walk continues. What stops is the pretence
-		// that the original name was found.
+		// The walk continues past a name that does not exist, because the
+		// parent may carry a policy. Existed is not touched here: it was set
+		// on the first pass and describes the name that was asked about.
 		out.Name = at
 	}
 
