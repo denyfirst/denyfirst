@@ -24,6 +24,11 @@ Policy: https://github.com/denyfirst/denyfirst/blob/main/SECURITY.md
 #
 #   75B7 A18A 8971 5E37 75DB  CA2E A8D9 94D1 221A A045
 #
+# It expires 2028-08-16. Renew it well before then: this file would
+# otherwise point at a key nobody can encrypt to, and the failure appears
+# to a reporter rather than to us. denyfirst-watch warns ninety days ahead,
+# against a date written in the script that a renewal has to move.
+#
 # Check it before encrypting anything, and check it somewhere that is not
 # this domain. The same fingerprint is in SECURITY.md in the repository on
 # GitHub, which is a different account behind different credentials. Whoever
