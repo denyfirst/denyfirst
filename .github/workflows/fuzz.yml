@@ -56,6 +56,10 @@ jobs:
             target: FuzzAnalyse
           - package: ./internal/certinfo
             target: FuzzParseSCTList
+          - package: ./internal/dnsclient
+            target: FuzzParseReply
+          - package: ./internal/dnsclient
+            target: FuzzSkipName
           - package: ./internal/httpapi
             target: FuzzScanHandler
 
