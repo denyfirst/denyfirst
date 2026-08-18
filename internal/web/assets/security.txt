@@ -14,25 +14,31 @@
 # and a reporter reads it as abandoned.
 
 Contact: mailto:security@denyfirst.dev
+Encryption: https://denyfirst.dev/pgp-key.txt
 Expires: 2027-08-01T00:00:00Z
 Preferred-Languages: en, az
 Canonical: https://denyfirst.dev/.well-known/security.txt
 Policy: https://github.com/denyfirst/denyfirst/blob/main/SECURITY.md
 
-# There is deliberately no Encryption field yet.
+# The key's fingerprint is:
 #
-# RFC 9116 recommends one, and pointing it at a key that does not exist
-# would be worse than omitting it: a reporter would encrypt to whatever is
-# published and believe the message was protected. Until a key is published
-# and its fingerprint can be checked against a second source, this field
-# stays absent and the absence is stated here rather than left silent.
+#   75B7 A18A 8971 5E37 75DB  CA2E A8D9 94D1 221A A045
 #
-# A report that needs encryption should say so in a first message that
-# contains nothing sensitive.
+# Check it before encrypting anything, and check it somewhere that is not
+# this domain. The same fingerprint is in SECURITY.md in the repository on
+# GitHub, which is a different account behind different credentials. Whoever
+# takes this domain serves their own key beside their own fingerprint, and
+# both would look exactly like this one does.
 #
-# This file is not signed for the same reason. A clearsigned security.txt
-# is worth having only once the verifying key is reachable independently
-# of this domain.
+#   gpg --fetch-keys https://denyfirst.dev/pgp-key.txt
+#   gpg --fingerprint security@denyfirst.dev
+#
+# The key certifies and encrypts and does nothing else. It is not the key
+# that signs releases: that one is an SSH key and points the other way, out
+# rather than in.
+#
+# This file is not signed. A clearsigned security.txt would be verified with
+# the key it points at, which answers nothing a forger could not arrange.
 
 # A domain owner asking to be excluded from scanning should write to
 # abuse@denyfirst.dev instead. That is an operational request rather than a

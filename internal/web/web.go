@@ -53,6 +53,22 @@ const contentSecurityPolicy = "default-src 'none'; " +
 // second copy of this string is a second thing to keep in step.
 const SecurityTxtPath = "/.well-known/security.txt"
 
+// PGPKeyPath serves the key a reporter encrypts to.
+const PGPKeyPath = "/pgp-key.txt"
+
+// PGPFingerprint identifies the key at PGPKeyPath.
+//
+// A key served from this domain and identified only by this domain proves
+// nothing: whoever takes the domain serves their own key beside their own
+// fingerprint, and a reporter encrypts an unpublished vulnerability straight
+// to them. The fingerprint is therefore also in SECURITY.md, which lives on
+// GitHub behind a different account and a different set of credentials. A
+// reporter compares the two; taking one is not taking both.
+//
+// A test fails if the two copies disagree, because two sources that always
+// agree because nobody checks are one source written twice.
+const PGPFingerprint = "75B7A18A89715E3775DBCA2EA8D994D1221AA045"
+
 // page is one rendered document.
 type page struct {
 	Title       string
@@ -124,6 +140,11 @@ var files = map[string]struct {
 	"/app.js":       {"assets/app.js", "text/javascript; charset=utf-8"},
 	"/favicon.svg":  {"assets/favicon.svg", "image/svg+xml"},
 	SecurityTxtPath: {"assets/security.txt", "text/plain; charset=utf-8"},
+
+	// text/plain rather than application/pgp-keys, so a browser shows it
+	// instead of offering to download a file a reporter then has to find.
+	// gpg reads it either way.
+	PGPKeyPath: {"assets/pgp-key.txt", "text/plain; charset=utf-8"},
 }
 
 // rendered holds every page as finished bytes.
