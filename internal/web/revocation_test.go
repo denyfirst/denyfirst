@@ -66,7 +66,13 @@ func TestCertificateSectionIsGivenTheHandshake(t *testing.T) {
 	if strings.Contains(source, "certificate(data.certificate)") {
 		t.Error("certificate() is called without the transport report; every server will read as not stapling")
 	}
-	if !strings.Contains(source, "certificate(data.certificate, data.tls)") {
+
+	// Matched without the closing bracket on purpose. The section has since
+	// been given a third argument, and pinning the exact call meant this test
+	// failed for a change that was correct — which teaches whoever meets it
+	// to edit the test rather than read it. What matters is that the
+	// transport report is passed at all.
+	if !strings.Contains(source, "certificate(data.certificate, data.tls") {
 		t.Error("certificate() is not given the transport report")
 	}
 }

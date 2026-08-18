@@ -272,7 +272,7 @@ function transparencyText(transparency, tls) {
   return stamps + " from " + from + where + ", not verified";
 }
 
-function certificate(cert, tls) {
+function certificate(cert, tls, issuance) {
   if (!cert || !Array.isArray(cert.chain) || !cert.chain.length) {
     return document.createDocumentFragment();
   }
@@ -326,6 +326,17 @@ function certificate(cert, tls) {
   // distinction between a server that could staple and did not and one that
   // has nothing to staple is the whole content of this line.
   pair("Revocation", revocationText(cert.revocation, tls));
+
+  // Issuance sits above transparency because the two are halves of one
+  // question in the order they happen: who may obtain a certificate for this
+  // name, and whether obtaining one leaves a record. A restriction is checked
+  // when a certificate is issued; the logs record the result either way.
+  //
+  // It is on a line of its own rather than in the notes, which fold shut
+  // under every verdict but ungraded. For a name with no CAA this is often
+  // the most useful sentence in the report — one DNS record, nothing to break
+  // by adding it — and a sentence nobody opens is a sentence nobody reads.
+  pair("Issuance", issuance && issuance.line);
   pair("Transparency", transparencyText(cert.transparency, tls));
   pair("SHA-256", leaf.fingerprintSha256);
 
@@ -402,7 +413,7 @@ function render(data) {
   frag.appendChild(findings(data.findings, verdict));
   frag.appendChild(versions(data.tls));
   frag.appendChild(ciphers(data.tls));
-  frag.appendChild(certificate(data.certificate, data.tls));
+  frag.appendChild(certificate(data.certificate, data.tls, data.issuance));
   frag.appendChild(notes(data.notes, verdict));
   show(frag);
 }
