@@ -298,6 +298,14 @@ func (c *Client) exchangeTCP(ctx context.Context, server string, query []byte) (
 		_ = conn.SetDeadline(deadline)
 	}
 
+	// TCP frames a message with its length in two bytes, so a query longer
+	// than those two bytes can express cannot be sent at all. It never is —
+	// a CAA question is a few dozen bytes — but the conversion below is
+	// narrowing, and a narrowing conversion that nothing checks is how a
+	// length silently becomes a different, smaller length.
+	if len(query) > maxMessage {
+		return nil, fmt.Errorf("dnsclient: the query is %d bytes, more than %d", len(query), maxMessage)
+	}
 	framed := make([]byte, 2+len(query))
 	binary.BigEndian.PutUint16(framed, uint16(len(query)))
 	copy(framed[2:], query)
@@ -399,10 +407,16 @@ func encodeName(name string, randomiseCase bool) ([]byte, error) {
 
 	out := make([]byte, 0, len(name)+2)
 	for _, label := range strings.Split(name, ".") {
-		if label == "" || len(label) > maxLabel {
-			return nil, fmt.Errorf("dnsclient: a label is %d bytes", len(label))
+		// maxLabel is 63, which is what the two high bits of a length byte
+		// being reserved for compression pointers leaves. The check is the
+		// protocol's; it also happens to be what makes the conversion below
+		// safe, and stating that here is cheaper than discovering later that
+		// removing one broke the other.
+		length := len(label)
+		if length == 0 || length > maxLabel {
+			return nil, fmt.Errorf("dnsclient: a label is %d bytes", length)
 		}
-		out = append(out, byte(len(label)))
+		out = append(out, byte(length))
 		out = append(out, label...)
 	}
 	out = append(out, 0)
