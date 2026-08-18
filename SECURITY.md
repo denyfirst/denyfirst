@@ -9,11 +9,25 @@ tab of this repository, then *Report a vulnerability*. This keeps the report,
 the discussion, and the fix in one place and private until disclosure.
 
 **Alternative:** email `security@denyfirst.dev`.
+Reports may be encrypted. The key is at
+[`https://denyfirst.dev/pgp-key.txt`](https://denyfirst.dev/pgp-key.txt) and
+its fingerprint is:
+
+    75B7 A18A 8971 5E37 75DB  CA2E A8D9 94D1 221A A045
+
+This fingerprint is published in two places on purpose: here, and in
+`security.txt` on the site. Whoever takes the domain serves their own key
+beside their own fingerprint, and it would look exactly like the real one.
+This repository is a different account behind different credentials, so
+compare the two before encrypting anything.
+
+The key certifies and encrypts and does nothing else. It is not the key that
+signs releases; that one is an SSH key and points the other way.
 
 Please include enough detail to reproduce: affected component, version or
 commit, steps, and what an attacker gains. Proof-of-concept code is welcome.
 
-## What to expect
+## What to expectsecurity@denyfirst.dev
 
 | Stage | Target |
 |---|---|

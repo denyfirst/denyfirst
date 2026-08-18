@@ -529,11 +529,25 @@ domain owner at `abuse@denyfirst.dev` for exclusion requests. Those are
 different queues: a takedown request sitting behind an embargoed report helps
 nobody.
 
-There is deliberately no `Encryption` field. RFC 9116 recommends one, and
-pointing it at a key that does not exist would be worse than omitting it — a
-reporter would encrypt to whatever is published and believe the message was
-protected. The absence is stated in the file rather than left silent, and is
-listed under Known gaps.
+`Encryption` names an OpenPGP key served from `/pgp-key.txt`, and the key's
+fingerprint is published twice: in `security.txt` and in `SECURITY.md` in the
+repository.
+
+Twice, because once proves nothing. A key served from this domain and
+identified only by this domain is exactly what an attacker who takes the
+domain would also serve — their key beside their fingerprint, and a reporter
+encrypting an unpublished vulnerability straight to them. `SECURITY.md` sits
+on GitHub behind a different account and different credentials, so a reporter
+comparing the two is comparing two things that would have to fall together.
+
+A test fails when the copies disagree, because two sources that agree only
+because nobody checks are one source written twice.
+
+The key certifies and encrypts and does nothing else, and is unrelated to the
+release signing key, which is an SSH key pointing outward rather than in.
+
+`security.txt` is not signed. A clearsigned file would be verified with the
+key it points at, which answers nothing a forger could not arrange.
 
 *Enforced in:* `internal/web`, the route table and `assets/security.txt`
 *Guarded by:* `TestSecurityTxtIsServedAtTheWellKnownPath`,
@@ -577,8 +591,10 @@ today.
 - **A stapled response is observed, not validated.** R3b. Verifying one needs
   an OCSP parser and a signature check against the issuer, and this project
   carries no dependency that would provide either.
-- **`security.txt` publishes no key.** D1. A reporter with something sensitive
-  has no way to encrypt a first message.
+- **The published key is not verifiable from the served bytes.** D1. The test
+  compares the fingerprint across its two published copies; it does not
+  compute the fingerprint of the key file, which would need an OpenPGP parser
+  and SHA-1. A key file swapped without touching either copy would pass.
 - **`-trusted-proxy-hops` is a flag that cannot take effect.** `TrustedProxies`
   is never populated from the command line, so `withDefaults` silently returns
   the hop count to zero. It fails safe and it misleads: an operator who sets it
