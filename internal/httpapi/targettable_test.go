@@ -97,11 +97,18 @@ func TestSustainedTargetRateDoesNotDependOnTheBurst(t *testing.T) {
 //
 // With the allowance secret and stable per bucket, a probe measures the
 // allowance minus the prior scans and cannot separate the two. This asserts
-// that at most one signature is still unambiguous — the bucket that happens to
-// hold the minimum, which refuses the very first probe. That residual is
-// stated on the privacy page rather than hidden, and closing it would mean
-// raising the minimum allowance, which spends the scanned host's budget to buy
-// somebody else's privacy.
+// that at most one signature still pins the count exactly: across the range
+// swept here, only a bucket that drew the minimum and has spent all of it
+// refuses three times running.
+//
+// What this deliberately does not assert is worth stating, because the
+// difference is the honesty of the claim rather than a detail of the test.
+// Being refused at all is not blurred and cannot be — it means at least
+// targetBurstMin scans happened inside the interval, which is the limit doing
+// exactly what it exists to do. The secret spread hides how many, not whether.
+// That residual is on the privacy page and in Known gaps rather than hidden,
+// because removing it would mean raising the minimum allowance, which spends
+// the scanned host's peak to buy somebody else's privacy.
 func TestSecretBurstBlursAProbeFromOutside(t *testing.T) {
 	consistent := map[string]map[int]bool{}
 
