@@ -378,6 +378,78 @@ func TestCrossSiteRequestsAreRefused(t *testing.T) {
 	}
 }
 
+// Refusing the request is half of it. Not charging the visitor for it is the
+// other half, and it is the half nothing was watching.
+//
+// The check above passes whether the cross-site test sits before or after the
+// scan limiter: either way the request is refused, with 403, counted as
+// cross_site. What the ordering decides is who pays. Behind it, a page on
+// another site could empty a visitor's scan allowance in a handful of
+// requests, and the visitor would then find this service refusing them with no
+// way to know why — the same attack arriving as denial of service rather than
+// as attribution, through the door the obvious fix had just closed.
+//
+// So the ordering is asserted rather than left as a comment beside the code,
+// because moving those lines is exactly the kind of tidying that looks safe.
+func TestACrossSiteRefusalDoesNotSpendTheVisitorsScanBudget(t *testing.T) {
+	const budget = 3
+	// An hour of refill, so whatever the visitor has left is what they
+	// started with rather than what came back while the test ran.
+	s := New(offlineScanner(), Limits{Burst: budget, Refill: time.Hour}, nil)
+
+	const victim = "203.0.113.78:5000"
+	send := func(site string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/scan",
+			strings.NewReader(`{"target":"example.test"}`))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Sec-Fetch-Site", site)
+		r.RemoteAddr = victim
+
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		return w
+	}
+
+	// Several times the visitor's whole allowance, all from the attacker's
+	// page, all carrying the visitor's address.
+	const attempts = budget * 5
+	for i := range attempts {
+		w := send("cross-site")
+		if w.Code == http.StatusForbidden {
+			continue
+		}
+
+		// A 429 here is the failure itself rather than a surprise: the scan
+		// limiter answered before the cross-site check did, which means the
+		// attacker's requests are being charged to the visitor.
+		t.Fatalf(`cross-site attempt %d of %d answered %d rather than 403 (%q).
+
+The scan limiter is running before the Sec-Fetch-Site check, so a page on
+another site spends the visitor's scan allowance without ever running a scan.
+Every other test here passes either way — the request is refused either way —
+which is why this one exists. Put the Sec-Fetch-Site switch back in front of
+s.rate.allow and let the read allowance carry the cost of the refusal.`,
+			i+1, attempts, w.Code, errorCode(t, w))
+	}
+
+	// The visitor now arrives on this site's own page. Every scan they began
+	// with must still be there.
+	allowed := 0
+	for range budget {
+		if w := send("same-origin"); w.Code != http.StatusTooManyRequests {
+			allowed++
+		}
+	}
+
+	if allowed != budget {
+		t.Errorf(`a visitor had %d of their %d scans left after %d cross-site refusals, want %d.
+
+Something between the two checks is charging the refusal to the scan allowance,
+so a page on another site can lock a visitor out of this service without ever
+running a scan against anybody.`, allowed, budget, attempts, budget)
+	}
+}
+
 // The scan endpoint was limited from the first day; these two were not. That
 // was an omission: /api/v1/stats clones a map on every call, so a client
 // asking a few thousand times a second turns a health check into a way of
