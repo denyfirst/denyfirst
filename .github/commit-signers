@@ -1,12 +1,11 @@
+# No blank lines below: some OpenSSH builds read one as a line with a missing key.
 # Every commit in this repository is signed, and this is the list that says by
 # whom. Published so the answer comes from the repository rather than from
 # GitHub, which is not the party a reader needs to trust.
-
 # Signed commits up to 50e749f. Kept so history still verifies; it signs nothing
 # new. It is also the key that authenticates pushes, which is why it was
 # replaced: one key doing two jobs means losing it costs both.
 106975655+cyberbihan@users.noreply.github.com namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICPP2ZJGu0Qg1+vNe/79HTazyc3TXG1VqmkVH2YCcto4
-
 # From 2026-08-21. Signs commits and tags here and does nothing else. GitHub
 # holds it as a signing key rather than an authentication key, so it cannot
 # push, and it appears nowhere that could tie this account to another.
