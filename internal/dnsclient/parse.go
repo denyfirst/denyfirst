@@ -85,7 +85,7 @@ func parseReply(raw []byte, id uint16, question []byte, qtype uint16) (reply, er
 	}
 
 	answers := int(binary.BigEndian.Uint16(raw[6:8]))
-	records, err := parseAnswers(raw, end, answers, qtype)
+	records, err := parseAnswers(raw, end, answers, qtype, foldName(question))
 	if err != nil {
 		return out, err
 	}
@@ -93,11 +93,27 @@ func parseReply(raw []byte, id uint16, question []byte, qtype uint16) (reply, er
 	return out, nil
 }
 
-func parseAnswers(raw []byte, offset, count int, qtype uint16) ([]CAA, error) {
+// parseAnswers reads the answer section, keeping only the records that answer
+// the question that was asked.
+//
+// The owner name is checked rather than assumed, and that check is the point
+// of the wantName argument. Everything above establishes that the message came
+// from something that saw the query; none of it establishes that the records
+// inside describe the name the query was about. A resolver — hostile, broken,
+// or merely expanding a CNAME this client does not follow — can put a record
+// set belonging to some other name here, and without this the report would
+// present that other name's policy as this one's: "issuance limited to X (from
+// example.com)" about a record that governs nothing of the sort.
+//
+// A record for another name is skipped rather than treated as an error, which
+// is how RRSIG and every other type in the section are already handled. The
+// walk then reports no CAA at this name and carries on to the parent, which is
+// the honest answer: nothing was found for the name that was asked about.
+func parseAnswers(raw []byte, offset, count int, qtype uint16, wantName []byte) ([]CAA, error) {
 	var out []CAA
 
 	for i := 0; i < count; i++ {
-		next, err := skipName(raw, offset)
+		owner, next, err := readName(raw, offset)
 		if err != nil {
 			return nil, err
 		}
@@ -121,8 +137,9 @@ func parseAnswers(raw []byte, offset, count int, qtype uint16) ([]CAA, error) {
 		// Anything else in the section is skipped rather than refused: a
 		// reply carrying RRSIG alongside the records asked for is what asking
 		// for DNSSEC produces, and treating it as a fault would reject every
-		// signed zone.
-		if rrType != qtype || qtype != TypeCAA {
+		// signed zone. A record for another owner is skipped for the same
+		// reason and with more cause: it answers a question nobody asked.
+		if rrType != qtype || qtype != TypeCAA || !bytes.Equal(owner, wantName) {
 			continue
 		}
 
@@ -180,6 +197,25 @@ func printableASCII(s string) bool {
 
 // skipName walks past a name and returns where it ends.
 //
+// A wrapper rather than a second walker. Two functions that both have to get
+// compression pointers right are two chances to get them wrong, and the one
+// nobody is fuzzing is the one that will be wrong.
+func skipName(raw []byte, offset int) (int, error) {
+	_, next, err := readName(raw, offset)
+	return next, err
+}
+
+// readName walks a name and returns both the name and where the record
+// continues.
+//
+// The name comes back canonical: uncompressed, and with A-Z folded to
+// lowercase. DNS comparison is case-insensitive, and a name written out in
+// full and the same name written as a pointer are the same name, so anything
+// comparing owner names has to compare this form rather than the bytes as they
+// arrived. It is also what makes the randomised case in the query harmless
+// here: the reply echoes the question with its case intact, and folding is
+// what lets that name still match a record's owner.
+//
 // Names are compressed: a label may be replaced by a pointer to an earlier
 // one, which is how a reply repeating the same domain a dozen times stays
 // small. It is also the oldest way to make a DNS parser loop forever, by
@@ -190,7 +226,7 @@ func printableASCII(s string) bool {
 // followed is capped, so a chain descending one byte at a time through a long
 // reply still ends. Either alone would do. Both are here because this is the
 // bug every hand-written DNS parser has had at least once.
-func skipName(raw []byte, offset int) (int, error) {
+func readName(raw []byte, offset int) (name []byte, next int, err error) {
 	const (
 		pointerMask  = 0xC0
 		pointerValue = 0xC0
@@ -199,10 +235,11 @@ func skipName(raw []byte, offset int) (int, error) {
 	start := offset
 	pointers := 0
 	length := 0
+	name = make([]byte, 0, 32)
 
 	for {
 		if offset >= len(raw) {
-			return 0, errors.New("dnsclient: a name runs past the end of the reply")
+			return nil, 0, errors.New("dnsclient: a name runs past the end of the reply")
 		}
 
 		size := int(raw[offset])
@@ -211,23 +248,24 @@ func skipName(raw []byte, offset int) (int, error) {
 		case size == 0:
 			// The root label ends the name. If a pointer was followed, the
 			// name in the record ended at the pointer rather than here.
+			name = append(name, 0)
 			if pointers > 0 {
-				return start, nil
+				return name, start, nil
 			}
-			return offset + 1, nil
+			return name, offset + 1, nil
 
 		case size&pointerMask == pointerValue:
 			if offset+2 > len(raw) {
-				return 0, errors.New("dnsclient: a compression pointer is cut short")
+				return nil, 0, errors.New("dnsclient: a compression pointer is cut short")
 			}
 			target := int(binary.BigEndian.Uint16(raw[offset:offset+2]) &^ 0xC000)
 
 			if target >= offset {
-				return 0, errors.New("dnsclient: a compression pointer does not point backwards")
+				return nil, 0, errors.New("dnsclient: a compression pointer does not point backwards")
 			}
 			pointers++
 			if pointers > maxPointers {
-				return 0, errors.New("dnsclient: too many compression pointers")
+				return nil, 0, errors.New("dnsclient: too many compression pointers")
 			}
 			if pointers == 1 {
 				start = offset + 2
@@ -237,15 +275,38 @@ func skipName(raw []byte, offset int) (int, error) {
 		case size <= maxLabel:
 			length += size + 1
 			if length > maxName {
-				return 0, errors.New("dnsclient: a name is longer than a name may be")
+				return nil, 0, errors.New("dnsclient: a name is longer than a name may be")
 			}
 			if offset+1+size > len(raw) {
-				return 0, errors.New("dnsclient: a label runs past the end of the reply")
+				return nil, 0, errors.New("dnsclient: a label runs past the end of the reply")
 			}
+			name = append(name, byte(size))
+			name = appendFolded(name, raw[offset+1:offset+1+size])
 			offset += 1 + size
 
 		default:
-			return 0, fmt.Errorf("dnsclient: a label length byte is %#x", size)
+			return nil, 0, fmt.Errorf("dnsclient: a label length byte is %#x", size)
 		}
 	}
+}
+
+// foldName returns a wire-form name with A-Z folded to lowercase.
+//
+// One pass over the whole buffer, length bytes included, and that is safe
+// rather than sloppy: a label is at most 63 bytes, so a length byte can never
+// hold a value in the letter range. A byte-wise fold rather than
+// bytes.ToLower, because a label carries arbitrary bytes and a UTF-8 aware
+// fold would rewrite the ones that are not valid text.
+func foldName(name []byte) []byte {
+	return appendFolded(make([]byte, 0, len(name)), name)
+}
+
+func appendFolded(dst, src []byte) []byte {
+	for _, b := range src {
+		if b >= 'A' && b <= 'Z' {
+			b += 32
+		}
+		dst = append(dst, b)
+	}
+	return dst
 }

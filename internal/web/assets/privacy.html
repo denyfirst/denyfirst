@@ -68,6 +68,18 @@
       the name is not there to find.
     </p>
 
+    <p>
+      One consequence of that limit is worth stating rather than leaving to be
+      discovered. A limit answers a question, and an answer is something
+      anybody can ask for: check a host, be told it was checked very recently,
+      and you have learnt that somebody checked it &mdash; or checked one of
+      the billions of names that share its result. The window is under a
+      minute and the answer is ambiguous by construction. It is still the only
+      thing about anyone else&rsquo;s use of this service that can be observed
+      at all, and a page that claims nothing is recorded should say where the
+      edge of the claim is rather than wait to be asked.
+    </p>
+
     <h3>Nothing from anyone else</h3>
 
     <p>
@@ -123,10 +135,12 @@
     <p>
       To find out how a server negotiates TLS, this opens connections and
       completes handshakes — the same exchange every browser performs before
-      loading a page. A single check opens roughly thirty over a few seconds:
-      one per protocol version, several to work out which cipher suites are
-      accepted, and two to see whether the server imposes its own ordering.
-      Each is closed as soon as its handshake finishes.
+      loading a page. A modern server takes fewer than twenty over a few
+      seconds; one that still accepts every obsolete protocol version and
+      cipher suite takes up to fifty, because each one has to be offered
+      before it can be reported. One per protocol version, one per suite the
+      server turns out to accept, and two more to see whether it imposes its
+      own ordering. Each is closed as soon as its handshake finishes.
     </p>
 
     <p>

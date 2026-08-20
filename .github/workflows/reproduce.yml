@@ -72,29 +72,59 @@ jobs:
           echo "── how the release was built ──"
           cat published/BUILD
 
-      - name: Fetch the build script from the default branch
+      - name: Settle which build script is used, and prove it is the right one
         run: |
           set -euo pipefail
 
-          # Taken from the default branch rather than from the tag, because it
-          # may not exist there: the script was introduced after v0.1.0 was
-          # cut, and a release from before it would otherwise be
-          # unreproducible for ever.
+          # The tag's own script when it has one, and the default branch only
+          # when the tag predates it: the script was introduced after v0.1.0
+          # was cut, and that release would otherwise be unreproducible for
+          # ever.
           #
-          # This is defensible on its own terms. The question a reproduction
-          # answers is whether the binaries correspond to the source, and a
-          # build command is not source — it is procedure. Both the release
-          # build and this one read the same procedure from the same place,
-          # which is what makes a mismatch mean something.
+          # Then the part that makes any of this mean something. Whichever
+          # copy is used, its hash has to equal the one recorded when the
+          # release was built. Without that check this workflow reproduces a
+          # build using whatever procedure is current, so somebody who can
+          # move the default branch changes what is built AND what it is
+          # compared against, and the reproduction agrees with itself while
+          # agreeing with nothing a reader can verify.
           #
-          # The BUILD record names the script's hash, so a release built with
-          # an older procedure can say so rather than failing silently.
-          mkdir -p scripts
-          curl -fsSL \
-            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/scripts/build.sh" \
-            -o scripts/build.sh
+          # A build command is not source, but it decides the bytes, and a
+          # check that cannot tell a changed procedure from a changed binary
+          # is not a check.
+          if [ -f scripts/build.sh ]; then
+            echo "using scripts/build.sh from the tag"
+          else
+            echo "the tag predates scripts/build.sh; falling back to the default branch"
+            mkdir -p scripts
+            curl -fsSL \
+              "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/scripts/build.sh" \
+              -o scripts/build.sh
+          fi
           chmod +x scripts/build.sh
-          echo "buildscript $(sha256sum scripts/build.sh | cut -d' ' -f1)"
+
+          have=$(sha256sum scripts/build.sh | cut -d' ' -f1)
+          want=$(awk '$1 == "buildscript" { print $2 }' published/BUILD)
+
+          echo "buildscript ${have}"
+
+          if [ -z "${want}" ]; then
+            echo "::error::The BUILD record names no build script, so this reproduction cannot say" >&2
+            echo "which procedure produced the release. Releases from before that field existed" >&2
+            echo "have to be checked by hand." >&2
+            exit 1
+          fi
+
+          if [ "${have}" != "${want}" ]; then
+            echo "::error::The build script is not the one that built this release." >&2
+            echo "  released with ${want}" >&2
+            echo "  reproducing with ${have}" >&2
+            echo >&2
+            echo "Either the procedure changed since the release, which makes a byte comparison" >&2
+            echo "meaningless, or somebody changed it in order to change what is built. Both are" >&2
+            echo "answered the same way: read the diff of scripts/build.sh before going further." >&2
+            exit 1
+          fi
 
       - name: Report this toolchain
         run: |
@@ -122,9 +152,12 @@ jobs:
           sha256sum * | sort -k2 > ../rebuilt.sums
           cd ..
 
-          # The published list includes SHA256SUMS itself and the BUILD record,
-          # neither of which is rebuilt here.
-          grep -v -E '(SHA256SUMS|BUILD)' published/SHA256SUMS | sort -k2 > published.sums
+          # The published list includes the BUILD record, which is not rebuilt
+          # here. Matched on the whole name rather than as a substring: the
+          # earlier pattern also dropped any asset whose name merely contained
+          # "BUILD" or "SHA256SUMS", which is a way to add a file to a release
+          # and have this comparison ignore it.
+          awk '$2 != "SHA256SUMS" && $2 != "BUILD"' published/SHA256SUMS | sort -k2 > published.sums
 
           if diff -u published.sums rebuilt.sums; then
             echo

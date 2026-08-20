@@ -126,6 +126,22 @@ type Report struct {
 	OCSPStapled bool   `json:"ocspStapled"`
 	SCTCount    int    `json:"sctCount"`
 
+	// BlockedDestination reports that every attempt was refused by safedial
+	// before anything was dialled: the name resolved only to private,
+	// loopback, link-local or reserved addresses.
+	//
+	// A field rather than a phrase in Notes, because a caller has to be able
+	// to count this. An operator running a public scanner needs to see the
+	// shape of what arrives — "attempts at private addresses rose from two a
+	// day to eight thousand" is the sentence that says somebody is using this
+	// as an SSRF proxy — and a count built by matching prose breaks silently
+	// the first time the prose is improved.
+	//
+	// Not serialised: it is a fact about why this service declined, not a
+	// measurement of the host, and internal/httpapi turns it into a refusal
+	// with its own status code rather than passing it through.
+	BlockedDestination bool `json:"-"`
+
 	// SCTLogIDs identifies the logs behind the handshake timestamps, hex
 	// encoded. Reported alongside the count because the same logs may also
 	// appear embedded in the certificate, and adding two counts would report
@@ -165,6 +181,12 @@ type VersionResult struct {
 	// refusal by our own client are different findings, and the text
 	// distinguishes them.
 	Error string `json:"error,omitempty"`
+
+	// Blocked records that safedial refused this attempt by policy rather
+	// than the network failing it. Kept beside Error because Error is a
+	// sentence written for a reader and this is a fact written for a caller;
+	// deriving the second from the first would mean parsing our own prose.
+	Blocked bool `json:"-"`
 }
 
 // CipherResult is one negotiated suite together with its grade.
@@ -203,6 +225,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 
 			if err != nil {
 				result.Error = classifyHandshakeError(err, version)
+				result.Blocked = errors.Is(err, safedial.ErrBlocked)
 				mu.Lock()
 				results[i] = result
 				mu.Unlock()
@@ -248,6 +271,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	}
 
 	report.Verdict, report.Findings = summarise(results)
+	report.BlockedDestination = blockedDestination(results)
 
 	if len(report.Certificates) == 0 {
 		report.Notes = append(report.Notes,
@@ -285,6 +309,26 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	report.Duration = time.Since(start)
 	report.DurationMs = report.Duration.Milliseconds()
 	return report, nil
+}
+
+// blockedDestination reports that the name was refused by policy rather than
+// by anything on the network.
+//
+// Every version has to have been refused, and every refusal has to have been
+// a block. One version failing for another reason means something answered,
+// or tried to, and calling that a blocked destination would put a resolver
+// failure and an attempt at 169.254.169.254 in the same counter. The whole
+// value of that counter is that a change in it means one specific thing.
+func blockedDestination(results []VersionResult) bool {
+	if len(results) == 0 {
+		return false
+	}
+	for _, v := range results {
+		if v.Supported || !v.Blocked {
+			return false
+		}
+	}
+	return true
 }
 
 // summarise reduces the per-version results to one verdict and a deduplicated

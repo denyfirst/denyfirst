@@ -35,9 +35,17 @@ predicate in the standard library looks inside one. `::127.0.0.1` is the
 deprecated IPv4-compatible form from RFC 4291: `IsLoopback` returns false for
 it, `Unmap` leaves it alone, and before this was written it reached the
 dialler as an ordinary global address. Teredo does the same at a different
-offset, 6to4 and NAT64 at two more. Each family needs a prefix of its own, and
-`2001::/23` covers several at once because IANA reserved that block for
-exactly this kind of assignment.
+offset, 6to4 and NAT64 at two more, and RFC 2765's IPv4-translated form
+`::ffff:0:a.b.c.d` at a fifth — sixteen bits longer than the mapped form and
+therefore a different prefix, which is how it stayed out of the list while its
+neighbour was in it. Each family needs a prefix of its own, and `2001::/23`
+covers several at once because IANA reserved that block for exactly this kind
+of assignment.
+
+That last family is not routed by a stock Linux stack, so nothing broke while
+it was missing. It is listed because a deny list is worth exactly its
+completeness, and "not reachable on the kernel we happen to run" is a property
+of the kernel rather than of this code.
 
 The hostname is resolved once and the resolved literal is dialled, so a name
 that answers differently on a second lookup cannot redirect the connection
@@ -165,6 +173,36 @@ to carry an address, and the one nobody has reviewed.
 *Guarded by:* `TestHandshakeErrorsCarryNoInfrastructure`,
 `TestReportFromAFailedProbeNamesNoAddress`
 
+### I7 — One host has one spelling
+
+DNS is case-insensitive and a trailing dot names the same zone, so
+`EXAMPLE.COM`, `example.com` and `example.com.` reach one server. Parsing
+returns one of them.
+
+This is the same rule the port already had — `checkPortSyntax` refuses `+443`
+and `0443` so that one value has one spelling — and it was missing for the
+thing that matters more. Something downstream compares hostnames for a living:
+the per-target rate limit hashes the name to recognise a repeat, and a hash is
+exact where DNS is not. Without folding, a caller spelled the name differently
+on each request and was handed a fresh budget every time. That budget is the
+only limit in this project that protects the party being scanned rather than
+this service, and one scan is up to fifty handshakes at the other end.
+
+Folding happens where parsing happens, so one form reaches the exclusion list,
+the limiter, the client hello, and the target echoed back in the report. A
+canonical form computed in one place and not another is how a check comes to
+describe something other than what was dialled. The limiter folds again on its
+own, which is the same argument N3 makes about where a guard belongs.
+
+Two trailing dots is not a spelling but an empty label, and is refused rather
+than folded.
+
+*Enforced in:* `internal/scan.canonicalHost`, `internal/httpapi.foldHost`
+*Guarded by:* `TestSplitTargetFoldsSpelling`, `TestSplitTargetFoldsAddresses`,
+`TestHostWithATrailingEmptyLabelIsRefused`, `TestFoldingIsStable`,
+`TestTargetLimiterIgnoresSpelling`,
+`TestSpellingCannotBuyExtraScansOfOneHost`, `FuzzSplitTarget`
+
 ---
 
 ## Availability
@@ -182,7 +220,9 @@ new address per request, which would make a per-address limiter decorative.
 *Enforced in:* `internal/httpapi`, `clientKey` and `limiter`
 *Guarded by:* `TestRateLimitIsPerClient`, `TestIPv6IsLimitedPerPrefix`,
 `TestForwardedHeaderIgnoredWithoutTrustedProxy`,
-`TestForwardedHeaderReadFromTheRight`
+`TestForwardedHeaderIsIgnoredFromUndeclaredNetworks`,
+`TestForwardedHeaderIsReadFromDeclaredNetworks`,
+`TestForwardedForReadsTheProxyLineNotTheClients`
 
 ### A2 — The rate limiter's memory is bounded
 
@@ -235,10 +275,62 @@ by the first client in the chain, so an entry that is not an address is not an
 identity: the connection's own address stands instead. Otherwise a client
 willing to send different nonsense on each request fills the map by itself.
 
+The header is read as every line joined, not as the first one. A proxy may
+extend the header the client sent or add a line of its own; both are
+conforming, and several load balancers do the second. `Header.Get` returns
+only the first line, so against such a proxy it returns what the client wrote
+— a fresh key of the client's choosing on every request, which is this
+invariant failing while looking like it holds.
+
 *Enforced in:* `internal/httpapi.limiter.makeRoomLocked`,
 `internal/httpapi.clientKey`
 *Guarded by:* `TestFullLimiterStillAdmitsNewClients`,
-`TestForgedForwardedForCannotMakeNewKeys`
+`TestForgedForwardedForCannotMakeNewKeys`,
+`TestForwardedForReadsTheProxyLineNotTheClients`
+
+### A6 — A refusal is cheap, not free, so a refusal is limited too
+
+Two checks used to run before the rate limiter: the cross-site check and the
+content type check. The reason was sound — a page on another site must not be
+able to spend the visitor's scan allowance on their behalf — and the
+conclusion drawn from it was not. An early refusal still takes the counter
+lock and still moves a figure this service publishes, so an unlimited refusal
+path is both a way to spend this machine's processor and a way to write into
+the only numbers an operator has to watch.
+
+The allowance spent by a refusal is the read one, so the original reason still
+holds: a cross-site request cannot touch the scan budget.
+
+*Enforced in:* `internal/httpapi.Server.handleScan`, the read limiter at the
+top
+*Guarded by:* `TestRefusalsBeforeTheScanAreLimited`,
+`TestReadAndScanBudgetsAreSeparate`,
+`TestPollingReadsDoesNotSpendTheScanAllowance`
+
+### A7 — Every reason a request can be refused is counted, and a counted reason can occur
+
+The first half was already true: `refuse` counts before it writes, so a
+refusal cannot be added without being counted, and a code outside the list is
+dropped rather than counted.
+
+The second half was not, and it is the half that misleads. `blocked_destination`
+was declared, documented as the signal that somebody is aiming this service at
+the network it runs in, and permanently zero — safedial's refusal became a
+note inside a successful report, so nothing ever reached the counter.
+`timeout` was the same: a probe does not fail, it measures, so the error
+branch that counted it could not run. A counter that cannot move is not a low
+number. It is silence, and an operator reads silence as nothing happening.
+
+One code remains unreachable by construction and is named in the test rather
+than left to be discovered: `scan_failed`, because `scan.Scan` cannot fail
+once the handler has validated the target. It is written as a counted refusal
+anyway, since the signature permits an error and an uncounted one would be the
+same hole in a different place.
+
+*Enforced in:* `internal/httpapi.Server.refuse`,
+`internal/tlsprobe.Report.BlockedDestination`
+*Guarded by:* `TestEveryRefusalCodeCanBeProduced`,
+`TestOnlyKnownRefusalCodesAreCounted`
 
 ---
 
@@ -254,9 +346,14 @@ This includes the parts nobody wrote. Go's `http.Server` logs lines such as
 must be given a discarding logger. A promise that depends on a library's
 default staying convenient is not a promise.
 
+A test cannot prove that no future line will ever be written, but it can fail
+the moment one is, which is the difference between a promise and a habit. It
+drives every path a request can take, because a line is usually added on the
+unhappy ones.
+
 *Enforced by:* the absence of logging in `internal/httpapi`, and
 `httpapi.SilentErrorLog` passed to `http.Server.ErrorLog`
-*Guarded by:* review — **there is no test for this yet**, which is a gap
+*Guarded by:* `TestNothingIsLogged`, `TestClientAddressesAreForgotten`
 
 ### P2 — The target travels in a request body, not a URL
 
@@ -352,7 +449,7 @@ omits this reads as exhaustive.
 
 *Enforced in:* `internal/tlsprobe`, the `Notes` field
 *Guarded by:* `TestSupportedVersionsCarryTheCoverageNote`,
-`TestZeroTimestampCountIsExplained`
+`TestDescribeTransparencySeparatesTheFourSituations`
 
 ### R3a — Revocation is not checked, and the report says so
 
@@ -510,6 +607,86 @@ misissuance.
 *Guarded by:* `TestMaxValidityDaysFollowsTheSchedule`,
 `TestValidityIsJudgedAtIssuance`
 
+### R10 — A report cannot act on the display that shows it
+
+Every field taken from a certificate is text, and only text. Control
+characters are replaced before the field is carried anywhere.
+
+The bytes are chosen by the server being examined. Go parses a subject and its
+alternative names as bytes and escapes only what X.500 requires, so an ESC
+survives — and a terminal reads ESC as an instruction rather than as a
+character. A subject of `\x1b[2K\x1b[1A    Verdict      strong` rewrites the
+line printed above it, and the scanned server has edited the report about
+itself. A tool whose argument is that it says only what it measured cannot
+have its output written by the thing it is measuring.
+
+The browser was never exposed: JSON escapes the byte and every value reaches
+the page through `textContent`. Two other layers holding is not a reason to
+pass it on, and the command line has neither of them. This is the rule
+`dnsclient` already applies to a CAA value, which is attacker-chosen for the
+same reason.
+
+Replaced rather than dropped, so a reader can see that something was there.
+The cut that bounds a long field lands on a character boundary for the same
+reason: half a rune reaches a reader as corruption this report introduced.
+
+*Enforced in:* `internal/certinfo.sanitise`, applied by `trimmer.text`
+*Guarded by:* `TestControlCharactersInCertificateFieldsAreNeutralised`,
+`TestC1ControlsAreNeutralisedToo`, `TestTrimmingCutsOnARuneBoundary`
+
+---
+
+## The page
+
+The frontend had no entry here while it was the only part of this project a
+visitor actually runs. Two properties carry it, both load-bearing, and both
+undoable in one line by somebody with a good reason.
+
+### W1 — Nothing from a report reaches a markup parser
+
+Every node is built with `createElement` and `textContent`. `innerHTML`,
+`outerHTML`, `insertAdjacentHTML`, `document.write`, `eval` and
+`createContextualFragment` appear nowhere.
+
+A successful scan returns the target the caller sent, by design, and hostnames
+are attacker-chosen; so are a certificate's subject and its alternative names.
+The moment one of those reaches a markup parser it stops being data. Building
+nodes directly means there is no parser to reach: a string assigned to
+`textContent` is a string, whatever it contains.
+
+A test reads the shipped script and fails if any of those names appears. The
+content security policy carries `require-trusted-types-for 'script'` and
+`trusted-types 'none'`, which is the same rule expressed where a browser can
+enforce it on the script that actually ran — the test checks the file this
+repository ships, the header checks the thing in front of the user. Browsers
+without Trusted Types ignore both directives, which costs nothing.
+
+Class names come from one fixed list rather than from a value in the response.
+A class is not a script, but it decides what the page looks like, and a page
+that will paste any string into a class attribute has handed its appearance to
+whoever answered. Two of the three places already did this and the third did
+not, and the difference was invisible from either.
+
+*Enforced in:* `internal/web/assets/app.js`, `internal/web.contentSecurityPolicy`
+*Guarded by:* `TestScriptCannotInjectMarkup`,
+`TestPolicyForbidsScriptReachingAMarkupParser`,
+`TestScriptBuildsClassNamesFromOneList`
+
+### W2 — The page loads nothing from anyone else
+
+No analytics, no fonts from elsewhere, no content delivery network, no tag of
+any kind: one stylesheet and one script, both from this server, both embedded
+in the binary.
+
+That held because nobody had added one. `Cross-Origin-Embedder-Policy:
+require-corp` makes a browser refuse the resource if somebody does. Same-origin
+subresources need nothing extra, so it costs nothing today and fails loudly
+the first time the promise on the privacy page would stop being true.
+
+*Enforced in:* `internal/web.setHeaders`
+*Guarded by:* `TestNothingFromAnyoneElseIsEnforcedByAHeader`,
+`TestContentSecurityPolicyAllowsOnlySelf`
+
 ---
 
 ## Disclosure
@@ -631,6 +808,15 @@ at itself is the bug every hand-written DNS parser has had at least once.
 Every declared length is checked against what remains rather than clamped to
 fit. A CAA value that is not printable is refused rather than passed on.
 
+A record is read only if its owner name is the name that was asked about.
+Everything above establishes that the message came from something that saw the
+query; none of it establishes that the records inside describe the right name.
+A resolver — hostile, broken, or expanding a CNAME this client does not follow
+— can put another name's record set in the answer section, and read without
+this the report presents that other name's policy as this one's. The
+comparison folds case, because the query randomises it on purpose and a
+byte-for-byte match here would discard every legitimate answer.
+
 SERVFAIL is not an empty answer. It is what a validating resolver returns when
 a signature does not check out, and reporting it as no records would turn a
 broken DNSSEC chain into a clean result.
@@ -639,6 +825,8 @@ broken DNSSEC chain into a clean result.
 *Guarded by:* `TestReplyMustAnswerTheQuestionAsked`,
 `TestResponseCodesAreNotAllTheSame`, `TestCompressionPointersCannotLoop`,
 `TestMalformedRecordsAreRefused`, `TestQuestionCaseIsRandomised`,
+`TestRecordsForAnotherOwnerAreIgnored`, `TestOnlyTheAskedForOwnerIsKept`,
+`TestOwnerMatchingIsCaseInsensitive`, `TestCompressedOwnerNamesMatch`,
 `FuzzParseReply`, `FuzzSkipName`
 
 ## Supply chain
@@ -660,6 +848,46 @@ working.
 
 *Guarded by:* the `Known vulnerabilities` job in CI
 
+### S3 — The procedure that builds a release is pinned to that release
+
+A signature says the artifacts came from whoever holds the key. Building in
+public and signing on a separate machine is what makes it also say they
+correspond to the source, and that argument has a hole if the build command
+itself is mutable.
+
+It was. Both the release build and the reproduction fetched
+`scripts/build.sh` from the default branch at run time, so somebody able to
+move that branch could change what a tagged, honest commit compiled into — and
+the reproduction, reading the same file, would rebuild the same altered bytes
+and report a match. Two parties were involved and both consulted the same
+mutable third.
+
+Three things close it. The tag's own script is used when it has one. The hash
+of whichever script ran is recorded in `BUILD`, and the reproduction refuses
+to proceed unless the script it holds hashes to that value. And the signing
+script refuses to sign unless that hash is one this repository contains.
+
+`BUILD` is written before the checksums are taken, so it is listed in
+`SHA256SUMS` and therefore covered by the signature. It used to be written
+afterwards, which left the provenance record unsigned while the reproduction
+used it to decide whether a mismatch was tampering or a different toolchain.
+
+*Enforced in:* `.github/workflows/build-release.yml`,
+`.github/workflows/reproduce.yml`, `scripts/release.ps1`
+
+### S4 — A published release cannot be replaced by a workflow
+
+The release build replaces a draft, because a rerun after a failure must not
+leave half of one attempt beside half of another. It refuses to touch a
+published one: `gh release view` finds those too, so the check that looked for
+"a release for this tag" deleted signed releases — signature and all —
+whenever the workflow was dispatched with a tag that had already shipped.
+
+Rebuilding is a recovery step. Deleting what users are verifying against is
+not.
+
+*Enforced in:* `.github/workflows/build-release.yml`
+
 ---
 
 ## Known gaps
@@ -668,8 +896,9 @@ Listed rather than hidden. An unnamed gap is a surprise; a named one is work.
 
 A stale list is worse than no list, because a reader takes it as current. Four
 entries were removed when this was last read: the server binary, the pinned CI
-tools, release signing, and fuzzing all exist now. Anything below is open
-today.
+tools, release signing, and fuzzing all exist now. Two more went at the review
+after that: P1 has a test, and the flag that could not take effect was removed
+rather than fixed. Anything below is open today.
 
 - **Transparency receipts are counted and not verified.** R3c. Checking one
   needs the issuing log's public key, and the qualified-log list is maintained
@@ -681,15 +910,22 @@ today.
   compares the fingerprint across its two published copies; it does not
   compute the fingerprint of the key file, which would need an OpenPGP parser
   and SHA-1. A key file swapped without touching either copy would pass.
-- **`-trusted-proxy-hops` is a flag that cannot take effect.** `TrustedProxies`
-  is never populated from the command line, so `withDefaults` silently returns
-  the hop count to zero. It fails safe and it misleads: an operator who sets it
-  believes X-Forwarded-For is being read and it is not.
 - **An address family that cannot be reached is not named.** The dialler
   resolves both families and tries up to eight addresses. On a host with IPv6
   disabled, a target with many AAAA records can spend that budget on
   unreachable addresses and be reported as unreachable, with no note saying
   why. R3 requires the opposite.
-- **P1 has no test.** Enforced by review, which is the weakest form of
-  enforcement this document argues against.
+- **The per-target limit is an oracle.** A limit answers a question, and an
+  answer is something anybody can ask for: check a host, be told it was
+  checked very recently, and you have learnt that somebody checked it — or one
+  of the billions of names sharing its bucket. The window is under a minute
+  and the answer is ambiguous by construction, but it is the one thing about
+  another person's use of this service that is observable at all. Stated on
+  the privacy page rather than fixed, because the alternatives are removing
+  the limit that protects scanned hosts or returning a refusal that does not
+  say why.
+- **`scan_failed` cannot be reached.** A7. `scan.Scan` cannot fail once the
+  handler has validated the target, so the branch is defensive. Named in
+  `TestEveryRefusalCodeCanBeProduced` rather than left to be discovered, and
+  the test fails if the list of such codes grows without an explanation.
 - **No independent review.** Nobody outside this project has read the code.

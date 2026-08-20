@@ -27,7 +27,7 @@ signs releases; that one is an SSH key and points the other way.
 Please include enough detail to reproduce: affected component, version or
 commit, steps, and what an attacker gains. Proof-of-concept code is welcome.
 
-## What to expectsecurity@denyfirst.dev
+## What to expect
 
 | Stage | Target |
 |---|---|

@@ -32,6 +32,16 @@ func TestEmbeddedIPv4FormsAreBlocked(t *testing.T) {
 		{"::ffff:127.0.0.1", "IPv4-mapped loopback"},
 		{"::ffff:169.254.169.254", "IPv4-mapped cloud metadata"},
 
+		// RFC 2765's IPv4-translated form, ::ffff:0:a.b.c.d. Sixteen bits
+		// longer than the mapped form above and therefore a different prefix,
+		// which is how it stayed out of this list while its neighbour was in
+		// it. A stock Linux stack does not route it, so nothing broke while it
+		// was missing — the reason it is here is that a deny list is worth
+		// only its completeness, and "not exploitable on the kernel we happen
+		// to run" is a property of the kernel rather than of this code.
+		{"::ffff:0:7f00:1", "IPv4-translated loopback, RFC 2765"},
+		{"::ffff:0:a9fe:a9fe", "IPv4-translated cloud metadata, RFC 2765"},
+
 		// Teredo carries the client's IPv4 address in its low thirty-two bits
 		// and its server's in bits 32 to 63. Both are attacker-chosen.
 		{"2001:0:4136:e378:8000:63bf:3fff:fdd2", "Teredo"},

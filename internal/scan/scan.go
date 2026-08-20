@@ -405,7 +405,38 @@ func SplitTarget(target string) (host, port string, err error) {
 	if err := checkPortSyntax(port); err != nil {
 		return "", "", err
 	}
-	return host, port, nil
+	return canonicalHost(host), port, nil
+}
+
+// canonicalHost reduces the several spellings of one host to a single one.
+//
+// DNS is case-insensitive and a trailing dot names the same zone, so
+// example.com, EXAMPLE.COM and example.com. all reach the same server. Three
+// spellings of one name is the same class of problem as three spellings of
+// one port, which checkPortSyntax already refuses, and it is worse here
+// because something downstream compares hostnames for a living.
+//
+// The something is the per-target rate limit. It hashes the host to recognise
+// a repeat, and a hash is exact where DNS is not: without this, a caller
+// spells the same name a different way each time and receives a fresh budget
+// for each spelling. That budget is the only limit in this project that
+// protects the server being scanned rather than this service, and one scan is
+// up to fifty handshakes at the other end.
+//
+// It is done here rather than in the limiter so that one form reaches
+// everything at once — the exclusion list, the limiter, the client hello, and
+// the target echoed back in the report. A canonical form computed in one
+// place and not another is how a check comes to describe something other than
+// what was dialled.
+//
+// An address is normalised through netip for the same reason: ::1 and
+// 0:0:0:0:0:0:0:1 are one address written two ways, and String reports the
+// canonical spelling of both.
+func canonicalHost(host string) string {
+	if addr, err := netip.ParseAddr(host); err == nil {
+		return addr.String()
+	}
+	return strings.ToLower(strings.TrimSuffix(host, "."))
 }
 
 // splitHostPort separates a target without consulting net.SplitHostPort.
@@ -512,7 +543,15 @@ func checkHostSyntax(host string) error {
 		case !strings.Contains(labels, "."):
 			return errors.New("the host needs a full name with a domain, such as example.com; " +
 				"a bare name would be completed by the resolver's search list and could reach a different server")
-		case strings.HasPrefix(labels, "."), strings.Contains(labels, ".."):
+		case strings.HasPrefix(labels, "."),
+			// One trailing dot is the root and is removed above. A second one
+			// is an empty label, and it survived the check below because
+			// TrimSuffix removes one dot rather than all of them: "a.com.."
+			// becomes "a.com." which contains no double dot. It is a name the
+			// resolver cannot use and a spelling the canonical form cannot
+			// reduce, which is two reasons to refuse it here.
+			strings.HasSuffix(labels, "."),
+			strings.Contains(labels, ".."):
 			return errors.New("the host has an empty label")
 		}
 	}

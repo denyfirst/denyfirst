@@ -75,18 +75,33 @@ jobs:
           git checkout -q FETCH_HEAD
           echo "commit $(git rev-parse HEAD)"
 
-      - name: Fetch the build script from the default branch
+      - name: Settle which build script is used
         run: |
           set -euo pipefail
 
-          # From the default branch rather than the tag, so that this workflow
-          # and reproduce.yml read the same procedure even when the tag
-          # predates the script. Its hash goes into the BUILD record below, so
-          # a release built with an older procedure can say so.
-          mkdir -p scripts
-          curl -fsSL \
-            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/scripts/build.sh" \
-            -o scripts/build.sh
+          # The tag's own script when it has one.
+          #
+          # It used to be fetched from the default branch unconditionally, and
+          # that was a hole rather than a shortcut. The tagged source was
+          # checked out honestly and then built by a procedure taken from a
+          # branch anybody with write access can move — so a pushed commit
+          # could not become a signed release, but it could decide what the
+          # signed bytes were. reproduce.yml read the same mutable file, so
+          # the reproduction reproduced the tampering and reported a match.
+          #
+          # The fallback stays because v0.1.0 was cut before scripts/build.sh
+          # existed and would otherwise be unbuildable for ever. It is a
+          # fallback now rather than the rule, and the hash below records
+          # which one ran either way.
+          if [ -f scripts/build.sh ]; then
+            echo "using scripts/build.sh from the tag"
+          else
+            echo "the tag predates scripts/build.sh; falling back to the default branch"
+            mkdir -p scripts
+            curl -fsSL \
+              "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/scripts/build.sh" \
+              -o scripts/build.sh
+          fi
           chmod +x scripts/build.sh
           echo "buildscript $(sha256sum scripts/build.sh | cut -d' ' -f1)"
 
@@ -113,10 +128,14 @@ jobs:
 
           cd dist
 
-          # sha256sum's own format, so a reader can check it with sha256sum -c
-          # and nothing else. Sorted by name for a stable file.
-          sha256sum * | sort -k2 > SHA256SUMS
-
+          # BUILD is written before the checksums are taken, so it is listed
+          # in SHA256SUMS and therefore covered by the signature over that
+          # file.
+          #
+          # The other order left the provenance record unsigned while
+          # reproduce.yml used it to decide whether a mismatch was tampering
+          # or a different toolchain. Anyone able to replace an asset could
+          # therefore write the excuse for their own mismatch.
           {
             echo "tag ${TAG}"
             echo "commit ${commit}"
@@ -127,6 +146,21 @@ jobs:
             echo "cgo disabled"
             echo "workflow ${GITHUB_RUN_ID}"
           } > BUILD
+
+          # sha256sum's own format, so a reader can check it with sha256sum -c
+          # and nothing else. Sorted by name for a stable file.
+          #
+          # Written outside this directory and moved in, which is not
+          # fastidiousness. `sha256sum * > SHA256SUMS` is a race: the shell
+          # creates the redirection target and expands the glob in two
+          # different children, so roughly one run in three the list contains
+          # a line for itself carrying the hash of an empty file. release.ps1
+          # then verifies every listed name, finds SHA256SUMS does not match
+          # its own recorded hash, and refuses to sign — an intermittent
+          # release failure with no cause visible in the log, on the one
+          # procedure that must never be guessed at.
+          sha256sum -- * | sort -k2 > ../SHA256SUMS
+          mv ../SHA256SUMS SHA256SUMS
 
           echo "── SHA256SUMS ──"
           cat SHA256SUMS
@@ -140,11 +174,23 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Replaced rather than added to, so a rerun after a failed build does
-          # not leave half of one attempt beside half of another.
+          # A draft is replaced rather than added to, so a rerun after a failed
+          # build does not leave half of one attempt beside half of another.
+          #
+          # A published release is not. `gh release view` finds those too, so
+          # the earlier version of this deleted a signed release — signature
+          # and all — whenever somebody dispatched this workflow with a tag
+          # that had already shipped. Rebuilding is a recovery step; deleting
+          # what users are verifying against is not.
           if gh release view "${TAG}" > /dev/null 2>&1; then
-            echo "a release for ${TAG} already exists; deleting it to rebuild"
-            gh release delete "${TAG}" --yes
+            if [ "$(gh release view "${TAG}" --json isDraft --jq .isDraft)" = "true" ]; then
+              echo "replacing the existing draft for ${TAG}"
+              gh release delete "${TAG}" --yes
+            else
+              echo "::error::${TAG} is already published. Refusing to delete a released tag." >&2
+              echo "Cut a new tag, or delete this release by hand if it really is wrong." >&2
+              exit 1
+            fi
           fi
 
           gh release create "${TAG}" dist/* \

@@ -5,20 +5,24 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
+	"strings"
 	"sync"
 	"time"
 )
 
-// One scan opens roughly thirty handshakes: four protocol versions in
-// parallel, several rounds of cipher enumeration within each, and two more to
-// settle the question of preference. That is the cost of measuring what a
-// server will actually negotiate rather than what it advertises, and it is
+// One scan opens up to fifty handshakes: four protocol versions in parallel,
+// one round of cipher enumeration per suite the server turns out to accept —
+// eleven at TLS 1.0 and 1.1, twenty-two at TLS 1.2, which is every suite Go
+// can be told to offer — and two more to settle the question of preference. A
+// modern server ends the enumeration early and costs under twenty; one that
+// still accepts everything costs the lot. That is the price of measuring what
+// a server will actually negotiate rather than what it advertises, and it is
 // paid by the server being measured.
 //
-// A single request of a couple of hundred bytes therefore turns into a
-// hundred and fifty times as much work at the other end. Every other limit in
-// this package protects this service. This one protects the server on the
-// other side, which is the party with no say in whether it is scanned.
+// A single request of a couple of hundred bytes therefore turns into a couple
+// of hundred times as much work at the other end. Every other limit in this
+// package protects this service. This one protects the server on the other
+// side, which is the party with no say in whether it is scanned.
 //
 // Without it, eight users aiming at one host produce a burst that a small
 // server feels, and nothing stops that being deliberate.
@@ -66,6 +70,16 @@ const (
 	targetMaxTracked = targetBuckets
 )
 
+// foldHost reduces the spellings of one name to one string.
+//
+// Deliberately not a general canonicaliser: it does what DNS itself does when
+// it compares names, and nothing more. Anything cleverer here would be a
+// second opinion about what a hostname is, and two opinions in two packages
+// is the parser mismatch this project spends its effort avoiding.
+func foldHost(host string) string {
+	return strings.ToLower(strings.TrimSuffix(host, "."))
+}
+
 // targetLimiter bounds how often any one host is scanned, whoever asks.
 type targetLimiter struct {
 	// key is generated per process and never written down. It stops a bucket
@@ -110,9 +124,17 @@ func newTargetLimiter(now func() time.Time) *targetLimiter {
 //
 // The port is included so that scanning one host on two ports is two
 // budgets, which is what a server experiences.
+//
+// The host is folded first, and that line is the whole limiter. A hash is
+// exact where DNS is not: EXAMPLE.COM, example.com and example.com. reach one
+// server and would otherwise reach three buckets, so a caller could spell
+// their way past the only budget here that belongs to somebody else.
+// scan.SplitTarget already folds it, and this repeats the work on purpose —
+// a guard at the entry point protects that entry point, and a guard where the
+// decision is made protects every caller, including the ones not written yet.
 func (l *targetLimiter) bucketFor(host, port string) uint16 {
 	mac := hmac.New(sha256.New, l.key)
-	mac.Write([]byte(host))
+	mac.Write([]byte(foldHost(host)))
 	mac.Write([]byte{0})
 	mac.Write([]byte(port))
 

@@ -104,15 +104,89 @@ try {
     Write-Host "`nBuild record" -ForegroundColor Cyan
     Get-Content $buildInfo | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
 
-    $recordedCommit = (Select-String -Path $buildInfo -Pattern '^commit\s+(\S+)').Matches.Groups[1].Value
+    function Read-BuildField([string]$name) {
+        # Matched explicitly rather than by chaining onto Select-String's
+        # result, which under StrictMode throws a message about a null
+        # property when what actually happened is that the record is missing
+        # a field. Failing closed is right; failing closed with an
+        # unreadable reason is how a check gets skipped next time.
+        $match = Select-String -Path $buildInfo -Pattern "^$name\s+(\S+)"
+        if (-not $match) {
+            throw "The build record has no '$name' field. Nothing was signed."
+        }
+        return $match.Matches.Groups[1].Value
+    }
+
+    $recordedCommit = Read-BuildField 'commit'
     if ($recordedCommit -ne $tagged.Trim()) {
         throw "The build records commit $recordedCommit but $Tag points at $($tagged.Trim())."
     }
 
-    $recordedTag = (Select-String -Path $buildInfo -Pattern '^tag\s+(\S+)').Matches.Groups[1].Value
+    $recordedTag = Read-BuildField 'tag'
     if ($recordedTag -ne $Tag) {
         throw "The build records tag $recordedTag rather than $Tag."
     }
+
+    # ── The procedure, not only the source ─────────────────────────────────
+    #
+    # The commit check above says the workflow built the right source. It says
+    # nothing about how, and the how is a file: scripts/build.sh decides the
+    # flags, and therefore the bytes. It used to be fetched from the default
+    # branch at build time, so somebody able to move that branch could change
+    # what a tagged, honest commit compiled into — and reproduce.yml read the
+    # same mutable file, so the reproduction agreed.
+    #
+    # This is the half of that fix which lives on the machine holding the key.
+    # A signature is a statement about bytes; this is what lets the statement
+    # mean "built by the procedure in this repository" rather than "built
+    # somehow".
+    $recordedScript = Read-BuildField 'buildscript'
+
+    function Get-BlobSha256([string]$rev) {
+        # Through a file rather than a pipeline: PowerShell decodes and
+        # re-encodes text, which would change the bytes being hashed. The same
+        # reason the signature check at the bottom uses cmd's redirection.
+        $temporary = [System.IO.Path]::GetTempFileName()
+        try {
+            cmd /c "git show `"$rev`" > `"$temporary`" 2>nul" | Out-Null
+            if ($LASTEXITCODE -ne 0) { return $null }
+            if ((Get-Item $temporary).Length -eq 0) { return $null }
+            return (Get-FileHash -Algorithm SHA256 $temporary).Hash.ToLower()
+        }
+        finally {
+            Remove-Item $temporary -ErrorAction SilentlyContinue
+        }
+    }
+
+    $scriptSources = [ordered]@{
+        "the tag $Tag" = Get-BlobSha256 "${Tag}:scripts/build.sh"
+        'origin/main'  = Get-BlobSha256 'origin/main:scripts/build.sh'
+    }
+
+    $scriptSource = $null
+    foreach ($candidate in $scriptSources.GetEnumerator()) {
+        if ($candidate.Value -and $candidate.Value -eq $recordedScript) {
+            $scriptSource = $candidate.Key
+            break
+        }
+    }
+
+    if (-not $scriptSource) {
+        $seen = ($scriptSources.GetEnumerator() |
+            ForEach-Object { "    $($_.Key): $(if ($_.Value) { $_.Value } else { 'absent' })" }) -join "`n"
+        throw @"
+The release was built by a script this repository does not contain.
+
+  recorded in BUILD: $recordedScript
+$seen
+
+scripts/build.sh decides the build flags and therefore the bytes, so a
+procedure nobody can point at is a binary nobody can account for. Fetch
+origin, read the diff, and only sign once the hash above is one you can
+find in the history. Nothing was signed.
+"@
+    }
+    Write-Host "  build script matches $scriptSource" -ForegroundColor DarkGray
 
     Write-Host "`nVerifying every hash in the list" -ForegroundColor Cyan
     $bad = 0
@@ -148,7 +222,11 @@ try {
 
         $head = (git rev-parse HEAD).Trim()
         if ($head -ne $tagged.Trim()) {
-            Write-Warning "HEAD is not $Tag; checking out the tag would be needed for a real comparison."
+            # Was a warning, which meant the comparison ran against whatever
+            # was checked out and reported a difference count for the wrong
+            # source. A check whose result cannot be interpreted is worse than
+            # no check: the number looks like evidence.
+            throw "HEAD is $head but $Tag points at $($tagged.Trim()). Check out the tag before comparing:`n  git checkout $Tag"
         }
 
         foreach ($target in @(
@@ -197,7 +275,13 @@ try {
         # changes the bytes the signature covers. The check would then fail on
         # a perfectly good file, which is worse than not checking — it teaches
         # whoever sees it to ignore the result.
-        cmd /c "ssh-keygen -Y verify -f `"$allowed`" -I $Identity -n file -s `"$checksums.sig`" < `"$checksums`""
+        # Every interpolated value is quoted. $Tag is constrained by
+        # ValidatePattern and $Identity is not, so an identity containing a
+        # quote would otherwise end the argument and hand the rest to cmd as
+        # commands. It is an operator-supplied parameter rather than anything
+        # a stranger sends, which makes this cheap rather than urgent — and
+        # cheap is not a reason to leave it.
+        cmd /c "ssh-keygen -Y verify -f `"$allowed`" -I `"$Identity`" -n file -s `"$checksums.sig`" < `"$checksums`""
         if ($LASTEXITCODE -ne 0) {
             throw 'The signature did not verify against .allowed_signers.'
         }

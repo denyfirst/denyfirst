@@ -41,6 +41,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/denyfirst/denyfirst/internal/policy"
 )
@@ -208,13 +209,55 @@ type trimmer struct {
 }
 
 func (t *trimmer) text(s string) string {
+	s = sanitise(s)
 	if len(s) <= maxFieldLength {
 		return s
 	}
 	t.cut = true
+	// Cut on a rune boundary. These are bytes the scanned server chose, so
+	// there is no reason a byte offset should land between characters, and a
+	// half rune reaches a reader as corruption this report introduced.
+	cut := maxFieldLength
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
 	// The marker is inside the returned value so that a reader looking at one
 	// field, rather than at the notes, still sees that it is incomplete.
-	return s[:maxFieldLength] + "…"
+	return s[:cut] + "…"
+}
+
+// sanitise replaces the bytes a display acts on rather than shows.
+//
+// Everything passed through here was chosen by the server being examined. Go
+// parses a certificate's subject and its alternative names as bytes and
+// escapes only the characters X.500 requires, so an ESC survives intact — and
+// a terminal reads ESC as an instruction. A subject of
+// "\x1b[2K\x1b[1A    Verdict      strong" rewrites the line printed above it,
+// which means a scanned server can edit the report about itself. The command
+// line tool is where that lands; the browser is safe because JSON escapes the
+// byte and the page assigns it to textContent, and depending on two other
+// layers to hold is not a reason to pass it on.
+//
+// C1 is included because several terminals accept 0x9b as CSI, so stripping
+// only the C0 range leaves the same trick spelled differently.
+//
+// Replaced rather than dropped: a reader should be able to see that something
+// was there. This is the same rule dnsclient already applies to CAA values,
+// which are attacker-chosen for exactly the same reason.
+func sanitise(s string) string {
+	if strings.IndexFunc(s, isDisplayControl) < 0 {
+		return s
+	}
+	return strings.Map(func(r rune) rune {
+		if isDisplayControl(r) {
+			return '�'
+		}
+		return r
+	}, s)
+}
+
+func isDisplayControl(r rune) bool {
+	return r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f)
 }
 
 func (t *trimmer) list(items []string, limit int) []string {

@@ -38,6 +38,17 @@ var assets embed.FS
 //
 // There is no 'unsafe-inline' anywhere, which is what makes this policy worth
 // having. That in turn is why there is no inline style or script in any asset.
+// The two trusted-types directives are the same rule as the test in
+// internal/web that forbids innerHTML in app.js, moved from build time to run
+// time. The test reads the file this repository ships; the header binds the
+// script the browser actually ran. They answer different questions and the
+// second is the one a user is exposed to, so a page that argues its script
+// cannot reach a markup parser should say so where a browser can enforce it.
+//
+// 'none' rather than a policy name because app.js creates no policy: it builds
+// every node with createElement and textContent, so there is no sink to feed
+// and nothing to allow. Browsers that do not implement this ignore both
+// directives, which costs nothing and is why they are safe to send.
 const contentSecurityPolicy = "default-src 'none'; " +
 	"script-src 'self'; " +
 	"style-src 'self'; " +
@@ -45,7 +56,9 @@ const contentSecurityPolicy = "default-src 'none'; " +
 	"connect-src 'self'; " +
 	"form-action 'none'; " +
 	"frame-ancestors 'none'; " +
-	"base-uri 'none'"
+	"base-uri 'none'; " +
+	"require-trusted-types-for 'script'; " +
+	"trusted-types 'none'"
 
 // SecurityTxtPath is where RFC 9116 requires the file to be served.
 //
@@ -232,6 +245,14 @@ func setHeaders(w http.ResponseWriter, r *http.Request) {
 	h.Set("Referrer-Policy", "no-referrer")
 	h.Set("Cross-Origin-Resource-Policy", "same-origin")
 	h.Set("Cross-Origin-Opener-Policy", "same-origin")
+
+	// The privacy page promises no fonts from elsewhere, no content delivery
+	// network, and no tag of any kind. That promise currently holds because
+	// nobody has added one. This makes a browser refuse the resource if
+	// somebody does: same-origin subresources need nothing extra, so it costs
+	// nothing today and fails loudly the first time it would stop being true.
+	h.Set("Cross-Origin-Embedder-Policy", "require-corp")
+
 	h.Set("Permissions-Policy",
 		"accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")
 

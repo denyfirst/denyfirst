@@ -50,10 +50,10 @@ Thumbs.db
 /scratch/
 /local/
 # Local counter file. Real deployments name their own path.
+#
+# The temporary is a pattern rather than one name: each write makes its own,
+# so that a periodic write racing a shutdown write cannot land in the same
+# file. The entries below this block used to be repeated verbatim, which is
+# how a list stops being read.
 stats.json
-stats.json.tmp
-dist/
-*.exe
-stats.json
-stats.json.tmp
-dist/
+stats.json*.tmp

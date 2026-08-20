@@ -49,9 +49,30 @@ function clear(node) {
   while (node.firstChild) node.removeChild(node.firstChild);
 }
 
+/*
+  Every class name on this page comes from this list and nowhere else.
+
+  Nothing a caller sends reaches a class attribute today: a verdict is written
+  by internal/policy, and the API returns one of four fixed strings. So this is
+  not closing a hole that is open. It closes the one that opens the first time
+  somebody builds a class out of a field that is attacker-chosen, which is one
+  line and no warning — a class name is not a script, but it decides what the
+  page looks like, and a page that will paste any string into a class attribute
+  has handed its appearance to whoever answers.
+
+  It was already done in one place and not in two others, and the difference
+  was invisible from either.
+*/
+const VERDICTS = ["strong", "weak", "insecure"];
+
 function verdictClass(prefix, verdict) {
-  const known = ["strong", "weak", "insecure"];
-  return prefix + "-" + (known.includes(verdict) ? verdict : "ungraded");
+  return prefix + "-" + (VERDICTS.includes(verdict) ? verdict : "ungraded");
+}
+
+// The table cells use their own prefix and fall back to a neutral colour
+// rather than to an "ungraded" one, because a blank cell is not a verdict.
+function markClass(verdict) {
+  return VERDICTS.includes(verdict) ? "mark-" + verdict : "mark-faint";
 }
 
 // ── Sections ────────────────────────────────────────────────────────────
@@ -162,7 +183,7 @@ function versions(tls) {
     row.appendChild(el("td", v.supported ? null : "mark-faint", v.supported ? "accepted" : "refused"));
 
     const grade = v.supported && v.grade ? v.grade.verdict : "";
-    const cell = el("td", grade ? "mark-" + grade : "mark-faint",
+    const cell = el("td", markClass(grade),
       grade ? (v.grade.preferred ? grade + "  ·  preferred" : grade) : "—");
     row.appendChild(cell);
 
@@ -196,7 +217,7 @@ function ciphers(tls) {
     const body = el("tbody");
     for (const c of v.ciphers) {
       const row = el("tr");
-      row.appendChild(el("td", "mark-" + (c.verdict || "faint"), c.verdict || "—"));
+      row.appendChild(el("td", markClass(c.verdict), c.verdict || "—"));
       // Marked so the stylesheet may break this column mid-word on a narrow
       // screen without doing the same to the short labels beside it.
       row.appendChild(el("td", "identifier", c.name));
