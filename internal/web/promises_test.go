@@ -39,6 +39,38 @@ func TestPrivacyPageStatesTheRealRetentionPeriod(t *testing.T) {
 	}
 }
 
+// The same argument, applied to the other number on that page.
+//
+// The privacy page states the threshold at which the per-target limit begins
+// refusing, and it is the only figure there from which a reader could work out
+// anything about what somebody else has been doing: being refused means that
+// many scans of that host have already happened. The page says eight. The
+// constant said two until 2026-08-20, and moving it was a deliberate privacy
+// decision — precisely the kind of change whose whole value is that the page
+// explaining it is right.
+//
+// A page that overstates the threshold tells a reader they are safer than they
+// are. One that understates it discredits the page. Neither is discoverable by
+// reading either file alone.
+func TestPrivacyPageStatesTheRealTargetThreshold(t *testing.T) {
+	const stated = "at least eight times"
+	const statedScans = 8
+
+	body, err := assets.ReadFile("assets/privacy.html")
+	if err != nil {
+		t.Fatalf("reading the privacy page: %v", err)
+	}
+	if !strings.Contains(string(body), stated) {
+		t.Fatalf("the privacy page no longer contains %q. If the wording changed, change the "+
+			"figure in this test with it; if the threshold changed, the page has to say so.", stated)
+	}
+
+	if got := httpapi.TargetThreshold(); got != statedScans {
+		t.Errorf("the page says %q but the limit refuses after %d. One of them is now wrong, "+
+			"and it is the page a reader believes.", stated, got)
+	}
+}
+
 // The claim on that page is not "we throw addresses away eventually". It is a
 // number, so the number has to be one a person would recognise as short.
 func TestRetentionPeriodStaysShort(t *testing.T) {

@@ -24,8 +24,15 @@ import (
 // package protects this service. This one protects the server on the other
 // side, which is the party with no say in whether it is scanned.
 //
-// Without it, eight users aiming at one host produce a burst that a small
-// server feels, and nothing stops that being deliberate.
+// Without it nothing bounds convergence: any number of callers aiming at one
+// host produce as many scans as they care to ask for, and nothing stops that
+// being deliberate. With it, that host sees one scan per refill interval for
+// as long as the demand lasts, however many people are asking and however long
+// they keep asking.
+//
+// The eight to ten it may absorb back to back is the peak, not the rate, and
+// it sits deliberately above what ordinary use produces — for a reason that is
+// about somebody else's privacy rather than about load. See targetBurstMin.
 const (
 	// targetBurstMin is the smallest allowance any host has, and eight rather
 	// than two is the change that closes a leak rather than blurring it.
@@ -73,9 +80,15 @@ const (
 	// not: a probe measures the allowance minus the prior scans and cannot
 	// separate the two terms.
 	//
-	// One signature still resolves — a bucket holding the minimum refuses the
-	// very first probe — and that residual is stated on the privacy page
-	// rather than hidden.
+	// What it buys is precise, and claiming more for it would be the kind of
+	// security claim this project exists to argue against. It hides the count.
+	// It does not hide the refusal: anybody who is refused knows that host has
+	// had at least targetBurstMin scans inside one interval, and no arrangement
+	// of secret thresholds takes that away, because the refusal is the limit
+	// working. Removing that last fact means raising the minimum, and every
+	// point of the minimum is peak load the scanned server absorbs — so it is
+	// stated on the privacy page instead of being bought with somebody else's
+	// bandwidth.
 	targetBurstSpread = 3
 
 	// targetRefill is how long one slot takes to return. This, not the burst,
@@ -124,6 +137,19 @@ const (
 	// traffic has touched, not one entry per bucket.
 	targetMaxTracked = targetBuckets
 )
+
+// TargetThreshold is the smallest number of scans of one host, inside one
+// refill interval, that can produce a refusal.
+//
+// Exported for one reason: the privacy page states this figure in words, and
+// it is the only number on that page from which a reader could work out
+// anything about what somebody else has been doing. It moved from two to eight
+// in a single change, and the page it is written on had no way of noticing.
+//
+// Same argument as DefaultRetentionPeriod, and the same test shape. Two
+// sources that agree only because nobody compares them are one source written
+// twice.
+func TargetThreshold() int { return targetBurstMin }
 
 // foldHost reduces the spellings of one name to one string.
 //

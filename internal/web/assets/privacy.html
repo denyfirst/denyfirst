@@ -93,12 +93,26 @@
 
     <p>
       What is left, stated rather than left to be found: if one host really is
-      being checked eight times a minute, somebody probing learns that it is
-      busy. That is a fact about a host under load, not about a person, and it
-      is a fact its own administrator can already read in their logs &mdash;
-      which is why this service publishes a reverse name pointing back here.
-      The threshold itself is also varied per host from a key nobody outside
-      can see, so even that edge is not a fixed line to aim at.
+      being checked eight times inside that window, somebody probing learns
+      that it is busy. That is a fact about a host under load, not about a
+      person, and it is a fact its own administrator can already read in their
+      logs &mdash; which is why this service publishes a reverse name pointing
+      back here. The threshold itself is also varied per host, from a key that
+      exists only in memory and is thrown away when the service restarts, so
+      even that edge is not a fixed line to aim at.
+    </p>
+
+    <p>
+      And the crack that remains, because a page like this is worth nothing if
+      it only lists the parts that came out well. Varying the threshold hides
+      <em>how many</em> times a host was checked; it cannot hide the refusal
+      itself. Anybody who does get refused has learnt one thing for certain:
+      somebody has checked that host at least eight times in the last few
+      minutes. Closing even that would mean raising the threshold again,
+      and the threshold is not free &mdash; every point of it is peak load the
+      scanned server absorbs. Spending somebody else&rsquo;s bandwidth to buy a
+      stranger&rsquo;s privacy is a trade we are not willing to make quietly,
+      so it is written here instead.
     </p>
 
     <h3>Nothing from anyone else</h3>
