@@ -78,7 +78,9 @@ func run() int {
 		requestTimeout = flag.Duration("request-timeout", httpapi.DefaultRequestTimeout,
 			"budget for one scan")
 		maxConcurrent = flag.Int("max-concurrent", httpapi.DefaultMaxConcurrent,
-			"scans allowed to run at the same time")
+			"scans allowed to run at the same time; this also bounds how fast\n"+
+				"\tthe per-target table can be spent, so raising it past a few dozen\n"+
+				"\tneeds a wider table — see targetKeyBits in internal/httpapi")
 		maxConnections = flag.Int("max-connections", httpapi.DefaultMaxConnections,
 			"connections allowed to be open at once, before any request exists")
 		burst = flag.Int("burst", httpapi.DefaultBurst,

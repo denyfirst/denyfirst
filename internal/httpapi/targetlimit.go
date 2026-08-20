@@ -27,46 +27,101 @@ import (
 // Without it, eight users aiming at one host produce a burst that a small
 // server feels, and nothing stops that being deliberate.
 const (
-	// targetBurst is how many scans one host absorbs back to back, across all
-	// clients. Two allows a person to retry once after a mistake.
-	targetBurst = 2
+	// targetBurstMin is the smallest allowance any host has, and eight rather
+	// than two is the change that closes a leak rather than blurring it.
+	//
+	// A shared limit answers a question anybody outside can ask: scan a host,
+	// be refused, and you have learnt that somebody else scanned it. At two
+	// the threshold sat inside ordinary use — one person retrying after a typo
+	// reached it — so the answer carried real information about a real user.
+	// At eight it sits outside: this service has served single figures of
+	// scans a day since it opened, so a probe is answered "yes, go ahead" and
+	// tells the prober nothing. To make the limit speak, they have to push it
+	// there themselves, which means eight scans of the victim from several
+	// addresses, which is the thing they were trying to detect. The
+	// measurement destroys what it measures.
+	//
+	// Raising it does not loosen what a scanned host carries, and that is the
+	// part worth being precise about:
+	//
+	//   - Sustained load is set by targetRefill, not by the burst. A token
+	//     bucket lets through one scan per refill interval for ever, whatever
+	//     the bucket holds. That figure has not moved.
+	//
+	//   - One caller was never held by this limit anyway. The per-client
+	//     limiter allows five scans a minute, so a single address could never
+	//     do more than that to one host. This limit exists for the other
+	//     case — many addresses converging on one host — and that case is
+	//     still bounded by the same sustained rate.
+	//
+	// What does move is the peak: a host can now absorb eight to ten scans
+	// back to back rather than two, which is a few hundred handshakes over a
+	// few seconds instead of a hundred. It takes eight separate callers within
+	// one window to produce, so it is either an incident somebody is looking
+	// into or an attacker who owns eight addresses and could have opened those
+	// connections directly. It also means eight people checking the same host
+	// after an outage are no longer refused, which was a false refusal the old
+	// figure produced regularly.
+	targetBurstMin = 8
 
-	// targetRefill is how long one of those slots takes to return.
+	// targetBurstSpread is how many distinct allowances exist: 8, 9 or 10.
+	//
+	// Insurance rather than the main defence. The paragraph above closes the
+	// leak by putting the threshold beyond ordinary traffic; if this service
+	// ever became busy enough that one host really did see eight scans in a
+	// window, a fixed threshold would start answering again. A secret one does
+	// not: a probe measures the allowance minus the prior scans and cannot
+	// separate the two terms.
+	//
+	// One signature still resolves — a bucket holding the minimum refuses the
+	// very first probe — and that residual is stated on the privacy page
+	// rather than hidden.
+	targetBurstSpread = 3
+
+	// targetRefill is how long one slot takes to return. This, not the burst,
+	// is what bounds the load a scanned host carries: one scan per interval,
+	// for ever. Unchanged, so that bound is unchanged.
 	targetRefill = 30 * time.Second
 
 	// targetKeyBits is the width of the bucket identifier.
 	//
-	// The narrowness is the mechanism, not a shortcut. Two reviewers have now
-	// read it as a defect and suggested widening it to sixty-four bits, so
-	// the reasoning is set out here at length: widening it would destroy the
-	// property this limiter exists to have.
+	// Two forces pull on this number in opposite directions, and the balance
+	// moved once it was measured rather than guessed.
 	//
-	// A rate limiter has to recognise a repeated target, which normally means
-	// keeping the target. Keeping hostnames would break the one promise this
-	// project is built on, so the key is an HMAC truncated to twelve bits:
-	// 4096 buckets for every hostname that exists.
+	// Narrow protects a hostname. A bucket identifier has to be something no
+	// name can be recovered from, so the HMAC is truncated and the key is
+	// generated per process and never written down. At sixteen bits a bucket
+	// fits roughly fifteen thousand of the names anybody would think to try.
+	// (The earlier comment here said billions. Against a candidate list of a
+	// billion names twelve bits gave two hundred thousand, not billions; the
+	// claim was generous and is corrected rather than repeated. What the
+	// truncation defends is enumeration — going from a number to a name. It
+	// was never a defence against somebody testing one name they already
+	// suspect, and saying so is cheaper than implying otherwise.)
+	// Sixty-four bits would fit about one name and would turn this table into
+	// the record the rest of the project exists to avoid keeping. That part
+	// has not changed.
 	//
-	// Collisions are what protects the hostname. At twelve bits, a bucket
-	// identifier is consistent with billions of names, so a memory dump
-	// yields a number and nothing else. At sixty-four bits it is consistent
-	// with roughly one, and since the key is in the same memory as the
-	// buckets, whoever has both can hash a list of a million domains and read
-	// off exactly what was scanned. The wider hash does not improve the
-	// limiter; it undoes it.
+	// Wide keeps the table out of reach. The whole table regenerates at
+	// targetBuckets/targetRefill slots a second. If a caller can spend faster
+	// than that, every bucket stays empty and every user is refused — and it
+	// is worse for being quiet, because nothing looks overloaded. Measured on
+	// the live service on 2026-08-20, a scan of a name that does not resolve
+	// takes 16 to 19 ms, so eight concurrent scans is about 470 a second. At
+	// twelve bits the table regenerated at 137 a second: about 1600 addresses
+	// could hold the whole thing dry using under a third of this machine's
+	// capacity. At sixteen it regenerates at 2185, which is more than this
+	// service can spend at full tilt — so the attack now requires saturating
+	// the service, and a saturated service says too_busy, which is visible.
 	//
-	// The cost is a false refusal when two unrelated hosts share a bucket,
-	// and it is small: the chance is the number of hosts whose budget is
-	// currently spent divided by 4096, so about half a percent with twenty in
-	// flight. A person waits thirty seconds and tries again.
-	//
-	// If that ever becomes a real nuisance, the answer is fourteen bits —
-	// 16384 buckets, a quarter of the collisions, and still billions of names
-	// per bucket. Never sixty-four.
-	targetKeyBits = 12
+	// TestTargetTableOutrunsTheService keeps that arithmetic true. Raising
+	// MaxConcurrent, or making a scan faster, moves the same line.
+	targetKeyBits = 16
 	targetBuckets = 1 << targetKeyBits
 
-	// targetMaxTracked caps the map. Far above the number of buckets that can
-	// exist, so this only ever guards against a bug.
+	// targetMaxTracked caps the map. Equal to the number of buckets that can
+	// exist, so this only ever guards against a bug. The map holds what
+	// traffic has touched, not one entry per bucket.
 	targetMaxTracked = targetBuckets
 )
 
@@ -80,6 +135,29 @@ func foldHost(host string) string {
 	return strings.ToLower(strings.TrimSuffix(host, "."))
 }
 
+// burstFor is the allowance for one bucket: targetBurstMin plus an amount
+// derived from the same per-process key.
+//
+// Stable for the life of the process, so a legitimate caller sees consistent
+// behaviour, and unguessable from outside, because it comes from a key that is
+// never written down. Keyed on the bucket rather than the hostname, so it
+// needs nothing the limiter does not already hold.
+func (l *targetLimiter) burstFor(key uint16) float64 {
+	// Written through encoding/binary rather than by shifting bytes out of the
+	// identifier. The two are the same bytes; the difference is that a
+	// narrowing conversion is something a reader — and a linter — has to
+	// convince themselves cannot lose anything, and there is no reason to ask
+	// that of either when the standard library will do it.
+	var id [2]byte
+	binary.BigEndian.PutUint16(id[:], key)
+
+	mac := hmac.New(sha256.New, l.key)
+	mac.Write(id[:])
+	mac.Write([]byte{'b'})
+
+	return float64(targetBurstMin + int(mac.Sum(nil)[0])%targetBurstSpread)
+}
+
 // targetLimiter bounds how often any one host is scanned, whoever asks.
 type targetLimiter struct {
 	// key is generated per process and never written down. It stops a bucket
@@ -88,7 +166,6 @@ type targetLimiter struct {
 	// as well.
 	key []byte
 
-	burst  float64
 	refill time.Duration
 	now    func() time.Time
 
@@ -112,7 +189,6 @@ func newTargetLimiter(now func() time.Time) *targetLimiter {
 
 	return &targetLimiter{
 		key:       key,
-		burst:     targetBurst,
 		refill:    targetRefill,
 		now:       now,
 		buckets:   make(map[uint16]*bucket),
@@ -158,14 +234,14 @@ func (l *targetLimiter) allow(host, port string) bool {
 		if len(l.buckets) >= targetMaxTracked {
 			return false
 		}
-		l.buckets[key] = &bucket{tokens: l.burst - 1, seen: now}
+		l.buckets[key] = &bucket{tokens: l.burstFor(key) - 1, seen: now}
 		return true
 	}
 
 	if elapsed := now.Sub(b.seen); elapsed > 0 {
 		b.tokens += float64(elapsed) / float64(l.refill)
-		if b.tokens > l.burst {
-			b.tokens = l.burst
+		if full := l.burstFor(key); b.tokens > full {
+			b.tokens = full
 		}
 	}
 	b.seen = now
@@ -182,6 +258,13 @@ func (l *targetLimiter) allow(host, port string) bool {
 // The interval matters here beyond memory. A bucket that has refilled tells
 // nobody anything, and an empty map is the state this service spends most of
 // its time in.
+//
+// Each bucket is measured rather than the whole map being aged by the widest
+// allowance it could hold. That distinction arrived with the wider burst: a
+// host scanned once refills in one interval, and dropping it then keeps what
+// this process knows to about half a minute. Ageing everything by ten
+// intervals instead would have held a scanned host's bucket for five minutes
+// to no purpose, which is four and a half minutes of state nobody needs.
 func (l *targetLimiter) sweepLocked(now time.Time) {
 	const sweepEvery = 30 * time.Second
 
@@ -190,10 +273,9 @@ func (l *targetLimiter) sweepLocked(now time.Time) {
 	}
 	l.lastSweep = now
 
-	idle := time.Duration(l.burst) * l.refill
-
 	for key, b := range l.buckets {
-		if now.Sub(b.seen) > idle {
+		refilled := b.tokens + float64(now.Sub(b.seen))/float64(l.refill)
+		if refilled >= l.burstFor(key) {
 			delete(l.buckets, key)
 		}
 	}

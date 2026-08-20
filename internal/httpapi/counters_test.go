@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -109,9 +108,7 @@ func TestRateLimitIsCounted(t *testing.T) {
 func TestTargetBusyIsCounted(t *testing.T) {
 	s := New(offlineScanner(), Limits{Burst: 1000, Refill: time.Nanosecond}, nil)
 
-	for i := range targetBurst + 1 {
-		postFrom(t, s, `{"target":"counted-busy.test"}`, "198.51.100."+strconv.Itoa(i+1)+":5000")
-	}
+	exhaustTarget(t, s, `{"target":"counted-busy.test"}`, "198.51.100.")
 
 	if got := s.Stats().Refused["target_busy"]; got != 1 {
 		t.Errorf("target_busy counted %d times, want 1", got)

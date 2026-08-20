@@ -9,6 +9,43 @@ import (
 	"time"
 )
 
+// spendTargetBudget spends a host's whole allowance and returns how many
+// scans it took.
+//
+// A test cannot write targetBurstMin here and expect the next scan to be
+// refused. The allowance is secret per bucket, and that is the point of it: a
+// fixed one is a question anybody outside can ask. What a test can still
+// assert is that the budget is finite, that it lies between the documented
+// bounds, that it belongs to the host rather than to whoever asks, and that it
+// comes back.
+func spendTargetBudget(l *targetLimiter, host, port string) int {
+	for i := 0; i <= targetBurstMin+targetBurstSpread; i++ {
+		if !l.allow(host, port) {
+			return i
+		}
+	}
+	panic("the target budget is not finite")
+}
+
+// exhaustTarget does the same through the handler, from a fresh address each
+// time so that only the target budget can be what refuses.
+func exhaustTarget(t *testing.T, s *Server, body, addrPrefix string) int {
+	t.Helper()
+
+	for i := 1; i <= targetBurstMin+targetBurstSpread; i++ {
+		w := postFrom(t, s, body, addrPrefix+strconv.Itoa(i)+":5000")
+		if w.Code != http.StatusTooManyRequests {
+			continue
+		}
+		if got := errorCode(t, w); got != "target_busy" {
+			t.Fatalf("refused with %q rather than target_busy", got)
+		}
+		return i - 1
+	}
+	t.Fatal("the target budget never ran out")
+	return 0
+}
+
 // One host absorbs a small burst and then has to wait, whoever is asking.
 // Every other limit in this package protects this service; this one protects
 // the server being measured, which had no say in the matter.
@@ -16,14 +53,13 @@ func TestOneTargetIsLimitedAcrossClients(t *testing.T) {
 	now := time.Now()
 	l := newTargetLimiter(func() time.Time { return now })
 
-	for i := range targetBurst {
-		if !l.allow("example.test", "443") {
-			t.Fatalf("scan %d was refused while the target still had slots", i+1)
-		}
-	}
+	spent := spendTargetBudget(l, "example.test", "443")
 
-	if l.allow("example.test", "443") {
-		t.Error("the target accepted a scan beyond its burst")
+	if spent < targetBurstMin {
+		t.Fatalf("the target absorbed %d scans, below the minimum allowance of %d", spent, targetBurstMin)
+	}
+	if widest := targetBurstMin + targetBurstSpread - 1; spent > widest {
+		t.Fatalf("the target absorbed %d scans, above the widest allowance of %d", spent, widest)
 	}
 
 	// A different client asking for the same host is the case this exists
@@ -37,9 +73,7 @@ func TestSlotsReturnOverTime(t *testing.T) {
 	now := time.Now()
 	l := newTargetLimiter(func() time.Time { return now })
 
-	for range targetBurst {
-		l.allow("example.test", "443")
-	}
+	spendTargetBudget(l, "example.test", "443")
 	if l.allow("example.test", "443") {
 		t.Fatal("the burst was not spent")
 	}
@@ -57,9 +91,7 @@ func TestPortsAreCountedSeparately(t *testing.T) {
 	now := time.Now()
 	l := newTargetLimiter(func() time.Time { return now })
 
-	for range targetBurst {
-		l.allow("example.test", "443")
-	}
+	spendTargetBudget(l, "example.test", "443")
 	if l.allow("example.test", "443") {
 		t.Fatal("the budget for port 443 was not spent")
 	}
@@ -70,8 +102,9 @@ func TestPortsAreCountedSeparately(t *testing.T) {
 }
 
 // The key is the whole privacy argument. A bucket identifier must not be
-// something a hostname can be recovered from, and the defence is that
-// billions of hostnames share every bucket.
+// something a hostname can be recovered from, and the defence is that many
+// thousands of hostnames share every bucket — about fifteen thousand of the
+// names anybody would think to try, at sixteen bits.
 func TestBucketsCollideHeavily(t *testing.T) {
 	l := newTargetLimiter(nil)
 
@@ -119,7 +152,7 @@ func TestKeyDiffersBetweenProcesses(t *testing.T) {
 		}
 	}
 
-	// With 4096 buckets, two independent keys agree about one time in four
+	// With 65536 buckets, two independent keys agree about one time in sixty
 	// thousand, so almost every host should land somewhere else.
 	if differences < 150 {
 		t.Errorf("only %d of 200 hosts mapped differently between two limiters; the key does not appear to be per process", differences)
@@ -129,7 +162,9 @@ func TestKeyDiffersBetweenProcesses(t *testing.T) {
 func TestTargetLimiterMemoryIsBounded(t *testing.T) {
 	l := newTargetLimiter(nil)
 
-	for i := range targetBuckets * 10 {
+	// Twice as many distinct hosts as there are buckets, which is enough to
+	// prove the cap without spending a minute of CI on HMACs.
+	for i := range targetBuckets * 2 {
 		l.allow("host-"+strconv.Itoa(i)+".test", "443")
 	}
 
@@ -170,12 +205,7 @@ func TestHandlerRefusesAnOverscannedTarget(t *testing.T) {
 
 	body := `{"target":"crowded.test"}`
 
-	for i := range targetBurst {
-		w := postFrom(t, s, body, "198.51.100."+strconv.Itoa(i+1)+":5000")
-		if w.Code == http.StatusTooManyRequests {
-			t.Fatalf("scan %d was refused while the target still had slots", i+1)
-		}
-	}
+	exhaustTarget(t, s, body, "198.51.100.")
 
 	// A different client again, so only the target budget can refuse this.
 	w := postFrom(t, s, body, "198.51.100.200:5000")
@@ -202,12 +232,7 @@ func TestHandlerRefusesAnOverscannedTarget(t *testing.T) {
 func TestOtherTargetsAreUnaffected(t *testing.T) {
 	s := New(offlineScanner(), Limits{Burst: 1000, Refill: time.Nanosecond}, nil)
 
-	for range targetBurst {
-		postFrom(t, s, `{"target":"busy.test"}`, "198.51.100.1:5000")
-	}
-	if w := postFrom(t, s, `{"target":"busy.test"}`, "198.51.100.2:5000"); w.Code != http.StatusTooManyRequests {
-		t.Fatalf("the busy target was not limited, so this test proves nothing")
-	}
+	exhaustTarget(t, s, `{"target":"busy.test"}`, "198.51.100.")
 
 	if w := postFrom(t, s, `{"target":"quiet.test"}`, "198.51.100.3:5000"); w.Code == http.StatusTooManyRequests {
 		t.Error("an unrelated target was refused")
@@ -217,10 +242,8 @@ func TestOtherTargetsAreUnaffected(t *testing.T) {
 func TestTargetLimitCarriesRetryAfter(t *testing.T) {
 	s := New(offlineScanner(), Limits{Burst: 1000, Refill: time.Nanosecond}, nil)
 
-	for range targetBurst {
-		postFrom(t, s, `{"target":"busy2.test"}`, "198.51.100.10:5000")
-	}
-	w := postFrom(t, s, `{"target":"busy2.test"}`, "198.51.100.11:5000")
+	exhaustTarget(t, s, `{"target":"busy2.test"}`, "198.51.100.")
+	w := postFrom(t, s, `{"target":"busy2.test"}`, "198.51.100.99:5000")
 
 	if w.Code != http.StatusTooManyRequests {
 		t.Fatalf("status = %d, want 429", w.Code)
