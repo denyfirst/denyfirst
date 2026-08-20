@@ -994,6 +994,46 @@ exactly like one that passed.
 CI, which fails if the release build flags appear anywhere but
 `scripts/build.sh`
 
+### S6 — What reaches `main` is what was signed
+
+Everything above rests on being able to say who wrote a line. Commits are
+signed with an SSH key, and `.github/commit-signers` publishes the public half
+so that anybody can check, rather than only GitHub.
+
+The part that had to be learnt: **the merge does this, not the checks.** Every
+check runs against the branch, and the merge happens afterwards, so a merge
+that rewrites the commits rewrites them after the last thing that could have
+objected.
+
+- **Merge commit** — the branch's commits enter `main` byte for byte, keeping
+  their signatures. GitHub adds one commit of its own on top, signed with its
+  own key; it carries no content, only two parents.
+- **Squash** — GitHub writes one new commit and signs it. The originals never
+  reach `main`, so what is on the branch is what the maintainer signed and what
+  is on `main` is what GitHub says they signed.
+- **Rebase** — a signature covers the parent hash, and rebasing changes the
+  parent, so the signature cannot survive. GitHub does not re-sign. The commits
+  arrive unsigned.
+
+On 2026-08-20 this project used all three across three pull requests and got
+three different answers, the last of which put four unsigned commits on `main`
+past ten green checks. They are `1fdf674`, `cc163a3`, `01fc49f` and `7cd2cfa`;
+the same trees, signed, are the tag `signed/2026-08-20-docs-and-build`, and
+`git diff` between the two is empty. That is stated here rather than repaired,
+because repairing it means allowing a force-push to `main`, and a branch that
+accepts force-pushes for a minute is a worse thing to own than four commits
+whose provenance is recorded one ref away.
+
+Squash and rebase merging are disabled in the repository settings. That is not
+a thing a test can assert from inside a checkout, so it is written here, and it
+is the first thing to re-check if this ever happens again.
+
+*Enforced in:* the repository's pull request settings (merge commits only);
+`.github/commit-signers`
+*Guarded by:* the `Every commit in this pull request is signed by a known key`
+job in CI, which covers commits arriving on a branch and explicitly does not
+cover what a merge does to them afterwards
+
 ---
 
 ## Known gaps
@@ -1052,6 +1092,13 @@ is open today.
   where it was strongest: the release procedure, the limits, and the
   instrumentation. `internal/policy` and `internal/certinfo` had the least of
   its attention and are where the next reader should start.
+- **Four commits on `main` carry no signature.** S6. `1fdf674`, `cc163a3`,
+  `01fc49f`, `7cd2cfa` — rebase-merged, which strips the signature the author
+  put on them. The signed originals are the tag
+  `signed/2026-08-20-docs-and-build` and the trees are identical, so the
+  provenance exists; it is one `git diff` away rather than in the log, which is
+  not the same thing. Closing it needs a force-push to `main`, and opening that
+  door costs more than the four commits are worth.
 - **The reproduction has not been watched to run.** S3 describes what
   `reproduce.yml` does, and it fires on `release: published` — but the only
   release so far predates both it and `scripts/build.sh`, so nobody has seen it

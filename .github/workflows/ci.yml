@@ -295,6 +295,83 @@ jobs:
 
           Write-Host 'scripts/release.ps1 parses.'
 
+  # A commit that reaches main unsigned is a commit nobody can attribute.
+  #
+  # This does not catch every way that can happen, and saying which is the
+  # point. It checks the commits in a pull request. It cannot check what a
+  # merge does to them afterwards, because that happens after every check has
+  # already gone green — which is exactly how four unsigned commits reached
+  # main on 2026-08-20 while ten checks reported success. That hole is closed
+  # by a repository setting rather than by a job, and S6 records which.
+  #
+  # What this does catch is the ordinary case: somebody pushes a commit to a
+  # branch without a signature, or with a key this project does not know.
+  commit-signatures:
+    name: Every commit in this pull request is signed by a known key
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out enough history to see the branch
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eu
+
+          # Full history, blobs on demand. A shallow fetch cannot express
+          # base..head, and a full clone downloads every file this repository
+          # has ever held to read a handful of signatures.
+          git init -q
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --no-tags --filter=blob:none origin \
+            "+${BASE_SHA}:refs/base" "+${HEAD_SHA}:refs/head"
+          git checkout -q refs/head
+
+      - name: Verify each one against .github/commit-signers
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eu
+
+          if [ ! -f .github/commit-signers ]; then
+            echo ".github/commit-signers is missing, so nothing can be verified."
+            echo "A check that cannot run must not pass quietly."
+            exit 1
+          fi
+
+          git config gpg.format ssh
+          git config gpg.ssh.allowedSignersFile "${PWD}/.github/commit-signers"
+
+          bad=0
+          checked=0
+          for commit in $(git rev-list refs/base..refs/head); do
+            checked=$((checked + 1))
+            if git verify-commit "${commit}" 2>/dev/null; then
+              continue
+            fi
+            printf 'unsigned or signed by an unknown key: %s %s\n' \
+              "$(git log -1 --format=%h "${commit}")" \
+              "$(git log -1 --format=%s "${commit}")"
+            bad=$((bad + 1))
+          done
+
+          if [ "${bad}" -ne 0 ]; then
+            echo
+            echo "${bad} of ${checked} commits cannot be attributed to a key this"
+            echo "repository publishes. Sign them:"
+            echo
+            echo "  git rebase --exec \"git commit --amend --no-edit -S\" ${BASE_SHA}"
+            echo "  git push --force-with-lease"
+            echo
+            echo "If the key is new, add it to .github/commit-signers in this branch."
+            exit 1
+          fi
+
+          echo "${checked} commits, every one signed by a published key."
+
   staticcheck:
     name: Static analysis
     runs-on: ubuntu-latest
