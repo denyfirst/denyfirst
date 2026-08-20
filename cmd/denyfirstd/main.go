@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -261,8 +262,17 @@ func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Closed when the periodic writer has stopped, so the final write below is
+	// the only writer left. Without it the two overlap during shutdown, which
+	// is the one moment they are both certain to run.
+	persistDone := make(chan struct{})
 	if *statsFile != "" {
-		go persistStats(ctx, api, *statsFile, statsInterval)
+		go func() {
+			defer close(persistDone)
+			persistStats(ctx, api, *statsFile, statsInterval)
+		}()
+	} else {
+		close(persistDone)
 	}
 
 	// Request-level limits arrive too late for one attack: a TLS handshake
@@ -316,6 +326,11 @@ func run() int {
 	// still running when the signal arrived. The timer writes at most a
 	// minute behind; this makes the last write exact.
 	if *statsFile != "" {
+		// The periodic writer stops on the same context that stopped the
+		// server, but it only checks between ticks. Waiting for it to return
+		// means one writer at a time rather than two racing into the same
+		// rename.
+		<-persistDone
 		if err := saveStats(*statsFile, api.Stats()); err != nil {
 			fmt.Fprintf(os.Stderr, "counters could not be written to %s: %v\n", *statsFile, err)
 		}
@@ -372,14 +387,35 @@ func saveStats(path string, snapshot httpapi.Snapshot) error {
 		return err
 	}
 
-	temporary := path + ".tmp"
-
+	// A name of its own for each write, rather than one fixed ".tmp".
+	//
+	// The rename is atomic; what was not atomic was two writers sharing one
+	// temporary. The periodic writer only notices a shutdown between ticks, so
+	// a signal arriving mid-write leaves it finishing into the same path the
+	// final write is about to truncate, and the file that survives is a mixture
+	// of two. That is a corrupt counter rather than a lost one, and the
+	// comment above promised a reader sees either the old file or the new.
+	//
+	// CreateTemp also refuses to reuse an existing name, so a temporary left
+	// behind by a killed process cannot be written into by the next one.
+	//
 	// #nosec G304 -- the path is a command line flag, set by whoever started
 	// this process. No request reaches it, and an operator who can pass a
 	// flag can already write anywhere this process can. The rule is aimed at
 	// paths that come from a caller; this one has no caller.
-	f, err := os.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
 	if err != nil {
+		return err
+	}
+	temporary := f.Name()
+	// Removed on every failure below. Left behind, it is a file of counters
+	// nobody reads and nobody deletes.
+	defer os.Remove(temporary)
+
+	// CreateTemp makes the file 0600 already; setting it is what keeps that
+	// true if the mode above ever changes.
+	if err := f.Chmod(0o600); err != nil {
+		f.Close()
 		return err
 	}
 	if _, err := f.Write(append(body, '\n')); err != nil {
