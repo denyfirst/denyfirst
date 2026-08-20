@@ -173,10 +173,22 @@ survives a caller that does not exist yet.
   — the machine-readable contact, in the RFC 9116 format
 - [`docs/invariants.md`](docs/invariants.md) — what the project guarantees,
   where each guarantee is enforced, and which test protects it
+- [`docs/verify.md`](docs/verify.md) — checking a release against its signature,
+  and rebuilding it yourself
 - [`SECURITY.md`](SECURITY.md) — reporting a vulnerability
 
-Findings are welcome, particularly in input parsing: six bugs have been found
-there and none anywhere else.
+Findings are welcome. This used to point readers at input parsing, on the
+grounds that every bug so far had been found there; the first outside review
+found more in the release procedure, the rate limits and the instrumentation
+than in any parser, so that guidance was wrong and is withdrawn rather than
+quietly reworded.
+
+Documents are in scope too, and not as a courtesy. Several of those findings
+were pages that no longer described the code — including one that told anyone
+rebuilding a release to pass a linker flag naming a symbol this program does
+not define, which changes the build ID and therefore the hash. The instructions
+for proving a release untampered produced, for every honest reader who followed
+them, the exact signature of tampering.
 
 ```sh
 go test ./...                                                    # everything
