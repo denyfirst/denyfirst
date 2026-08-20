@@ -203,6 +203,26 @@ type apiError struct {
 }
 
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
+	key := clientKey(r, s.limits.TrustedProxies, s.limits.TrustedProxyHops)
+
+	// Everything below this line costs something, including the refusals.
+	//
+	// The two checks that follow used to sit in front of the rate limiter, so
+	// that a cross-site request could not spend the victim's scan allowance
+	// on their behalf. That reasoning is right and is kept: the allowance
+	// spent here is the read one, not the scan one. What was wrong was the
+	// conclusion drawn from it — that a request refused early is free. It is
+	// not. It takes the counter lock, and it moves a figure this service
+	// publishes, so an unlimited refusal path is both a way to spend this
+	// machine's processor and a way to write into the only numbers an
+	// operator has to watch.
+	if !s.reads.allow("read:" + key) {
+		w.Header().Set("Retry-After", "1")
+		s.refuse(w, http.StatusTooManyRequests, "rate_limited",
+			"Too many requests from this address. Try again shortly.")
+		return
+	}
+
 	// A page on another site can make a browser send this request, and it
 	// would arrive carrying the visitor's address rather than the attacker's.
 	// The victim's rate limit is spent, and a scan they never asked for is
@@ -218,7 +238,22 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	// Sec-Fetch-Site says outright where the request came from and cannot be
 	// set by script. An absent header is a client that is not a browser, and
 	// so is not subject to this at all.
-	if site := r.Header.Get("Sec-Fetch-Site"); site == "cross-site" {
+	//
+	// Written as a list of what is allowed rather than a test for
+	// "cross-site", which is the same choice made for hostname characters and
+	// for the asset routes. The registry has four values today; a fifth added
+	// later would pass a deny list silently, and silently is the only way
+	// this check can fail.
+	switch site := r.Header.Get("Sec-Fetch-Site"); site {
+	case "",
+		// Not a browser, or a browser too old to send it. Neither is subject
+		// to this at all: the header exists to describe a browser's own
+		// navigation, and a client that does not send it is not one a page on
+		// another site can steer.
+		"none",        // typed in, or opened from a bookmark
+		"same-origin", // this page
+		"same-site":   // another name on this site — scanner.denyfirst.dev
+	default:
 		s.refuse(w, http.StatusForbidden, "cross_site",
 			"This endpoint is not available to other sites. Use it from this page, "+
 				"from the command line tool, or from your own instance.")
@@ -231,7 +266,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !s.rate.allow(clientKey(r, s.limits.TrustedProxies, s.limits.TrustedProxyHops)) {
+	if !s.rate.allow(key) {
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(s.limits.Refill)))
 		s.refuse(w, http.StatusTooManyRequests, "rate_limited",
 			"Too many scans from this address. Try again shortly.")
@@ -320,7 +355,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 
 	// Every other limit here protects this service. This one protects the
 	// server about to be scanned, which had no say in the matter: one request
-	// becomes roughly thirty handshakes at the other end, and several users
+	// becomes up to fifty handshakes at the other end, and several users
 	// aiming at one host multiply that.
 	//
 	// Checked after the semaphore rather than before it. A slot spent on a
@@ -341,16 +376,57 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := s.scanner.Scan(ctx, net.JoinHostPort(host, port))
+
+	// The deadline is checked whether or not the scan reported an error, and
+	// that is the whole of this change.
+	//
+	// A probe does not fail. It measures, and a host that refused every
+	// connection is a measurement — the report says so, and saying so is what
+	// this project is for. So Scan returns nil almost always, and the branch
+	// below used to be reached only through an error that could not happen:
+	// the timeout was announced inside a 200 and the figure counting timeouts
+	// was permanently zero. A counter that cannot move is not a low number, it
+	// is silence, and an operator reads silence as nothing happening.
+	if ctx.Err() != nil {
+		s.refuse(w, http.StatusGatewayTimeout, "timeout",
+			"The scan did not finish within the time allowed.")
+		return
+	}
 	if err != nil {
-		if ctx.Err() != nil {
-			s.refuse(w, http.StatusGatewayTimeout, "timeout",
-				"The scan did not finish within the time allowed.")
-			return
-		}
+		// Nothing reachable produces this today, which is why it is written
+		// as a refusal rather than left out: Scan is allowed to fail by its
+		// signature, and a failure that reached a caller uncounted would be
+		// the same hole in a different place. See the reachability test in
+		// refusal_test.go, which names this as the one code it cannot drive.
+		//
 		// The underlying error can name resolver internals and addresses, so
 		// only the shape of the failure is returned.
 		s.refuse(w, http.StatusBadGateway, "scan_failed",
 			"The target could not be reached.")
+		return
+	}
+
+	// A name that resolves only to a private, loopback, link-local or
+	// reserved address. safedial refused every attempt, so nothing was
+	// dialled and there is nothing to report about the host.
+	//
+	// Answered as a refusal rather than as a report of four failed
+	// handshakes, for two reasons. A reader who scanned an internal name by
+	// mistake is told why in one sentence instead of reading four identical
+	// errors. And it is the only place this can be counted: the counter
+	// exists so an operator can see attempts to use this service as a proxy
+	// into whatever network it runs in, and until this line existed the
+	// figure was always zero — the reason was in the report and never in the
+	// numbers.
+	//
+	// The message names no address, so nothing about the resolution comes
+	// back to the caller.
+	if result.TLS != nil && result.TLS.BlockedDestination {
+		s.refuse(w, http.StatusForbidden, "blocked_destination",
+			"That name resolves only to addresses this service will not connect to — "+
+				"private, loopback, link-local or reserved. Scanning one of those from here "+
+				"would make this service a way into somebody else's network. The command "+
+				"line tool runs on your own machine and has a switch for it.")
 		return
 	}
 
