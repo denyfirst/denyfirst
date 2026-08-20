@@ -64,20 +64,41 @@
       There is a limit on how often any one server is checked, which has to
       recognise a repeat without keeping the name. The hostname is hashed with
       a key created when the service starts and never written down, then cut
-      short enough that billions of names share every result. The limit works;
-      the name is not there to find.
+      to sixteen bits: any one result fits many thousands of the names anybody
+      would think to try, and only the last half minute of them exists at all.
+      Whoever takes this machine finds a handful of numbers and no way to
+      enumerate a name from one.
     </p>
 
     <p>
-      One consequence of that limit is worth stating rather than leaving to be
-      discovered. A limit answers a question, and an answer is something
-      anybody can ask for: check a host, be told it was checked very recently,
-      and you have learnt that somebody checked it &mdash; or checked one of
-      the billions of names that share its result. The window is under a
-      minute and the answer is ambiguous by construction. It is still the only
-      thing about anyone else&rsquo;s use of this service that can be observed
-      at all, and a page that claims nothing is recorded should say where the
-      edge of the claim is rather than wait to be asked.
+      Being exact about what that protects: it defends against reading a name
+      out of a number. It was never a defence against somebody testing one
+      name they already suspect, and this page would rather say so than let
+      the shorter claim stand.
+    </p>
+
+    <p>
+      There is a second edge to the same limit, and it is the one worth
+      explaining. A limit answers a question, and an answer is something
+      anybody can ask for &mdash; check a host, be refused, and you have
+      learnt that somebody else checked it. The way that is closed here is not
+      a trick but a threshold: the limit only speaks after a host has been
+      checked eight times in the same short window, and this service handles
+      single figures of checks a day. Ordinary use never reaches it, so the
+      answer to anybody probing is "go ahead", which tells them nothing. To
+      make the limit speak they would have to push it there themselves, from
+      several addresses, which is the very thing they were trying to detect.
+      The measurement destroys what it would measure.
+    </p>
+
+    <p>
+      What is left, stated rather than left to be found: if one host really is
+      being checked eight times a minute, somebody probing learns that it is
+      busy. That is a fact about a host under load, not about a person, and it
+      is a fact its own administrator can already read in their logs &mdash;
+      which is why this service publishes a reverse name pointing back here.
+      The threshold itself is also varied per host from a key nobody outside
+      can see, so even that edge is not a fixed line to aim at.
     </p>
 
     <h3>Nothing from anyone else</h3>

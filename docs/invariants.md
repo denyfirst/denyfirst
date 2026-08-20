@@ -332,6 +332,62 @@ same hole in a different place.
 *Guarded by:* `TestEveryRefusalCodeCanBeProduced`,
 `TestOnlyKnownRefusalCodesAreCounted`
 
+### A8 — The per-target table regenerates faster than this service can spend it
+
+Every bucket empty means every user refused, and that failure is worse than an
+ordinary flood for being quiet: nothing is overloaded, no limit visibly fires,
+the service simply says no to everybody.
+
+Whether it is reachable is arithmetic, and the arithmetic was guessed before it
+was measured. A scan of a name that does not resolve takes 16 to 19 ms on the
+live service, so eight concurrent scans is about 470 a second. At twelve bits
+the table regenerated 137 slots a second — so roughly sixteen hundred addresses
+could hold the whole table dry while using under a third of this machine's
+capacity, and nothing about the machine would look wrong. At sixteen bits it
+regenerates 2185 a second, more than this service can spend at full tilt, so
+the attempt now requires saturating the service; and a saturated service says
+`too_busy`, which somebody can see.
+
+Three numbers decide it and two live in other files, which is why the check is
+a test rather than a comment: raising `MaxConcurrent`, or making a scan faster,
+moves the same line.
+
+*Enforced in:* `internal/httpapi.targetKeyBits`
+*Guarded by:* `TestTargetTableOutrunsTheService`
+
+### A9 — A shared limit does not answer questions about other people
+
+A limit that refuses on the strength of somebody else's activity is a question
+anybody outside can ask: scan a host, be refused, and you have learnt that
+somebody else scanned it. Truthfully saying why — which this project insists on
+everywhere else — is exactly what makes it an oracle.
+
+It is closed by where the threshold sits rather than by refusing to answer. At
+two scans the threshold was inside ordinary use: one person retrying after a
+typo reached it, so the answer described a real user. At eight it is outside
+anything this service sees, so a probe is answered "go ahead" and learns
+nothing. Pushing the limit to where it speaks costs the prober eight scans of
+the victim from several addresses — the very thing they were trying to detect,
+performed by them, and visible in the victim's own logs.
+
+Raising the threshold does not loosen what a scanned host carries. Sustained
+load is set by the refill interval, not by the burst, and that has not moved;
+and a single caller was never held by this limit anyway, because the per-client
+limiter allows five scans a minute. What moves is the peak, which now takes
+eight separate callers inside one window to produce.
+
+The threshold is also varied per bucket from the per-process key, so even the
+edge is not a fixed line to aim at. One signature still resolves — a bucket
+holding the minimum refuses the first probe — and that residual is named in
+Known gaps and on the privacy page rather than left to be found.
+
+*Enforced in:* `internal/httpapi.targetBurstMin`,
+`internal/httpapi.targetLimiter.burstFor`
+*Guarded by:* `TestSecretBurstBlursAProbeFromOutside`,
+`TestSustainedTargetRateDoesNotDependOnTheBurst`,
+`TestBurstStaysWithinItsBounds`,
+`TestBurstIsStablePerBucketAndSecretPerProcess`
+
 ---
 
 ## Privacy
@@ -915,15 +971,22 @@ rather than fixed. Anything below is open today.
   disabled, a target with many AAAA records can spend that budget on
   unreachable addresses and be reported as unreachable, with no note saying
   why. R3 requires the opposite.
-- **The per-target limit is an oracle.** A limit answers a question, and an
-  answer is something anybody can ask for: check a host, be told it was
-  checked very recently, and you have learnt that somebody checked it — or one
-  of the billions of names sharing its bucket. The window is under a minute
-  and the answer is ambiguous by construction, but it is the one thing about
-  another person's use of this service that is observable at all. Stated on
-  the privacy page rather than fixed, because the alternatives are removing
-  the limit that protects scanned hosts or returning a refusal that does not
-  say why.
+- **The per-target limit still answers at its edge.** A9. The threshold now
+  sits outside ordinary traffic, so a probe learns nothing about a person; what
+  remains is that a host genuinely being checked eight times in a window can be
+  observed to be busy. That is a fact about load rather than about anybody, and
+  its own administrator can already read it in their logs. The secret burst
+  leaves one probe signature that resolves — a bucket holding the minimum
+  refuses the first probe — and closing that last one would mean raising the
+  minimum allowance again, which spends a scanned host's peak to buy a
+  stranger's privacy.
+- **Truncation defends enumeration, not confirmation.** A bucket identifier
+  cannot be turned back into a name. It was never a defence against somebody
+  who already suspects one name and tests it, and the comment in
+  `targetlimit.go` used to imply otherwise by claiming billions of names per
+  bucket; against a realistic candidate list twelve bits gave two hundred
+  thousand, and sixteen gives fifteen thousand. The figure is corrected and
+  the limit of what it protects is now stated.
 - **`scan_failed` cannot be reached.** A7. `scan.Scan` cannot fail once the
   handler has validated the target, so the branch is defensive. Named in
   `TestEveryRefusalCodeCanBeProduced` rather than left to be discovered, and

@@ -143,8 +143,18 @@ func foldHost(host string) string {
 // never written down. Keyed on the bucket rather than the hostname, so it
 // needs nothing the limiter does not already hold.
 func (l *targetLimiter) burstFor(key uint16) float64 {
+	// Written through encoding/binary rather than by shifting bytes out of the
+	// identifier. The two are the same bytes; the difference is that a
+	// narrowing conversion is something a reader — and a linter — has to
+	// convince themselves cannot lose anything, and there is no reason to ask
+	// that of either when the standard library will do it.
+	var id [2]byte
+	binary.BigEndian.PutUint16(id[:], key)
+
 	mac := hmac.New(sha256.New, l.key)
-	mac.Write([]byte{byte(key >> 8), byte(key), 'b'})
+	mac.Write(id[:])
+	mac.Write([]byte{'b'})
+
 	return float64(targetBurstMin + int(mac.Sum(nil)[0])%targetBurstSpread)
 }
 
