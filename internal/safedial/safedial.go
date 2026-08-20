@@ -84,6 +84,17 @@ var blockedPrefixes = []netip.Prefix{
 	// reachable inside it, so blocking the whole /96 costs nothing.
 	netip.MustParsePrefix("::/96"),
 
+	// ::ffff:0:0:0/96 is RFC 2765's IPv4-translated form, ::ffff:0:a.b.c.d.
+	// It is not ::ffff:a.b.c.d — that one is the mapped form and Unmap
+	// rewrites it — and the extra sixteen bits are exactly what makes it a
+	// different prefix that no predicate above recognises. Deprecated by RFC
+	// 6145 and not routed by a stock Linux stack, which is why it was the
+	// family left out: nothing broke without it. The list is a deny list and
+	// its whole value is that it is complete, so an entry that costs nothing
+	// and closes a family belongs here rather than in a comment explaining
+	// why it was skipped.
+	netip.MustParsePrefix("::ffff:0:0:0/96"),
+
 	netip.MustParsePrefix("64:ff9b::/96"),   // NAT64, embeds IPv4
 	netip.MustParsePrefix("64:ff9b:1::/48"), // local-use NAT64, embeds IPv4
 	netip.MustParsePrefix("100::/64"),       // discard-only
