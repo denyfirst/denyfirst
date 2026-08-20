@@ -946,6 +946,14 @@ script refuses to sign unless that hash is one this repository contains.
 afterwards, which left the provenance record unsigned while the reproduction
 used it to decide whether a mismatch was tampering or a different toolchain.
 
+**v0.1.0 is outside this and will always be.** It was cut before both the
+script and the `buildscript` field, so nothing records what produced it.
+`reproduce.yml` was dispatched against it on 2026-08-20 — the first time it had
+ever run — and refused: no field to compare the script against, therefore no
+statement it could honestly make. That refusal is the invariant holding, not
+breaking. A reproduction that cannot name the procedure it reproduced would be
+reporting agreement with itself.
+
 *Enforced in:* `.github/workflows/build-release.yml`,
 `.github/workflows/reproduce.yml`, `scripts/release.ps1`
 
@@ -1099,9 +1107,14 @@ is open today.
   provenance exists; it is one `git diff` away rather than in the log, which is
   not the same thing. Closing it needs a force-push to `main`, and opening that
   door costs more than the four commits are worth.
-- **The reproduction has not been watched to run.** S3 describes what
-  `reproduce.yml` does, and it fires on `release: published` — but the only
-  release so far predates both it and `scripts/build.sh`, so nobody has seen it
-  pass or fail. A check nobody has watched is the same class of thing as a
-  counter that cannot move, which is most of what this review was about. It
-  runs on the next tag, and by hand before then.
+- **No release has been reproduced.** S3. `reproduce.yml` has now been watched
+  — dispatched by hand against v0.1.0 on 2026-08-20 — and it refused, correctly,
+  because that release predates the record of what built it. So the workflow is
+  known to run and known to fail closed, and the property it exists to
+  demonstrate is still undemonstrated: no release in this project has been
+  rebuilt byte-for-byte by a second party. That waits on the next tag, which
+  will carry both the script and the `buildscript` field.
+- **`release.ps1 -Compare` has not run end to end.** The bash path was exercised
+  by hand on 2026-08-20 and built all ten artifacts, which is most of it, but
+  the surrounding script — download, verify, compare, sign — has not been run
+  as one piece since it changed. The first time must not be a release evening.
