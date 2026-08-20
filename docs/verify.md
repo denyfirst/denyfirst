@@ -107,6 +107,11 @@ There is now one copy of the build command, in `scripts/build.sh`, used by the
 release workflow, by the reproduction workflow, by the signing script and by
 the instructions below. CI fails if a second one appears.
 
+**v0.1.0 is the exception, and the only release so far.** It was cut before the
+script existed and before `BUILD` recorded which script ran, so neither of the
+two checks below has anything to compare against. Read *If the tag predates the
+build record* before following these steps against it.
+
 ```sh
 git clone https://github.com/denyfirst/denyfirst
 cd denyfirst
@@ -133,30 +138,56 @@ The hash should match the line in `SHA256SUMS`. If it does not, and both the
 toolchain and the script hash match, that is worth reporting through the
 process in `SECURITY.md`.
 
-On Windows, use the bash that ships with Git for Windows. Do not translate the
-script into PowerShell: a translation is a second copy of the command, which is
-the thing that just went wrong.
+On Windows, use the bash that ships with Git for Windows. Note that its
+installer puts `cmd\` on PATH and not `bin\`, so `bash` is usually not on PATH
+even when it is installed; it is at `C:\Program Files\Git\bin\bash.exe`. Do
+not translate the script into PowerShell — a translation is a second copy of
+the command, which is the thing that just went wrong.
 
-### If the tag has no `scripts/build.sh`
+### If the tag predates the build record
 
-v0.1.0 was cut before that script existed, so a checkout of that tag does not
-contain one and the `sha256sum` line above will say so. The release workflow
-has the same problem and answers it the same way: it takes the script from the
-default branch and records the hash of what it took. That recorded hash, not
-the branch, is the thing to check.
+v0.1.0 was cut before `scripts/build.sh` existed and before `BUILD` carried a
+`buildscript` line. Both gaps are real, neither can be fixed after the fact,
+and the second is the one that matters: without it there is no record of what
+procedure produced those binaries.
 
-```sh
-git fetch origin main
-git checkout origin/main -- scripts/build.sh
+`reproduce.yml` refuses rather than guessing. Dispatched against v0.1.0 on
+2026-08-20 — the first time it had ever been run — it fell back to the default
+branch's script, found nothing in `BUILD` to check that script against, and
+stopped:
 
-sha256sum scripts/build.sh      # must equal the buildscript line in BUILD
+```
+the tag predates scripts/build.sh; falling back to the default branch
+buildscript d004b43de04d4220f4d5608d6273786b47f121688e28cc63b7341cb08b8e880b
+error: The BUILD record names no build script, so this reproduction cannot say
+which procedure produced the release. Releases from before that field existed
+have to be checked by hand.
 ```
 
-If those disagree, stop. It means the binary was built by a script neither this
-tag nor the current default branch contains, and until that hash can be found
-somewhere in the history, what produced the release is unknown — which is the
-one thing the `buildscript` line exists to make visible. Every tag from here on
-carries its own copy and needs none of this.
+That is the workflow working, not failing. A reproduction that cannot say which
+procedure it reproduced proves nothing, and reporting a match on that basis
+would be worse than reporting nothing at all.
+
+What remains for v0.1.0 is a hand check with its limit stated:
+
+```sh
+cat /path/to/downloaded/BUILD   # match the toolchain line
+go version
+
+git fetch origin main
+git checkout origin/main -- scripts/build.sh
+bash scripts/build.sh v0.1.0 dist
+sha256sum dist/denyfirst-scan_v0.1.0_linux_amd64
+```
+
+A match means the source and today's procedure produce that binary, which is
+worth something. A mismatch means nothing either way: the procedure that built
+v0.1.0 was never recorded, so a difference is as likely to be a flag that
+changed since as a binary that was tampered with. That is the whole reason the
+`buildscript` field exists, and the reason it cannot help here.
+
+Every tag from here on carries its own script and its own `buildscript` line,
+and for those the reproduction is decisive.
 
 `BUILD` is itself listed inside `SHA256SUMS`, so the signature checked above
 covers it. That ordering is deliberate. While the provenance record sat outside

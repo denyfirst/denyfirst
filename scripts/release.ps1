@@ -36,7 +36,8 @@
     on Linux; on Windows the difference is the host, not the source.
 
     Runs scripts/build.sh — the one the release's BUILD record names — so it
-    needs bash on PATH. Git for Windows provides one.
+    needs bash. Found on PATH, or in the usual Git for Windows locations, which
+    is where it actually lives: the installer adds cmd\ to PATH but not bin\.
 
 .EXAMPLE
     .\scripts\release.ps1 -Tag v0.1.0
@@ -251,17 +252,40 @@ find in the history. Nothing was signed.
         # So the script BUILD names is the script that runs, taken from the
         # revision matched above rather than from the working tree, which may
         # have moved on since the tag.
+        # Git for Windows ships bash, and puts only its cmd\ directory on PATH.
+        # So `bash` is absent from an ordinary PowerShell session on a machine
+        # that has a perfectly good one, and the first version of this threw
+        # there — on the maintainer's own machine, which is the one machine it
+        # exists to run on. Measured 2026-08-20: Get-Command found nothing
+        # while C:\Program Files\Git\bin\bash.exe existed and built all ten
+        # artifacts. A check that cannot start is a check that never runs.
+        #
+        # Interpolated rather than joined: an unset variable yields a path that
+        # Test-Path simply calls false, which is the answer wanted here.
         $bash = Get-Command bash -ErrorAction SilentlyContinue
+        if (-not $bash) {
+            foreach ($candidate in @(
+                    "$env:ProgramFiles\Git\bin\bash.exe",
+                    "${env:ProgramFiles(x86)}\Git\bin\bash.exe",
+                    "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe")) {
+                if (Test-Path $candidate) {
+                    $bash = Get-Command $candidate
+                    Write-Host "  bash is not on PATH; using $candidate" -ForegroundColor DarkGray
+                    break
+                }
+            }
+        }
+
         if (-not $bash) {
             # A throw rather than a warning. A comparison that quietly did not
             # happen reads, three lines later, exactly like one that passed.
             throw @"
--Compare needs bash to run scripts/build.sh, and there is none on PATH.
+-Compare needs bash to run scripts/build.sh, and none was found.
 
-Git for Windows ships one: add its usr\bin to PATH, or run this step on
-Linux, where the comparison is meaningful anyway. Rebuilding by hand is not
-a substitute — a second copy of the build command is the thing this check
-exists to avoid. Nothing was signed.
+Looked on PATH and in the places Git for Windows installs one. Install Git for
+Windows, or run this step on Linux, where the comparison is meaningful anyway.
+Rebuilding by hand is not a substitute — a second copy of the build command is
+the thing this check exists to avoid. Nothing was signed.
 "@
         }
 
