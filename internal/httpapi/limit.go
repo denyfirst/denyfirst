@@ -185,6 +185,18 @@ func (l *limiter) RetentionPeriod() time.Duration {
 	return l.idlePeriod() + l.sweepEvery
 }
 
+// DefaultRetentionPeriod is that figure for the settings this service ships
+// with, exported so the privacy page can be checked against the code instead
+// of against somebody's memory of it.
+//
+// The page states a number in words. Two sources that agree only because
+// nobody compares them are one source written twice, which is the argument
+// this project already makes about the PGP fingerprint, and the flags that
+// change this number are on the same command line as everything else.
+func DefaultRetentionPeriod() time.Duration {
+	return newLimiter(DefaultBurst, DefaultRefill, DefaultMaxTrackedIPs, nil).RetentionPeriod()
+}
+
 func (l *limiter) size() int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -211,7 +223,15 @@ func clientKey(r *http.Request, trustedProxies []netip.Prefix, trustedHops int) 
 	host := remoteHost(r.RemoteAddr)
 
 	if trustedHops > 0 && len(trustedProxies) > 0 && fromTrustedProxy(host, trustedProxies) {
-		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		// Values rather than Get, and the difference is a bypass rather than a
+		// tidiness point. A proxy may extend the header the client sent or add
+		// a line of its own; both are conforming, and the second is what
+		// several load balancers do. Get returns the first line only, so
+		// against such a proxy it returns whatever the client wrote — a fresh
+		// key of the client's choosing on every request, which is the same as
+		// having no limiter. Joining every line puts the proxy's entry back at
+		// the end where the hop count expects it.
+		if forwarded := strings.Join(r.Header.Values("X-Forwarded-For"), ","); forwarded != "" {
 			parts := strings.Split(forwarded, ",")
 			// Each proxy appends the address it received the request from, so
 			// the entry nearest to us is the last one. Step back one position
