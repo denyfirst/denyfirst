@@ -165,6 +165,53 @@ jobs:
 
           echo "Every fuzz target in the tree is in the matrix."
 
+  # An invariant names the tests that guard it. A name that no longer exists
+  # is the document quietly becoming a description of what somebody once
+  # intended, which is the failure mode invariants.md itself warns about: a
+  # stale list is worse than no list, because a reader takes it as current.
+  #
+  # Two references had already rotted when this check was written. Neither was
+  # noticed, because nothing reads that document except people, and people
+  # read the prose rather than the citations.
+  #
+  # Deterministic, so it belongs on the critical path beside the fuzz matrix
+  # check for the same reason.
+  invariant-citations:
+    name: Every invariant cites a test that exists
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the commit under test
+        run: |
+          git init -q
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "${GITHUB_SHA}"
+          git checkout -q FETCH_HEAD
+
+      - name: Compare the names in invariants.md against the tree
+        run: |
+          set -eu
+
+          grep -ohE '`(Test|Fuzz)[A-Za-z0-9_]+`' docs/invariants.md \
+            | tr -d '`' | sort -u > /tmp/cited
+
+          grep -rhoE '^func (Test|Fuzz)[A-Za-z0-9_]+' --include='*_test.go' . \
+            | sed -E 's/^func //' | sort -u > /tmp/defined
+
+          missing="$(comm -23 /tmp/cited /tmp/defined)"
+
+          if [ -n "${missing}" ]; then
+            echo "invariants.md names tests that do not exist:"
+            echo "${missing}"
+            echo
+            echo "Rename the citation, or write the test. An invariant guarded by a"
+            echo "name nobody can find is guarded by nothing."
+            exit 1
+          fi
+
+          echo "Every test named in invariants.md exists."
+
   staticcheck:
     name: Static analysis
     runs-on: ubuntu-latest
