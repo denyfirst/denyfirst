@@ -212,6 +212,89 @@ jobs:
 
           echo "Every test named in invariants.md exists."
 
+  # A release is only reproducible if there is one build command to reproduce.
+  #
+  # scripts/build.sh says so in its own header, and the repository then kept
+  # two more copies: one in scripts/release.ps1, which is what the maintainer
+  # runs to check a release before signing it, and one in docs/verify.md, which
+  # is what a stranger runs to check it afterwards. The second had already
+  # drifted. It named `-X main.version=v0.1.0`, a symbol this program does not
+  # define; Go accepts an unknown -X without complaint and folds the whole link
+  # command into the build ID, so the published instructions produced a
+  # different hash from the published binary — on the right source, with the
+  # right compiler, for everybody who followed them.
+  #
+  # That is the worst way for this to fail. It does not hide tampering, it
+  # manufactures it, and a check that reports tampering on every honest release
+  # trains its readers to disregard the one that matters.
+  #
+  # Also parses release.ps1, which nothing else does. It runs once per release,
+  # on the machine holding the signing key, and a syntax error in it surfaces
+  # at the single worst moment to be improvising.
+  build-command:
+    name: One build command, and a release script that parses
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the commit under test
+        run: |
+          git init -q
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "${GITHUB_SHA}"
+          git checkout -q FETCH_HEAD
+
+      - name: Only scripts/build.sh carries the release build command
+        run: |
+          set -eu
+
+          # -buildvcs is the marker: it appears in the release build and
+          # nowhere else. ci.yml's `go build -trimpath ./...` is a compile
+          # check, not a release build, and does not set the release flags.
+          copies="$(grep -rlE 'go build[^#]*-buildvcs' \
+            --include='*.sh' --include='*.ps1' --include='*.yml' \
+            --include='*.md' --include='*.go' . | sort || true)"
+
+          if [ "${copies}" != "./scripts/build.sh" ]; then
+            echo "The release build command appears in more than one place:"
+            echo "${copies}" | sed 's/^/  /'
+            echo
+            echo "Call scripts/build.sh instead of restating its flags. The flags"
+            echo "decide the bytes, so a second copy is a second answer to what the"
+            echo "release should hash to, and the copy that is wrong is the one"
+            echo "nobody runs until it matters."
+            exit 1
+          fi
+
+          echo "One copy: scripts/build.sh"
+
+      - name: docs/verify.md points at that script
+        run: |
+          set -eu
+          grep -q 'scripts/build\.sh' docs/verify.md || {
+            echo "docs/verify.md no longer tells a verifier to run scripts/build.sh."
+            echo "Whatever it tells them to run instead is a second build command."
+            exit 1
+          }
+          echo "verify.md points at scripts/build.sh"
+
+      - name: The release script parses
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PWD 'scripts/release.ps1'), [ref]$null, [ref]$errors) | Out-Null
+
+          if ($errors) {
+            $errors | ForEach-Object { Write-Host "  $($_.Extent.StartLineNumber): $($_.Message)" }
+            Write-Host ''
+            Write-Host 'scripts/release.ps1 does not parse. It runs once per release, on the'
+            Write-Host 'machine holding the signing key; that is not where to discover this.'
+            exit 1
+          }
+
+          Write-Host 'scripts/release.ps1 parses.'
+
   staticcheck:
     name: Static analysis
     runs-on: ubuntu-latest

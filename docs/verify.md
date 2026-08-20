@@ -91,25 +91,77 @@ Builds are reproducible. `-trimpath` removes local paths, `CGO_ENABLED=0`
 removes the host C toolchain, and `-buildvcs=false` keeps the embedded version
 stamp from varying with how the tree was fetched.
 
+**Run the release's own build script rather than a command copied off this
+page.** The flags are part of what the hash covers, and a second copy of them
+in a document is free to drift away from the one that made the release. This
+page carried such a copy until 2026-08-20, and it had drifted: it named
+`-X main.version=v0.1.0`, a symbol this program does not define. Go accepts the
+flag silently, folds the whole link command into the build ID, and writes that
+into the binary — so the recipe printed here produced a different hash from the
+release, on the correct source, with the correct compiler, for everyone who
+followed it. A verification step that fails for honest reasons does not fail
+safe. It teaches the reader that mismatches here are normal, which is the one
+lesson that must never be taught about this check.
+
+There is now one copy of the build command, in `scripts/build.sh`, used by the
+release workflow, by the reproduction workflow, by the signing script and by
+the instructions below. CI fails if a second one appears.
+
 ```sh
 git clone https://github.com/denyfirst/denyfirst
 cd denyfirst
 git checkout v0.1.0
 
-# The BUILD file in the release records the Go version used. A different
-# compiler can produce different bytes from identical source, so match it.
+# BUILD, from the release, records what produced it: the Go version and the
+# SHA-256 of the build script that ran. A different compiler produces
+# different bytes from identical source, and so does a different script.
+# Check both before concluding anything from a mismatch.
 cat /path/to/downloaded/BUILD
 
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-  go build -trimpath -buildvcs=false \
-    -ldflags "-s -w -X main.version=v0.1.0" \
-    -o denyfirst-scan_v0.1.0_linux_amd64 ./cmd/denyfirst-scan
+go version                      # must match the toolchain line
+sha256sum scripts/build.sh      # must match the buildscript line
 
-sha256sum denyfirst-scan_v0.1.0_linux_amd64
+# Through bash rather than as a program: the file is committed without an
+# execute bit and the workflow sets one at build time.
+# Builds every artifact in the release, which is what the workflow does.
+bash scripts/build.sh v0.1.0 dist
+
+sha256sum dist/denyfirst-scan_v0.1.0_linux_amd64
 ```
 
-The hash should match the line in `SHA256SUMS`. If it does not and the Go
-version matches, that is worth reporting through the process in `SECURITY.md`.
+The hash should match the line in `SHA256SUMS`. If it does not, and both the
+toolchain and the script hash match, that is worth reporting through the
+process in `SECURITY.md`.
+
+On Windows, use the bash that ships with Git for Windows. Do not translate the
+script into PowerShell: a translation is a second copy of the command, which is
+the thing that just went wrong.
+
+### If the tag has no `scripts/build.sh`
+
+v0.1.0 was cut before that script existed, so a checkout of that tag does not
+contain one and the `sha256sum` line above will say so. The release workflow
+has the same problem and answers it the same way: it takes the script from the
+default branch and records the hash of what it took. That recorded hash, not
+the branch, is the thing to check.
+
+```sh
+git fetch origin main
+git checkout origin/main -- scripts/build.sh
+
+sha256sum scripts/build.sh      # must equal the buildscript line in BUILD
+```
+
+If those disagree, stop. It means the binary was built by a script neither this
+tag nor the current default branch contains, and until that hash can be found
+somewhere in the history, what produced the release is unknown — which is the
+one thing the `buildscript` line exists to make visible. Every tag from here on
+carries its own copy and needs none of this.
+
+`BUILD` is itself listed inside `SHA256SUMS`, so the signature checked above
+covers it. That ordering is deliberate. While the provenance record sat outside
+the signed list, anyone able to replace a release asset could also write the
+explanation for why it no longer matched.
 
 The `Reproduce` workflow in this repository does this automatically after every
 release, on a GitHub runner. Its result is public, so the check exists whether
