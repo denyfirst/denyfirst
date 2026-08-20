@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -108,9 +107,7 @@ func TestEveryRefusalCodeCanBeProduced(t *testing.T) {
 	// ── many clients spending one host's allowance ──
 	{
 		s := New(offlineScanner(), Limits{Burst: 1000, Refill: time.Nanosecond}, nil)
-		for i := range targetBurst {
-			postFrom(t, s, `{"target":"busy.test"}`, "203.0.113."+strconv.Itoa(100+i)+":5000")
-		}
+		exhaustTarget(t, s, `{"target":"busy.test"}`, "203.0.113.")
 		note(postFrom(t, s, `{"target":"busy.test"}`, "203.0.113.150:5000"), "target_busy")
 	}
 

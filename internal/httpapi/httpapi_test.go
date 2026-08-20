@@ -583,9 +583,7 @@ func TestTheTwoLimitsAreIndependent(t *testing.T) {
 	// Many clients, one target: the target budget is what runs out, and the
 	// message must say so rather than blaming the caller.
 	fresh := New(offlineScanner(), Limits{Burst: 1000, Refill: time.Nanosecond}, nil)
-	for i := range targetBurst {
-		postFrom(t, fresh, `{"target":"shared.test"}`, "203.0.113."+strconv.Itoa(i+1)+":5000")
-	}
+	exhaustTarget(t, fresh, `{"target":"shared.test"}`, "203.0.113.")
 	w = postFrom(t, fresh, `{"target":"shared.test"}`, "203.0.113.200:5000")
 	if errorCode(t, w) != "target_busy" {
 		t.Errorf("code = %q, want target_busy: this client had done nothing", errorCode(t, w))

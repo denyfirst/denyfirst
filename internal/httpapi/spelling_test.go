@@ -23,11 +23,7 @@ func TestTargetLimiterIgnoresSpelling(t *testing.T) {
 	tl := newTargetLimiter(time.Now)
 
 	// Spend the host's whole allowance under one spelling.
-	for i := range targetBurst {
-		if !tl.allow("example.com", "443") {
-			t.Fatalf("scan %d was refused while the host still had budget", i+1)
-		}
-	}
+	spendTargetBudget(tl, "example.com", "443")
 
 	for _, spelling := range []string{
 		"EXAMPLE.COM",
@@ -55,9 +51,7 @@ func TestTargetLimiterIgnoresSpelling(t *testing.T) {
 func TestSpellingCannotBuyExtraScansOfOneHost(t *testing.T) {
 	s := New(offlineScanner(), Limits{Burst: 1000, Refill: time.Nanosecond}, nil)
 
-	for i := range targetBurst {
-		postFrom(t, s, `{"target":"spelled.test"}`, "203.0.113."+strconv.Itoa(200+i)+":5000")
-	}
+	exhaustTarget(t, s, `{"target":"spelled.test"}`, "203.0.113.")
 
 	for i, spelling := range []string{"SPELLED.TEST", "Spelled.Test", "spelled.test."} {
 		w := postFrom(t, s, `{"target":"`+spelling+`"}`, "203.0.113."+strconv.Itoa(210+i)+":5000")
