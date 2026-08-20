@@ -3,11 +3,23 @@
 // The command line tool takes its input from the operator. This package takes
 // it from strangers, and that difference is the whole design.
 //
-// Six limits apply. Five are per request: how large the body may be, how long
-// the work may take, how often one client may ask, how many scans may run at
-// once, and how often any one host may be scanned. The sixth is per
-// connection, in LimitListener, because a TLS handshake costs real work
-// before any request exists to limit.
+// Seven limits apply. Six are per request: how large the body may be, how long
+// the work may take, how often one client may ask for a scan, how often one
+// client may ask for anything at all, how many scans may run at once, and how
+// often any one host may be scanned. The seventh is per connection, in
+// LimitListener, because a TLS handshake costs real work before any request
+// exists to limit.
+//
+// The fourth of those reads oddly beside the third, so it is worth a line. A
+// request turned away before it reaches the scan allowance is cheap, but it is
+// not free: it takes the counter lock, and it moves a figure this service
+// publishes. An unlimited refusal path is therefore both a way to spend this
+// machine's processor and a way to write into the only numbers an operator has
+// to watch. A read allowance, kept apart from the scan one, closes that
+// without letting a cross-site request spend the visitor's scan budget on
+// their behalf. /healthz and /api/v1/stats draw on that same allowance, for
+// the same reason: they do no scanning and should never be free to call in a
+// loop.
 //
 // All but one protect this service. The per-host limit protects the server
 // being measured, which had no say in whether it is measured at all.

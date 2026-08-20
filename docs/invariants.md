@@ -301,11 +301,19 @@ the only numbers an operator has to watch.
 The allowance spent by a refusal is the read one, so the original reason still
 holds: a cross-site request cannot touch the scan budget.
 
+That last sentence was, until it was tested, only a sentence. Every test around
+it passed with the two checks in either order, because in either order the
+request is refused, with 403, counted as `cross_site`. What the order decides
+is who pays for it — and behind the wrong order, a page on another site empties
+a visitor's scan allowance in a handful of requests and leaves this service
+refusing that visitor for reasons they cannot see.
+
 *Enforced in:* `internal/httpapi.Server.handleScan`, the read limiter at the
 top
 *Guarded by:* `TestRefusalsBeforeTheScanAreLimited`,
 `TestReadAndScanBudgetsAreSeparate`,
-`TestPollingReadsDoesNotSpendTheScanAllowance`
+`TestPollingReadsDoesNotSpendTheScanAllowance`,
+`TestACrossSiteRefusalDoesNotSpendTheVisitorsScanBudget`
 
 ### A7 — Every reason a request can be refused is counted, and a counted reason can occur
 
@@ -377,9 +385,19 @@ limiter allows five scans a minute. What moves is the peak, which now takes
 eight separate callers inside one window to produce.
 
 The threshold is also varied per bucket from the per-process key, so even the
-edge is not a fixed line to aim at. One signature still resolves — a bucket
-holding the minimum refuses the first probe — and that residual is named in
-Known gaps and on the privacy page rather than left to be found.
+edge is not a fixed line to aim at.
+
+What that varying does and does not buy is worth stating exactly, because it is
+easy to claim too much for it. It hides the *count*: a probe measures the
+allowance minus the prior scans and cannot separate the two terms, so being
+served tells a prober nothing and being served twice tells them nothing more.
+It cannot hide the *refusal*. Anyone who is refused has learnt one fact for
+certain — that host has had at least `targetBurstMin` scans inside one refill
+interval — and no arrangement of secret thresholds removes that, because the
+refusal is the limit doing its job. Closing it would mean raising the minimum
+again, and every point of the minimum is peak load the scanned server absorbs.
+That residual is named in Known gaps and on the privacy page rather than left
+to be found.
 
 *Enforced in:* `internal/httpapi.targetBurstMin`,
 `internal/httpapi.targetLimiter.burstFor`
@@ -944,6 +962,38 @@ not.
 
 *Enforced in:* `.github/workflows/build-release.yml`
 
+### S5 — There is one build command, and it is the one the documents name
+
+S3 pins the build procedure to the release. That pin is worth exactly as much
+as the number of copies of the procedure there are, and there were three: the
+script itself, a transcription inside `scripts/release.ps1` that the maintainer
+runs to check a release before signing it, and a third in `docs/verify.md` that
+a stranger runs to check it afterwards.
+
+The third had drifted. It named `-X main.version=v0.1.0`, a symbol this program
+does not define. Go accepts an unknown `-X` without a word and folds the whole
+link command into the build ID, which it writes into the binary; so the
+published instructions for proving a release untampered produced a hash that
+differed from the published one — on the right source, with the right compiler,
+for everybody who followed them. Measured: identical size, forty bytes apart,
+all of them in the build ID notes.
+
+That is the worse direction for this to fail in. It does not conceal tampering,
+it manufactures it, and a check that reports tampering on every honest release
+teaches its readers to disregard the one that does not. The same script's own
+header had said as much about a different pair of copies since the day it was
+written.
+
+Both transcriptions are gone. `release.ps1 -Compare` now extracts the script
+whose hash `BUILD` records and runs that, refusing to compare at all if it
+cannot — a comparison that quietly did not happen reads, three lines later,
+exactly like one that passed.
+
+*Enforced in:* `scripts/build.sh`, `scripts/release.ps1`, `docs/verify.md`
+*Guarded by:* the `One build command, and a release script that parses` job in
+CI, which fails if the release build flags appear anywhere but
+`scripts/build.sh`
+
 ---
 
 ## Known gaps
@@ -954,7 +1004,12 @@ A stale list is worse than no list, because a reader takes it as current. Four
 entries were removed when this was last read: the server binary, the pinned CI
 tools, release signing, and fuzzing all exist now. Two more went at the review
 after that: P1 has a test, and the flag that could not take effect was removed
-rather than fixed. Anything below is open today.
+rather than fixed. One more goes now — "no independent review" — because that
+review has happened. What it found is written into the rules above rather than
+summarised here: A6 to A9, R10, S3 to S5, W1 and W2 all exist, or say what they
+now say, because of it. Leaving the entry in place would have been this
+document doing, on its own front page, the thing it warns about. Anything below
+is open today.
 
 - **Transparency receipts are counted and not verified.** R3c. Checking one
   needs the issuing log's public key, and the qualified-log list is maintained
@@ -975,11 +1030,12 @@ rather than fixed. Anything below is open today.
   sits outside ordinary traffic, so a probe learns nothing about a person; what
   remains is that a host genuinely being checked eight times in a window can be
   observed to be busy. That is a fact about load rather than about anybody, and
-  its own administrator can already read it in their logs. The secret burst
-  leaves one probe signature that resolves — a bucket holding the minimum
-  refuses the first probe — and closing that last one would mean raising the
-  minimum allowance again, which spends a scanned host's peak to buy a
-  stranger's privacy.
+  its own administrator can already read it in their logs. The secret spread
+  hides how many scans there were; it cannot hide that there were at least
+  `targetBurstMin`, because that is what the refusal means. Closing that would
+  mean raising the minimum again, which spends a scanned host's peak to buy a
+  stranger's privacy — a trade this project will not make on a third party's
+  behalf without saying so, which is why it is also on the privacy page.
 - **Truncation defends enumeration, not confirmation.** A bucket identifier
   cannot be turned back into a name. It was never a defence against somebody
   who already suspects one name and tests it, and the comment in
@@ -991,4 +1047,14 @@ rather than fixed. Anything below is open today.
   handler has validated the target, so the branch is defensive. Named in
   `TestEveryRefusalCodeCanBeProduced` rather than left to be discovered, and
   the test fails if the list of such codes grows without an explanation.
-- **No independent review.** Nobody outside this project has read the code.
+- **One reader is not an audit.** The review that produced most of the rules
+  above was one careful reading, not a funded engagement, and it concentrated
+  where it was strongest: the release procedure, the limits, and the
+  instrumentation. `internal/policy` and `internal/certinfo` had the least of
+  its attention and are where the next reader should start.
+- **The reproduction has not been watched to run.** S3 describes what
+  `reproduce.yml` does, and it fires on `release: published` — but the only
+  release so far predates both it and `scripts/build.sh`, so nobody has seen it
+  pass or fail. A check nobody has watched is the same class of thing as a
+  counter that cannot move, which is most of what this review was about. It
+  runs on the next tag, and by hand before then.
