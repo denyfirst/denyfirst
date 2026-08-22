@@ -89,7 +89,7 @@ func TestVersionName(t *testing.T) {
 // A version our own client declined must not be reported as a server refusal.
 // Conflating the two turns a gap in the probe into a false clean result.
 func TestClassifyHandshakeError(t *testing.T) {
-	local := classifyHandshakeError(
+	local, _ := classifyHandshakeError(
 		errors.New("tls: no supported versions satisfy MinVersion and MaxVersion"),
 		tls.VersionTLS10,
 	)
@@ -97,7 +97,7 @@ func TestClassifyHandshakeError(t *testing.T) {
 		t.Errorf("a client-side refusal was classified as %q; it must say it was not tested", local)
 	}
 
-	remote := classifyHandshakeError(
+	remote, _ := classifyHandshakeError(
 		errors.New("remote error: tls: protocol version not supported"),
 		tls.VersionTLS10,
 	)

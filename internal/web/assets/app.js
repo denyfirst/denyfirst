@@ -163,6 +163,33 @@ function findings(list, verdict) {
   return frag;
 }
 
+/*
+  What happened at this version, in the words the probe used.
+
+  This cell said "accepted" or "refused" and nothing else, and the second word
+  was wrong more often than it was right. Only one kind of failure is a
+  refusal: the server answered and declined. Our own client not offering the
+  version, a name that did not resolve, a timeout, a reset, a connection the
+  service would not make — all of them leave `supported` false as well, and
+  all of them were printed as "refused".
+
+  The direction of that error is what makes it worth a fix rather than a note.
+  A row reading "TLS 1.0  refused" is a row in the server's favour: refusing an
+  obsolete version is the correct configuration, and the page was crediting
+  servers with it on the strength of a handshake that never happened. The
+  server may well still accept TLS 1.0.
+
+  The API carries both halves — `refused` says which kind, `error` says what
+  happened — and neither was read here.
+*/
+function outcomeCell(v) {
+  const cell = el("td", v.supported ? null : "mark-faint");
+  cell.appendChild(el("span", null,
+    v.supported ? "accepted" : (v.refused ? "refused" : "not measured")));
+  if (!v.supported && v.error) cell.appendChild(el("p", "row-note", v.error));
+  return cell;
+}
+
 function versions(tls) {
   if (!tls || !Array.isArray(tls.versions)) return document.createDocumentFragment();
 
@@ -171,7 +198,10 @@ function versions(tls) {
 
   const table = el("table", "rows");
   const head = el("tr");
-  for (const label of ["Version", "Offered", "Grade"]) {
+  // "Outcome" rather than "Offered". The column has never held an answer to
+  // "was it offered" — it holds what happened, and one of the three things it
+  // can now say is that nothing did.
+  for (const label of ["Version", "Outcome", "Grade"]) {
     head.appendChild(el("th", null, label));
   }
   table.appendChild(el("thead")).appendChild(head);
@@ -180,7 +210,7 @@ function versions(tls) {
   for (const v of tls.versions) {
     const row = el("tr");
     row.appendChild(el("td", null, v.name));
-    row.appendChild(el("td", v.supported ? null : "mark-faint", v.supported ? "accepted" : "refused"));
+    row.appendChild(outcomeCell(v));
 
     const grade = v.supported && v.grade ? v.grade.verdict : "";
     const cell = el("td", markClass(grade),
@@ -206,6 +236,24 @@ function ciphers(tls) {
 
   for (const v of offered) {
     frag.appendChild(el("p", "group-label", v.name));
+
+    // Beside the list rather than only in the folded notes at the foot.
+    //
+    // "Cipher suites accepted" over a list that stopped early reads as the
+    // whole set, and the suites missing from it are the weak ones —
+    // enumeration finds them strongest first. The note that says so is
+    // counted in the summary line but the block is shut under every verdict
+    // except ungraded, so under a weak or insecure verdict the reader is
+    // looking at a truncated table with nothing on it to say so.
+    //
+    // Negated rather than compared to false: an absent field is treated as an
+    // incomplete list, so a response that forgets to say gets the cautious
+    // reading. That is the same polarity the Go field was given.
+    if (!v.cipherListComplete) {
+      frag.appendChild(el("p", "group-note",
+        "This list is incomplete. The host stopped answering before enumeration ran out, "
+        + "and suites are found strongest first, so what is missing is the weaker end."));
+    }
 
     const table = el("table", "rows");
     const head = el("tr");
@@ -285,6 +333,19 @@ function transparencyText(transparency, tls) {
   if (total === 0) return "no timestamps in the certificate or the handshake";
 
   const stamps = total === 1 ? "1 timestamp" : total + " timestamps";
+
+  // Receipts that arrived and could not be read.
+  //
+  // A timestamp too short to hold a log identifier, or announcing a version
+  // this does not know, is counted in the total and contributes no log. With
+  // every one of them unreadable the two numbers gave "3 timestamps from 0
+  // logs", which is not a fact about the certificate — it is this scanner
+  // saying it could not read what it was sent, in a sentence shaped like a
+  // measurement.
+  if (logs === 0) {
+    return stamps + ", none of which could be read well enough to say which log issued it";
+  }
+
   const from = logs === 1 ? "1 log" : logs + " logs";
   const where = handshake > 0 && embedded > 0
     ? " (" + embedded + " embedded, " + handshake + " in the handshake)"

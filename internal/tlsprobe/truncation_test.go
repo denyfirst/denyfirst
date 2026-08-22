@@ -199,8 +199,8 @@ func TestOnlyARefusalFinishesAnEnumeration(t *testing.T) {
 	// server refusal, or the version probe and the enumeration would disagree
 	// about the same error.
 	for _, msg := range finishes {
-		if got := classifyHandshakeError(errors.New(msg), tls.VersionTLS12); !strings.Contains(got, "refused") &&
-			!strings.Contains(got, "declined to offer") {
+		got, refused := classifyHandshakeError(errors.New(msg), tls.VersionTLS12)
+		if !refused && !strings.Contains(got, "declined to offer") {
 			t.Errorf("%q finishes an enumeration but classifyHandshakeError calls it %q", msg, got)
 		}
 	}
@@ -226,5 +226,45 @@ func TestUnreadableHandshakeTimestampsAreCounted(t *testing.T) {
 	if unreadable != 2 {
 		t.Errorf("counted %d unreadable entries, want 2; a skipped entry that is not counted "+
 			"cannot be mentioned in the report", unreadable)
+	}
+}
+
+// The sentence bounding what this client offered was attached to success, and
+// dropped in the one report that most needs it.
+//
+// A server speaking only suites Go does not implement answers every probe with
+// a handshake failure, which is the same alert as a version refusal. Every row
+// then reads "refused", the verdict is ungraded, and without this note nothing
+// on the page suggests the other reading — that the server speaks these
+// versions perfectly well and shares no cipher with the scanner.
+func TestTheLimitsOfThisClientAreStatedWhenNothingWasAccepted(t *testing.T) {
+	cases := map[string]struct {
+		results []VersionResult
+		want    bool
+	}{
+		"something was accepted": {
+			[]VersionResult{{Supported: true}}, true,
+		},
+		"everything was refused": {
+			[]VersionResult{{Refused: true}, {Refused: true}},
+			true,
+		},
+		"nothing answered at all": {
+			[]VersionResult{
+				{Error: "the name did not resolve"},
+				{Error: "the name did not resolve"},
+			},
+			false,
+		},
+		"one refusal among failures": {
+			[]VersionResult{{Error: "the connection timed out"}, {Refused: true}},
+			true,
+		},
+	}
+
+	for name, tc := range cases {
+		if got := suiteCoverageApplies(tc.results); got != tc.want {
+			t.Errorf("%s: the note applies = %v, want %v", name, got, tc.want)
+		}
 	}
 }

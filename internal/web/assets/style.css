@@ -402,6 +402,39 @@ h1 {
   margin: 1.5rem 0 0.5rem;
 }
 
+/*
+  Why a row says what it says.
+
+  A version that was not measured carries the probe's own sentence underneath
+  the word, so "not measured" is never left to be guessed at. Small and faint
+  because it is a qualification of the cell above it rather than a second
+  reading, and it must not compete with the grade column beside it.
+*/
+.rows td .row-note {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--ink-faint);
+  margin: 0.22rem 0 0;
+  max-width: 24rem;
+}
+
+/*
+  A list that stopped early, said where the list is rather than only in the
+  folded notes.
+
+  Coloured as a warning rather than faint. The suites missing from a truncated
+  enumeration are the weak ones, so this is the sentence that stops the table
+  above it from being read as the whole answer, and a grey line under a
+  heading is read as a caption.
+*/
+.group-note {
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--weak);
+  margin: -0.25rem 0 0.6rem;
+  max-width: 42rem;
+}
+
 /* ── Certificate ──────────────────────────────────────────────────────── */
 
 .pairs {

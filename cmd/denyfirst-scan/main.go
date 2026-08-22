@@ -14,8 +14,15 @@
 //	denyfirst-scan 93.184.216.34
 //
 // Exit status is the worst verdict found, so the command can gate a pipeline:
-// 0 when everything is strong, 1 on a weak finding, 2 on an insecure one, and
-// 3 when the scan itself could not be completed.
+// 0 when everything measured was strong, 1 on a weak finding, 2 on an insecure
+// one, 3 when the scan itself could not be completed, and 4 when a scan
+// finished but graded nothing.
+//
+// The fourth code is the one worth explaining. A verdict of ungraded is not a
+// pass: it means no measurement survived to be graded, and the commonest way
+// to reach it is a host that answers a handshake or two and then goes quiet,
+// which is something the scanned host chooses. Folding that into 0 would let
+// the party being gated turn the gate off, so it has a code of its own.
 package main
 
 import (
@@ -23,6 +30,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -41,6 +49,7 @@ const (
 	exitWeak     = 1
 	exitInsecure = 2
 	exitError    = 3
+	exitUngraded = 4
 )
 
 func main() {
@@ -102,13 +111,11 @@ func run() int {
 		scanner.Prober.Dial = d.DialContext
 	}
 
-	worst := policy.Ungraded
 	results := make([]result, 0, len(targets))
 
 	for _, target := range targets {
 		r := runScan(ctx, scanner, target, *timeout)
 		results = append(results, r)
-		worst = policy.Worst(worst, r.Verdict)
 
 		if !*asJSON {
 			printReport(r)
@@ -124,17 +131,43 @@ func run() int {
 		}
 	}
 
+	return exitCode(results)
+}
+
+// exitCode turns a run into a status a shell can act on.
+//
+// Separate from run so it can be tested without a network, a flag set or a
+// process. The decision it makes is the whole value of this command in a
+// pipeline, and until this function existed nothing checked it.
+//
+// Most severe first, and ungraded above clean. policy.Worst deliberately
+// ignores ungraded entries — aggregating grades has to skip the ones that are
+// not grades — so a run of two targets, one strong and one ungraded, comes out
+// of it as strong. Reading the status off that alone published a pass for a
+// target nobody measured, and hid it behind one that was fine.
+func exitCode(results []result) int {
+	worst := policy.Ungraded
+	ungraded := false
+
 	for _, r := range results {
 		if r.Error != "" {
 			return exitError
 		}
+		worst = policy.Worst(worst, r.Verdict)
+		if r.Verdict == policy.Ungraded {
+			ungraded = true
+		}
 	}
 
-	switch worst {
-	case policy.Insecure:
+	switch {
+	case worst == policy.Insecure:
 		return exitInsecure
-	case policy.Weak:
+	case worst == policy.Weak:
 		return exitWeak
+	case ungraded:
+		// Nothing was found wrong and nothing was established either. A gate
+		// that treats the two alike can be opened by whatever is behind it.
+		return exitUngraded
 	default:
 		return exitOK
 	}
@@ -169,8 +202,8 @@ func printReport(r result) {
 		fmt.Printf("  Address   %s\n", r.TLS.Address)
 	}
 
-	printVersions(r.TLS)
-	printCiphers(r.TLS)
+	printVersions(os.Stdout, r.TLS)
+	printCiphers(os.Stdout, r.TLS)
 	printCertificate(r.Certificate)
 	printFindings(r)
 	printNotes(r)
@@ -180,25 +213,35 @@ func printReport(r result) {
 	}
 }
 
-func printVersions(t *tlsprobe.Report) {
+// The writer is a parameter so a test can read what this prints. Until it
+// was, nothing checked a single line of this command's output, which is the
+// only thing most of its users ever see.
+func printVersions(w io.Writer, t *tlsprobe.Report) {
 	if t == nil {
 		return
 	}
 
-	fmt.Printf("\n  Protocol versions\n")
+	fmt.Fprintf(w, "\n  Protocol versions\n")
 	for _, v := range t.Versions {
 		switch {
 		case v.Supported && v.Grade.Preferred:
-			fmt.Printf("    %-9s accepted   %s, preferred\n", v.Name, v.Grade.Verdict)
+			fmt.Fprintf(w, "    %-9s accepted       %s, preferred\n", v.Name, v.Grade.Verdict)
 		case v.Supported:
-			fmt.Printf("    %-9s accepted   %s\n", v.Name, v.Grade.Verdict)
+			fmt.Fprintf(w, "    %-9s accepted       %s\n", v.Name, v.Grade.Verdict)
+		case v.Refused:
+			fmt.Fprintf(w, "    %-9s refused        %s\n", v.Name, v.Error)
 		default:
-			fmt.Printf("    %-9s refused    %s\n", v.Name, v.Error)
+			// Not "refused". The word is a claim about the server, and the
+			// sentence printed beside it frequently said the opposite —
+			// "refused    not tested: this build of Go declined to offer TLS
+			// 1.0" was one line of output contradicting itself, and the
+			// column is the half a reader takes in.
+			fmt.Fprintf(w, "    %-9s not measured   %s\n", v.Name, v.Error)
 		}
 	}
 }
 
-func printCiphers(t *tlsprobe.Report) {
+func printCiphers(w io.Writer, t *tlsprobe.Report) {
 	if t == nil {
 		return
 	}
@@ -207,17 +250,26 @@ func printCiphers(t *tlsprobe.Report) {
 		if !v.Supported || len(v.Ciphers) == 0 {
 			continue
 		}
-		fmt.Printf("\n  Cipher suites accepted at %s\n", v.Name)
+		fmt.Fprintf(w, "\n  Cipher suites accepted at %s\n", v.Name)
+		if !v.CipherListComplete {
+			// Beside the list rather than only in the notes at the foot of
+			// the report. A heading that says "accepted" over a list that
+			// stopped early is read as the whole set, and the suites missing
+			// from it are the weak ones: enumeration finds them strongest
+			// first.
+			fmt.Fprintf(w, "    (incomplete: the host stopped answering before the list ran out,\n"+
+				"     so the weaker end of it was never reached)\n")
+		}
 		for _, c := range v.Ciphers {
-			fmt.Printf("    %-9s %-48s %s / %s\n", c.Verdict, c.Name, c.KeyExchange, c.Cipher)
+			fmt.Fprintf(w, "    %-9s %-48s %s / %s\n", c.Verdict, c.Name, c.KeyExchange, c.Cipher)
 		}
 	}
 
 	if t.PreferenceKnown {
 		if t.ServerPreference {
-			fmt.Printf("\n  The server imposes its own cipher order.\n")
+			fmt.Fprintf(w, "\n  The server imposes its own cipher order.\n")
 		} else {
-			fmt.Printf("\n  The server follows the client's cipher order, which lets an outdated\n" +
+			fmt.Fprintf(w, "\n  The server follows the client's cipher order, which lets an outdated\n"+
 				"  client steer the connection towards a weaker suite.\n")
 		}
 	}

@@ -796,6 +796,91 @@ producer that forgets it gets `Ungraded` rather than a grade it did not earn.
 `TestAnUnfinishedListCannotProduceStrong`,
 `TestOnlyARefusalFinishesAnEnumeration`
 
+### R12 — A failure to measure is never drawn as a measurement
+
+R11 settled this inside the probe. This is the same rule at the two places a
+person actually reads: the page and the terminal. Four ways it was broken were
+found on 2026-08-22, all in rendering, none visible from the packages that get
+the facts right.
+
+**A version row said `refused` whenever the handshake did not succeed.** Only
+one kind of failure is a refusal — the server answered and declined. Our own
+client not offering a version, a name that did not resolve, a timeout, a reset,
+a destination the service will not dial: every one of them leaves `Supported`
+false as well, and every one of them was printed as a refusal. The direction is
+what makes it serious rather than untidy. *"TLS 1.0 refused"* is a row in the
+server's favour, and both front ends were awarding it on the strength of a
+handshake that never took place. `tlsprobe` had already written the careful
+sentence — *"not tested: this build of Go declined to offer TLS 1.0"* — and the
+page discarded it while the terminal printed it in the same line as the word it
+contradicted.
+
+**A truncated cipher list was drawn under a heading that claims completeness.**
+R11 withdraws `Strong` when enumeration stopped early and raises a note saying
+so, but the note lives in a block the page keeps shut under every verdict except
+`Ungraded`. Under a weak or insecure verdict the reader met a table headed
+*"Cipher suites accepted"* with nothing on it to say the weak end was never
+reached. The mark now sits on the table.
+
+**Receipts that could not be read were counted as though they had been.** A
+transparency timestamp too short to hold a log identifier contributes to the
+total and to no log, so a certificate whose timestamps were all unreadable
+produced *"3 timestamps from 0 logs"* — this scanner reporting its own failure
+in a sentence shaped like a fact about the certificate.
+
+**The sentence bounding what this client offers was attached to success.** A
+server speaking only suites Go does not implement answers every probe with a
+handshake failure, which is the same alert as a version refusal; every row then
+reads `refused`, and the note explaining that a refusal here is not proof the
+version is switched off was skipped precisely because nothing had been
+accepted.
+
+The general form, and the thing to check when a field is added: **a bit saying
+a measurement failed has to exist in the data rather than be inferred from the
+absence of a result, and every renderer has to read it.** `Refused` exists for
+that reason and carries no `omitempty`, for the same reason `CipherListComplete`
+does not.
+
+*Enforced in:* `internal/tlsprobe.VersionResult.Refused`,
+`internal/tlsprobe.classifyHandshakeError`,
+`internal/tlsprobe.suiteCoverageApplies`, `internal/web/assets/app.js`
+(`outcomeCell`, `ciphers`, `transparencyText`),
+`cmd/denyfirst-scan.printVersions`, `cmd/denyfirst-scan.printCiphers`
+*Guarded by:* `TestOnlyAServerRefusalIsCalledOne`,
+`TestATruncatedListSaysSoWhereItIsShown`,
+`TestAVersionThatCouldNotBeMeasuredIsNotCalledRefused`,
+`TestATruncatedCipherListIsMarkedOnTheTable`,
+`TestUnreadableTimestampsDoNotBecomeAMeasurement`,
+`TestTheLimitsOfThisClientAreStatedWhenNothingWasAccepted`,
+`TestTheClassesTheScriptAddsAreStyled`, `TestClientRefusalIsNotServerRefusal`
+
+### R13 — An exit status is a verdict, and `ungraded` is not zero
+
+`denyfirst-scan` exists partly to gate a pipeline, and its status was the one
+reader of a verdict that could not be corrected afterwards. It exited `0` on
+`Ungraded`.
+
+That is the whole of R11 undone at the shell. An unfinished enumeration
+withdraws `Strong` and returns `Ungraded` — and the host decides when to stop
+answering, so `Ungraded` is a state the party being gated can choose. Answer
+twice, go quiet, exit zero, pipeline green. The protection ended one layer
+before the only layer that acts on it.
+
+There was a second half. `policy.Worst` ignores `Ungraded` entries, correctly:
+aggregating grades has to skip the things that are not grades. Reading the
+status off it alone therefore published a pass for a target nobody measured
+whenever another target in the same run came back clean.
+
+`Ungraded` now has a status of its own, `4`, ranked below a weak or insecure
+finding — an operator with both is sent to the finding first — and above a
+clean run. The decision is a function of the results rather than a switch at
+the end of `run`, so it can be exercised without a network.
+
+*Enforced in:* `cmd/denyfirst-scan.exitCode`
+*Guarded by:* `TestUngradedIsNotAPass`,
+`TestAnUngradedTargetIsNotHiddenByAGoodOne`,
+`TestSeverityOutranksAnAbsentResult`
+
 ### R10 — A report cannot act on the display that shows it
 
 Every field taken from a certificate is text, and only text. Control
@@ -1232,12 +1317,20 @@ A stale list is worse than no list, because a reader takes it as current. Four
 entries were removed when this was last read: the server binary, the pinned CI
 tools, release signing, and fuzzing all exist now. Two more went at the review
 after that: P1 has a test, and the flag that could not take effect was removed
-rather than fixed. One more goes now — "no independent review" — because that
-review has happened. What it found is written into the rules above rather than
-summarised here: A6 to A9, R10, S3 to S5, W1 and W2 all exist, or say what they
-now say, because of it. Leaving the entry in place would have been this
-document doing, on its own front page, the thing it warns about. Anything below
-is open today.
+rather than fixed. One more went with "no independent review", because that
+review has happened; what it found is written into the rules above rather than
+summarised here — A6 to A9, R10, S3 to S5, W1 and W2 all exist, or say what
+they now say, because of it.
+
+One more goes on 2026-08-22, and it had already been fixed. Unnamed extended
+key usages were closed in `internal/certinfo` that morning and stayed on this
+list until the afternoon, which is this document doing, on its own front page,
+the thing it warns about — the entry now has a test rather than a paragraph.
+The reason it lingered is worth keeping in mind for the entries below: a gap
+closed in code is not closed on this page until somebody comes back for the
+page.
+
+Anything below is open today.
 
 - **Transparency receipts are counted and not verified.** R3c. Checking one
   needs the issuing log's public key, and the qualified-log list is maintained
@@ -1276,13 +1369,29 @@ is open today.
   `TestEveryRefusalCodeCanBeProduced` rather than left to be discovered, and
   the test fails if the list of such codes grows without an explanation.
 - **One reader is not an audit.** The rules above came from one careful
-  reading, not a funded engagement. It has now covered `internal/policy` and
-  `internal/certinfo` as well, which were its thinnest ground and turned out to
-  hold the errors that mattered most — a prohibited suite graded strong, a
-  verdict whose stated reason was false, and a certificate reported trusted
-  because Go stopped checking at the dates. What remains unread by anyone but
-  the author is `internal/tlsprobe` and `internal/dnsclient` below the parsing
-  that was already reviewed.
+  reading, not a funded engagement. As of 2026-08-22 that reading has covered
+  every file in the tree: `internal/policy` and `internal/certinfo`, which were
+  its thinnest ground and held the errors that mattered most — a prohibited
+  suite graded strong, a verdict whose stated reason was false, a certificate
+  reported trusted because Go stopped checking at the dates — then
+  `internal/tlsprobe`, `internal/dnsclient` in full including the reply parser,
+  `internal/safedial`, `internal/httpapi`, `internal/scan`, `internal/web`, and
+  finally the two front ends, `internal/web/assets/app.js` and
+  `cmd/denyfirst-scan`, which had never been read and held R12 and R13 between
+  them. That last fact is the one to take from this entry rather than the
+  coverage: the packages that compute the answer were careful, and every defect
+  found on the final pass was in the code that shows it. Nothing was wrong with
+  what this project knew; four things were wrong with what it said. Completing
+  a reading is not the same as having been audited, and one reader who wrote
+  the code is the least independent reader available.
+- **A refused version and a version with no suite in common look identical.**
+  Both answer with a handshake failure alert, so a server configured only for
+  suites Go does not implement is reported as refusing every version it in fact
+  speaks. R12 puts the sentence saying so into any report containing a refusal,
+  which is the honest half; the row itself still reads `refused`, because from
+  outside there is nothing else it could say. Closing it would need a TLS
+  client that can offer suites Go does not implement, which is the same
+  requirement as the entry below.
 - **Finite-field DHE cannot be observed at all.** `cipher.ffdhe` grades it, and
   this scanner will never present it a suite to grade: Go offers no FFDHE
   cipher suites, measured as fifteen ECDHE and zero FFDHE. A TLS 1.2 server
@@ -1303,10 +1412,6 @@ is open today.
   offered signature algorithms is a real configuration. A chain served only to
   TLS 1.0 clients is not seen, so a SHA-1 certificate reachable that way would
   go unreported while the report describes the modern one.
-- **Extended key usages Go does not name are not reported.** A certificate
-  carrying an EKU outside the seven the standard library has constants for puts
-  the OID in `UnknownExtKeyUsage`, which this report does not read. The field
-  reads as though the certificate carried nothing else.
 - **Four commits on `main` carry no signature.** S6. `1fdf674`, `cc163a3`,
   `01fc49f`, `7cd2cfa` — rebase-merged, which strips the signature the author
   put on them. The signed originals are the tag

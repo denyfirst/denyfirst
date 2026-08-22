@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"math/big"
 	"net"
 	"slices"
@@ -64,6 +65,10 @@ type leafOpts struct {
 	ips       []net.IP
 	rsaBits   int // zero means ECDSA P-256
 	selfSign  bool
+
+	// unknownEKU carries extended key usages Go has no constant for, which
+	// is where a certificate's unnamed capabilities end up.
+	unknownEKU []asn1.ObjectIdentifier
 }
 
 func newLeaf(t *testing.T, root issuer, o leafOpts) *x509.Certificate {
@@ -88,6 +93,7 @@ func newLeaf(t *testing.T, root issuer, o leafOpts) *x509.Certificate {
 		IPAddresses:           o.ips,
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		UnknownExtKeyUsage:    o.unknownEKU,
 		BasicConstraintsValid: true,
 	}
 
