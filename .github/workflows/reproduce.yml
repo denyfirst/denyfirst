@@ -126,6 +126,52 @@ jobs:
             exit 1
           fi
 
+      - name: Check that the release is actually signed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # "Nothing reaches a user unsigned" was a procedure, not a property.
+          #
+          # The signature is made on the maintainer's machine and uploaded by
+          # hand, so a draft published a step early — or published from a
+          # phone, or by somebody who took the account — reaches every user
+          # with no signature and nothing anywhere says so. This runs on
+          # publication and says so in public.
+          #
+          # It is checked against the tag's own .allowed_signers, which is the
+          # file a reader checking out that tag would use, and the step below
+          # then requires that file to be the one on the default branch, which
+          # is the file verify.md tells a reader to fetch. Either alone can be
+          # moved by whoever can write to this repository; disagreeing is the
+          # thing worth catching.
+          gh release download "${TAG}" --pattern SHA256SUMS.sig --dir published --clobber
+
+          ssh-keygen -Y verify \
+            -f .allowed_signers \
+            -I releases@denyfirst.dev \
+            -n file \
+            -s published/SHA256SUMS.sig \
+            < published/SHA256SUMS
+
+      - name: Check that the tag trusts the same keys as the default branch
+        run: |
+          set -euo pipefail
+
+          curl -fsSL \
+            "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/.allowed_signers" \
+            -o /tmp/allowed_signers.main
+
+          if ! diff -u .allowed_signers /tmp/allowed_signers.main; then
+            echo "::error::This tag trusts a different set of release keys from the default branch." >&2
+            echo "A reader following docs/verify.md fetches the default branch's copy, so the two" >&2
+            echo "have to agree or the signature that verified above is not the one they check." >&2
+            exit 1
+          fi
+
+          echo "The tag and the default branch trust the same keys."
+
       - name: Report this toolchain
         run: |
           set -euo pipefail

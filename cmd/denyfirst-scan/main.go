@@ -44,6 +44,21 @@ import (
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
 )
 
+// version is the release this binary was built from, set by scripts/build.sh
+// with -ldflags -X. An unset value means it was not built by that script.
+//
+// A binary cannot otherwise say what it is. -buildvcs=false is deliberate —
+// the embedded VCS stamp varies with how the tree was fetched and would make
+// two honest builds of one tag differ — and the tag in the filename is lost
+// the moment somebody renames or packages the file. So an operator holding
+// this program had no way to check whether it was the version that fixed
+// anything, which for a tool people run to answer security questions is not a
+// cosmetic gap.
+//
+// It is set from the tag rather than read from the filesystem, so it is
+// covered by the hash in SHA256SUMS and cannot be edited without changing it.
+var version = "(unknown: not built by scripts/build.sh)"
+
 const (
 	exitOK       = 0
 	exitWeak     = 1
@@ -72,12 +87,23 @@ func run() int {
 				"\tmistyped or attacker-supplied name cannot be aimed at internal hosts")
 	)
 
+	showVersion := flag.Bool("version", false, "print the release and policy versions, then exit")
+
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "denyfirst-scan inspects TLS configuration and certificates.\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n  %s [flags] host[:port] ...\n\nFlags:\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+
+	// Both, because they answer different questions and neither implies the
+	// other. The release says which build this is; the policy version says
+	// which rules produced a verdict, and a verdict from one policy is not
+	// comparable with a verdict from another.
+	if *showVersion {
+		fmt.Printf("denyfirst-scan %s\npolicy %s\n", version, policy.Version)
+		return exitOK
+	}
 
 	targets := flag.Args()
 	if len(targets) == 0 {

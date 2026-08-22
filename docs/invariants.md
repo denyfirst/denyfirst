@@ -1253,7 +1253,17 @@ is a real problem rather than a version-range guess. Because this project uses
 roughly monthly, this check will fail periodically. That is the mechanism
 working.
 
-*Guarded by:* the `Known vulnerabilities` job in CI
+The job in CI runs on pushes and pull requests, which is not the same claim.
+`govulncheck` answers from a database, and its answer changes when Go
+publishes a security release without a line of this repository changing — so a
+commit that was clean when it merged can be tagged weeks later and shipped
+carrying a known reachable vulnerability, with every check on the page still
+green. The release workflow therefore runs it again, against the tagged
+source, before anything is staged.
+
+*Guarded by:* the `Known vulnerabilities` job in CI, and the
+`Refuse to stage a build with a known vulnerability` step in
+`build-release.yml`
 
 ### S3 — The procedure that builds a release is pinned to that release
 
@@ -1408,6 +1418,98 @@ cover what a merge does to them afterwards
 
 ---
 
+### S8 — A release is built only from source that passes its own gates
+
+A tag can be put on any commit. CI runs on pushes and pull requests, so the
+default branch is green; nothing checked that the commit being released was
+one of those. A tag placed on an older commit, on an unmerged branch, or on
+anything reachable by whoever holds the token produced a draft release with no
+gate in front of it at all — and the human step that follows is *check the
+hashes*, which confirms that the bytes are the bytes and says nothing about
+whether they work.
+
+`build-release.yml` now runs `go vet`, `go test ./...` and `govulncheck`
+against the tagged source before staging the draft.
+
+They run **after** the build rather than before it. Nothing a gate installs or
+compiles can then have influenced the bytes that were produced, so the
+reproduction still compares like with like — which matters more here than the
+few seconds saved by failing early.
+
+*Enforced in:* `.github/workflows/build-release.yml`, the two `Refuse to
+stage` steps
+
+### S9 — A published release is checked, in public, for a signature
+
+*Nothing reaches a user unsigned* was a procedure and not a property.
+
+The signature is made on the maintainer's machine and uploaded by hand, which
+is the arrangement that keeps the key out of GitHub and is worth keeping. What
+it means is that publishing is one button and signing is several steps before
+it, in a different place — so a draft published a step early, or published by
+somebody who took the account, reaches every user with no signature and
+nothing anywhere says so. The one person who would notice is the person who
+just failed to sign it.
+
+`reproduce.yml` runs on publication. It now downloads `SHA256SUMS.sig` and
+verifies it with `ssh-keygen -Y verify` against `.allowed_signers` before it
+rebuilds anything, and the result is a public red mark on a public log.
+
+It then requires the tag's `.allowed_signers` to be byte-identical to the
+default branch's. Either copy can be moved by anyone who can write here, so
+neither is a root of trust; what is worth catching is the two disagreeing,
+because `docs/verify.md` sends a reader to the default branch's copy while the
+signature was checked against the tag's.
+
+*Enforced in:* `.github/workflows/reproduce.yml`, the
+`Check that the release is actually signed` and
+`Check that the tag trusts the same keys` steps
+
+### S10 — A binary can say which release it is
+
+`-buildvcs=false` is deliberate: the embedded VCS stamp varies with how the
+tree was fetched, so leaving it on makes two honest builds of one tag differ
+and destroys the property S3 and the reproduction workflow exist to establish.
+The consequence was that nothing inside a released binary said what it was.
+The tag is in the filename, and a filename survives until somebody renames the
+file, packages it, or copies it onto a server as `denyfirst-scan`.
+
+For a program people run to answer security questions, *am I running the build
+that fixed this* is not a cosmetic question, and it had no answer.
+
+`scripts/build.sh` links the tag in with `-X main.version`. Both commands
+print it beside the policy version, which answers a different question — the
+build, and the rules it grades by. A binary built any other way says so rather
+than guessing.
+
+Determinism is unaffected: the value is the tag, both callers pass the same
+one, and two builds of a tag remain byte-identical. Measured on 2026-08-22,
+twice, all ten artifacts.
+
+*Enforced in:* `scripts/build.sh`, `cmd/denyfirst-scan.version`,
+`cmd/denyfirstd.version`
+*Guarded by:* `TestTheBuildScriptStampsTheVersionSymbolThisProgramDefines`,
+`TestAnUnstampedBinaryDoesNotClaimAVersion`,
+`TestThePolicyVersionIsNotTheReleaseVersion`
+
+### S11 — A rule set that changes says what changed
+
+Verdicts carry the name of the rule set that produced them (R1) precisely so
+that two reports can be compared. That only helps if a reader can find out
+what moved: a server graded `strong` under `denyfirst-v1` and `weak` under
+`denyfirst-v2` may not have changed at all, and a pipeline that reads the
+output needs to tell a configuration that got worse from a rule that got
+stricter.
+
+`docs/policy-changes.md` is that record. Bumping `policy.Version` without
+adding to it fails a test, and naming a rule identifier that does not exist
+fails another — the same rule as the invariant citations here, for the same
+reason: a page naming things nobody can find is a page nobody can check.
+
+*Enforced in:* `docs/policy-changes.md`
+*Guarded by:* `TestTheChangeLogCoversTheCurrentPolicy`,
+`TestTheChangeLogNamesRulesThatExist`
+
 ## Known gaps
 
 Listed rather than hidden. An unnamed gap is a surprise; a named one is work.
@@ -1521,13 +1623,16 @@ Anything below is open today.
   provenance exists; it is one `git diff` away rather than in the log, which is
   not the same thing. Closing it needs a force-push to `main`, and opening that
   door costs more than the four commits are worth.
-- **No release has been reproduced.** S3. `reproduce.yml` has now been watched
-  — dispatched by hand against v0.1.0 on 2026-08-20 — and it refused, correctly,
+- **No release has been reproduced.** S3. `reproduce.yml` has been watched —
+  dispatched by hand against v0.1.0 on 2026-08-20 — and it refused, correctly,
   because that release predates the record of what built it. So the workflow is
   known to run and known to fail closed, and the property it exists to
   demonstrate is still undemonstrated: no release in this project has been
-  rebuilt byte-for-byte by a second party. That waits on the next tag, which
-  will carry both the script and the `buildscript` field.
+  rebuilt byte-for-byte by a second party. v0.2.0 is the first tag that can be,
+  because it carries `scripts/build.sh` in its own tree and the release records
+  that script's hash. The entry stays open until a run of `reproduce.yml`
+  against a published release has gone green, which is a thing that happens or
+  does not rather than a thing anybody can promise.
 - **`release.ps1 -Compare` has not run end to end.** The bash path was exercised
   by hand on 2026-08-20 and built all ten artifacts, which is most of it, but
   the surrounding script — download, verify, compare, sign — has not been run

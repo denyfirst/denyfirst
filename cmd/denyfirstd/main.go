@@ -37,6 +37,16 @@ import (
 	"github.com/denyfirst/denyfirst/internal/web"
 )
 
+// version is the release this binary was built from, set by scripts/build.sh
+// with -ldflags -X. An unset value means it was not built by that script.
+//
+// -buildvcs=false is deliberate, and the tag in the filename does not survive
+// being renamed or packaged, so without this an operator had no way to ask a
+// running service which build it is. -version printed the policy version,
+// which answers a different question: which rules produce a verdict, not
+// which binary is producing them.
+var version = "(unknown: not built by scripts/build.sh)"
+
 const (
 	// shutdownGrace is how long in-flight requests have to finish once a
 	// signal arrives. A scan can hold a connection for the whole request
@@ -114,7 +124,7 @@ func run() int {
 			"path to a file holding the aggregate counters; empty keeps them in\n"+
 				"\tmemory only, so a restart resets the published total")
 
-		showVersion = flag.Bool("version", false, "print the policy version and exit")
+		showVersion = flag.Bool("version", false, "print the release and policy versions, then exit")
 	)
 
 	flag.Usage = func() {
@@ -125,7 +135,11 @@ func run() int {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Println(policy.Version)
+		// Both, because they answer different questions. The release names
+		// this build; the policy names the rules it grades by, and a verdict
+		// from one policy version is not comparable with a verdict from
+		// another.
+		fmt.Printf("denyfirstd %s\npolicy %s\n", version, policy.Version)
 		return 0
 	}
 
