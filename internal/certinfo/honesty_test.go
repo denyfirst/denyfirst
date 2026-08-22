@@ -2,6 +2,7 @@ package certinfo
 
 import (
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/asn1"
 	"strings"
 	"testing"
@@ -204,5 +205,86 @@ func TestAnUnnamedExtendedKeyUsageIsStillReported(t *testing.T) {
 	}
 	if !strings.Contains(usages, "serverAuth") {
 		t.Errorf("extended key usages = %q; the named usage was lost", usages)
+	}
+}
+
+// A name spelled in a lookalike alphabet is said, and not rewritten.
+//
+// R10 replaces every character that could reorder or hide what the report
+// shows. It does nothing about a subject using Cyrillic а where Latin a
+// belongs: the two are different characters that render identically, and
+// normalising one into the other would corrupt every legitimate name written
+// in those scripts. The report cannot fix this. It can refuse to be silent
+// about it, which is the difference between a reader who can look and a
+// reader who cannot.
+func TestANameInTwoAlphabetsIsSaid(t *testing.T) {
+	name := func(cn string, org ...string) pkix.Name {
+		return pkix.Name{CommonName: cn, Organization: org}
+	}
+
+	cases := map[string]struct {
+		leaf *x509.Certificate
+		want bool
+	}{
+		"ordinary Latin name": {
+			&x509.Certificate{Subject: name("example.com"), Issuer: name("Example CA")}, false,
+		},
+		// One script throughout is a language, not a disguise. The printed
+		// distinguished name begins "CN=", which is Latin whatever follows,
+		// so a check over that form would raise this on every certificate
+		// issued to a Cyrillic or Greek name.
+		"wholly Cyrillic name": {
+			&x509.Certificate{Subject: name("\u043f\u0440\u0438\u043c\u0435\u0440"), Issuer: name("\u0426\u0435\u043d\u0442\u0440")}, false,
+		},
+		"Latin name with one Cyrillic letter": {
+			// The first letter is Cyrillic a, the rest is "pple.com".
+			&x509.Certificate{Subject: name("\u0430pple.com"), Issuer: name("Example CA")}, true,
+		},
+		"Greek omicron inside a Latin word": {
+			&x509.Certificate{Subject: name("g\u03bf\u03bfgle.com"), Issuer: name("Example CA")}, true,
+		},
+		"the issuer rather than the subject": {
+			// Cyrillic s in "Lets".
+			&x509.Certificate{Subject: name("example.com"), Issuer: name("Let\u0455 Encrypt")}, true,
+		},
+		"an organisation": {
+			&x509.Certificate{
+				Subject: name("example.com", "Cyrill\u0456c Trading Ltd"),
+				Issuer:  name("Example CA"),
+			}, true,
+		},
+		"a subject alternative name": {
+			&x509.Certificate{
+				Subject:  name("example.com"),
+				Issuer:   name("Example CA"),
+				DNSNames: []string{"www.example.com", "p\u0430y.example.com"},
+			}, true,
+		},
+		// Digits and punctuation belong to no script. A name is not
+		// suspicious for containing a full stop.
+		"digits and dots": {
+			&x509.Certificate{Subject: name("host-3.example.com"), Issuer: name("CA 2024")}, false,
+		},
+	}
+
+	for label, tc := range cases {
+		note := mixedScriptNote(tc.leaf)
+		if got := note != ""; got != tc.want {
+			t.Errorf("%s: a note was raised = %v, want %v\n  %s", label, got, tc.want, note)
+		}
+	}
+}
+
+// The note describes; it must not edit. A report that quietly folded Cyrillic
+// into Latin would show a name the certificate does not contain, which is the
+// same failure as showing one it does contain and hiding half of it.
+func TestALookalikeNameIsNotRewritten(t *testing.T) {
+	const spelled = "CN=\u0430pple.com"
+
+	var trim trimmer
+	got := trim.text(spelled)
+
+	if got != spelled {
+		t.Errorf("the subject was altered:\n  in  %q\n  out %q", spelled, got)
 	}
 }

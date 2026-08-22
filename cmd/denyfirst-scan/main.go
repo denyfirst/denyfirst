@@ -221,7 +221,7 @@ func printVersions(w io.Writer, t *tlsprobe.Report) {
 		return
 	}
 
-	fmt.Fprintf(w, "\n  Protocol versions\n")
+	fmt.Fprint(w, "\n  Protocol versions\n")
 	for _, v := range t.Versions {
 		switch {
 		case v.Supported && v.Grade.Preferred:
@@ -257,7 +257,7 @@ func printCiphers(w io.Writer, t *tlsprobe.Report) {
 			// stopped early is read as the whole set, and the suites missing
 			// from it are the weak ones: enumeration finds them strongest
 			// first.
-			fmt.Fprintf(w, "    (incomplete: the host stopped answering before the list ran out,\n"+
+			fmt.Fprint(w, "    (incomplete: the host stopped answering before the list ran out,\n"+
 				"     so the weaker end of it was never reached)\n")
 		}
 		for _, c := range v.Ciphers {
@@ -267,9 +267,9 @@ func printCiphers(w io.Writer, t *tlsprobe.Report) {
 
 	if t.PreferenceKnown {
 		if t.ServerPreference {
-			fmt.Fprintf(w, "\n  The server imposes its own cipher order.\n")
+			fmt.Fprint(w, "\n  The server imposes its own cipher order.\n")
 		} else {
-			fmt.Fprintf(w, "\n  The server follows the client's cipher order, which lets an outdated\n"+
+			fmt.Fprint(w, "\n  The server follows the client's cipher order, which lets an outdated\n"+
 				"  client steer the connection towards a weaker suite.\n")
 		}
 	}

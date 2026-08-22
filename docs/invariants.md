@@ -631,6 +631,38 @@ the first were uncertain.
 `TestLoggedNoteDoesNotClaimTheReceiptsWereVerified`,
 `TestBothCountsAreReported`, `TestTransparencyReachesThePage`
 
+### R3d — A limit of this scanner's network is not a fault of the server
+
+A name that publishes only AAAA records is unreachable from a host with no
+IPv6 route, however healthy the server is. The report said *the host could not
+be reached* — a statement about somebody else's server, arrived at from a fact
+about this one.
+
+`safedial` now records which address families it actually attempted, after the
+policy check rather than before it, so an address refused for being private
+does not count as a family that was tried. When every attempt used one family
+and none of them answered, the failure carries that family, and the reply says
+so: *the host could not be reached, and every address published for this name
+is IPv6; a scanner with no IPv6 route reaches none of them.*
+
+Two things are deliberate about that sentence. It names a property of the
+**target's** DNS rather than of this machine, so I6 still holds: what is
+published in a name's own records is checkable by the reader in a second, and
+what this scanner has configured is nobody's business. And it is said only
+where it can be the explanation — a refused connection or a reset proves the
+path works, and neither reaches the branch that adds it.
+
+The check is symmetric. An IPv6-only network reaching an IPv4-only name has
+exactly the same problem, and writing the rule for one family because the
+other is rarer is how a scanner comes to be correct only on the machine it was
+written on.
+
+*Enforced in:* `internal/safedial.SingleFamilyError`,
+`internal/safedial.soleFamily`, `internal/tlsprobe.classifyHandshakeError`
+*Guarded by:* `TestASingleFamilyIsNamedAndAMixedOneIsNot`,
+`TestTheFamilyWrapperHidesNothing`,
+`TestAnUnreachableHostSaysWhichFamilyWasTried`
+
 ### R4 — Nothing measured is not the same as passing, or as failing
 
 An unreachable server is ungraded, not strong.
@@ -881,6 +913,40 @@ the end of `run`, so it can be exercised without a network.
 `TestAnUngradedTargetIsNotHiddenByAGoodOne`,
 `TestSeverityOutranksAnAbsentResult`
 
+### R14 — A chain reachable at any version is a chain reachable
+
+A server picks its certificate from what the client offered, so an old client
+can be handed a different one — and the chain kept for old clients is the one
+most likely to be weak. This report took the chain from the newest handshake
+that completed and described that, which meant a SHA-1 or small-key
+certificate sitting behind TLS 1.0 was invisible beside a clean modern chain,
+in a report whose subject is exactly that kind of leftover.
+
+R5 settles what to do about it. An attacker chooses which version to
+negotiate, so a certificate reachable at any version is a certificate
+reachable, and the worse of the two has to set the verdict.
+
+Every version that completed a handshake is compared by its leaf's own DER
+bytes — not by subject, serial or names, each of which a server can repeat
+across two genuinely different certificates. A chain whose leaf is not the
+leaf already described is analysed in full, its findings join the list, its
+notes name the version and the certificate by fingerprint, and its verdict
+joins the aggregate. Two versions served the same second certificate count
+once.
+
+What the report still shows in detail is the newest handshake's chain, because
+that is the one nearly every visitor's browser is given. The note says the
+other exists and what it is; the findings say what is wrong with it.
+
+Two handshakes to an ordinary server return the identical certificate, so in
+the ordinary case nothing here runs.
+
+*Enforced in:* `internal/tlsprobe.differingChains`, `internal/scan.Scan`,
+`internal/scan.Result.Findings`, `internal/scan.Result.Notes`
+*Guarded by:* `TestAChainServedOnlyToOldClientsIsSeen`,
+`TestOneCertificateForEveryVersionProducesNoAlternate`,
+`TestAWeakCertificateBehindAnOldVersionIsGraded`
+
 ### R10 — A report cannot act on the display that shows it
 
 Every field taken from a certificate is text, and only text. Control
@@ -925,10 +991,30 @@ a subject legitimately using U+200D to join glyphs in an Indic or Persian name
 renders with a replacement mark. A name shown imperfectly is recoverable; a
 name shown as somebody else's is not.
 
-*Enforced in:* `internal/certinfo.sanitise`, applied by `trimmer.text`
+There is a second half this cannot fix, and it is said instead. A subject
+spelling a familiar name with a Cyrillic `\u0430` where a Latin `a` belongs is
+not hiding anything: the two are different characters that render identically,
+and folding one into the other would corrupt every legitimate name written in
+those scripts. So nothing is rewritten, and a note says when a name draws on
+more than one of the three alphabets whose letters are routinely mistaken for
+each other.
+
+Each value is examined on its own rather than the printed distinguished name.
+`CN=` is Latin whatever follows it, so a check over the printed form would
+find two alphabets in every certificate ever issued to a Cyrillic or Greek
+name and tell most of the world that its own alphabet looks like a forgery.
+One script throughout is a language, not a disguise.
+
+The verdict is untouched. A company with a Cyrillic name and a Latin domain
+suffix is an ordinary customer of an ordinary authority, and grading that down
+would be this project inventing a fault.
+
+*Enforced in:* `internal/certinfo.sanitise`, applied by `trimmer.text`;
+`internal/certinfo.mixedScriptNote`, `internal/certinfo.confusableScripts`
 *Guarded by:* `TestControlCharactersInCertificateFieldsAreNeutralised`,
 `TestC1ControlsAreNeutralisedToo`, `TestTrimmingCutsOnARuneBoundary`,
-`TestNothingCanRewriteHowTheReportReads`
+`TestNothingCanRewriteHowTheReportReads`, `TestANameInTwoAlphabetsIsSaid`,
+`TestALookalikeNameIsNotRewritten`
 
 ---
 
@@ -1022,6 +1108,17 @@ comparing the two is comparing two things that would have to fall together.
 A test fails when the copies disagree, because two sources that agree only
 because nobody checks are one source written twice.
 
+Comparing the copies was, until 2026-08-22, the whole of the check, and it
+never looked at the key. A key file swapped for another, leaving both
+published fingerprints alone, passed everything in this repository — which is
+precisely the attack the fingerprint exists to stop, since the reporter
+compares the two numbers and then encrypts to whatever was actually served.
+The fingerprint is now computed from the bytes this server sends: the armour's
+own checksum is verified, the first packet is required to be a public key, and
+its version 4 fingerprint is SHA-1 over `0x99`, the packet length and the
+packet body. Sixty lines of standard library, no dependency, and the gap that
+said it needed "an OpenPGP parser" needed the first packet of one.
+
 The key certifies and encrypts and does nothing else, and is unrelated to the
 release signing key, which is an SSH key pointing outward rather than in.
 
@@ -1032,7 +1129,9 @@ key it points at, which answers nothing a forger could not arrange.
 *Guarded by:* `TestSecurityTxtIsServedAtTheWellKnownPath`,
 `TestLegacySecurityTxtPathRedirects`, `TestSecurityTxtHasTheRequiredFields`,
 `TestSecurityTxtExpiryIsMovedByAPerson`,
-`TestSecurityTxtDoesNotSendExclusionRequestsToSecurity`
+`TestSecurityTxtDoesNotSendExclusionRequestsToSecurity`,
+`TestFingerprintAgreesAcrossSources`, `TestTheServedKeyIsTheKeyWePublish`,
+`TestTheServedPacketIsAPublicKeyPacket`
 
 ### R9 — Issuance policy is reported and not graded
 
@@ -1330,6 +1429,22 @@ The reason it lingered is worth keeping in mind for the entries below: a gap
 closed in code is not closed on this page until somebody comes back for the
 page.
 
+Four more go the same day, and these were closed on purpose rather than found
+already closed. The published key is now verified from the bytes the server
+sends (D1). A chain a server serves only to old clients is now graded, and the
+worse of the two sets the verdict (R14). An address family that could not be
+reached is now named, so a limit of this scanner's network is no longer
+reported as a fault of the server (R3d). And a name written in two alphabets
+now raises a note, which is the most a report can do about a pair of letters
+that are genuinely different characters rendering identically (R10).
+
+Each of those was on this list with a sentence explaining why it was hard. Two
+of the four sentences were wrong: "needs an OpenPGP parser and SHA-1" needed
+the first packet of one, and the address-family entry described a budget
+problem that `interleaveFamilies` had already solved, leaving only the missing
+sentence. A reason written when an entry is added is worth re-reading before
+it is believed.
+
 Anything below is open today.
 
 - **Transparency receipts are counted and not verified.** R3c. Checking one
@@ -1338,15 +1453,6 @@ Anything below is open today.
 - **A stapled response is observed, not validated.** R3b. Verifying one needs
   an OCSP parser and a signature check against the issuer, and this project
   carries no dependency that would provide either.
-- **The published key is not verifiable from the served bytes.** D1. The test
-  compares the fingerprint across its two published copies; it does not
-  compute the fingerprint of the key file, which would need an OpenPGP parser
-  and SHA-1. A key file swapped without touching either copy would pass.
-- **An address family that cannot be reached is not named.** The dialler
-  resolves both families and tries up to eight addresses. On a host with IPv6
-  disabled, a target with many AAAA records can spend that budget on
-  unreachable addresses and be reported as unreachable, with no note saying
-  why. R3 requires the opposite.
 - **The per-target limit still answers at its edge.** A9. The threshold now
   sits outside ordinary traffic, so a probe learns nothing about a person; what
   remains is that a host genuinely being checked eight times in a window can be
@@ -1378,7 +1484,7 @@ Anything below is open today.
   `internal/safedial`, `internal/httpapi`, `internal/scan`, `internal/web`, and
   finally the two front ends, `internal/web/assets/app.js` and
   `cmd/denyfirst-scan`, which had never been read and held R12 and R13 between
-  them. That last fact is the one to take from this entry rather than the
+  them, and `cmd/denyfirstd`. That last fact is the one to take from this entry rather than the
   coverage: the packages that compute the answer were careful, and every defect
   found on the final pass was in the code that shows it. Nothing was wrong with
   what this project knew; four things were wrong with what it said. Completing
@@ -1399,19 +1505,15 @@ Anything below is open today.
   nothing, and the report does not distinguish that from a server that refused
   everything for its own reasons. The rule is right and unreachable through
   this front end, which is worth stating rather than counting as coverage.
-- **A name can still be spelled in a lookalike alphabet.** R10 now replaces
-  every Unicode format character, which stops a certificate from reordering or
-  hiding what the report shows. It does nothing about a subject using Cyrillic
-  `а` where Latin `a` is expected: the two are different characters that render
-  identically, and normalising them away would corrupt every legitimate name in
-  those scripts. Hostname matching is unaffected — it compares bytes — so this
-  is a question of what a reader sees rather than of what was verified.
-- **Only the newest version's certificate chain is described.** The chain is
-  taken from the most modern handshake that succeeded, and a server may present
-  a different certificate at a different protocol version — selection by
-  offered signature algorithms is a real configuration. A chain served only to
-  TLS 1.0 clients is not seen, so a SHA-1 certificate reachable that way would
-  go unreported while the report describes the modern one.
+- **A lookalike alphabet is reported, not resolved.** R10 raises a note when a
+  name draws on more than one of Latin, Cyrillic and Greek, which is as far as
+  a report can honestly go: the characters are genuinely different and folding
+  them together would corrupt every legitimate name in those scripts. What the
+  note cannot do is tell a disguise from a company whose name really is
+  written in two alphabets, and it says nothing at all about a name spelled
+  wholly in one script that resembles a name in another — `рaypal` in Cyrillic
+  throughout raises nothing, because one script is a language. Hostname
+  matching is unaffected either way; it compares bytes.
 - **Four commits on `main` carry no signature.** S6. `1fdf674`, `cc163a3`,
   `01fc49f`, `7cd2cfa` — rebase-merged, which strips the signature the author
   put on them. The signed originals are the tag

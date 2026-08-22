@@ -297,6 +297,107 @@ func (t *trimmer) list(items []string, limit int) []string {
 	return trimmed
 }
 
+// confusableScripts names the alphabets a string draws on, among the three
+// whose letters are routinely mistaken for one another.
+//
+// Only Latin, Cyrillic and Greek. Between them they hold nearly every pair a
+// reader cannot tell apart at a glance — Cyrillic а, Greek ο, Latin a and o —
+// and adding scripts that share no shapes with the others would raise the
+// note on names nobody could misread.
+//
+// Characters outside all three, and the digits and punctuation that belong to
+// no script at all, are ignored. A name is not suspicious for containing a
+// full stop.
+func confusableScripts(s string) []string {
+	var latin, cyrillic, greek bool
+	for _, r := range s {
+		switch {
+		case unicode.Is(unicode.Latin, r):
+			latin = true
+		case unicode.Is(unicode.Cyrillic, r):
+			cyrillic = true
+		case unicode.Is(unicode.Greek, r):
+			greek = true
+		}
+	}
+
+	var out []string
+	if latin {
+		out = append(out, "Latin")
+	}
+	if cyrillic {
+		out = append(out, "Cyrillic")
+	}
+	if greek {
+		out = append(out, "Greek")
+	}
+	return out
+}
+
+// mixedScriptNote says when a certificate writes one of the names this report
+// displays in more than one alphabet.
+//
+// R10 replaces every character that could reorder or hide what the report
+// shows. It does nothing about a subject spelling a familiar name with a
+// Cyrillic \u0430 where a Latin a belongs, because the two are different
+// characters that render identically and normalising one into the other would
+// corrupt every legitimate name written in those scripts. Rewriting the name
+// is therefore out; saying so is not, and a reader who is told is a reader who
+// can look.
+//
+// Each value is examined on its own rather than the printed distinguished
+// name. "CN=" is Latin whatever follows it, so a check over the printed form
+// would find two alphabets in every certificate issued to a Cyrillic or Greek
+// name and tell most of the world that its own alphabet looks like a forgery.
+//
+// The value itself is not quoted back. The field is named and the certificate
+// section shows the value a few lines above, already through R10's
+// replacement; repeating it here would be a second path to the screen with
+// its own rules.
+//
+// The verdict is untouched. Nothing here is a fault of the certificate — a
+// company with a Cyrillic name and a Latin domain suffix is an ordinary
+// customer of an ordinary authority — and grading it down would penalise most
+// of the world's alphabets for the shape of a few letters.
+func mixedScriptNote(leaf *x509.Certificate) string {
+	type field struct {
+		label string
+		value string
+	}
+
+	fields := []field{
+		{"subject", leaf.Subject.CommonName},
+		{"issuer", leaf.Issuer.CommonName},
+	}
+	for _, o := range leaf.Subject.Organization {
+		fields = append(fields, field{"subject organisation", o})
+	}
+	for _, o := range leaf.Issuer.Organization {
+		fields = append(fields, field{"issuer organisation", o})
+	}
+	for _, n := range leaf.DNSNames {
+		// A dNSName is IA5String, so anything outside ASCII here is already
+		// irregular. Checked all the same: an irregular name that looks
+		// ordinary is the whole of the problem.
+		fields = append(fields, field{"one of the names", n})
+	}
+
+	for _, f := range fields {
+		scripts := confusableScripts(f.value)
+		if len(scripts) < 2 {
+			continue
+		}
+		return fmt.Sprintf(
+			"The %s of this certificate is written in more than one alphabet (%s). Letters from different "+
+				"alphabets can be identical on screen \u2014 Cyrillic \u0430 and Latin a are different characters "+
+				"that look the same \u2014 so what is shown may not be the name it appears to be. Nothing was "+
+				"changed: replacing those letters would corrupt every legitimate name written in those scripts. "+
+				"Hostname matching is unaffected, because it compares bytes rather than shapes.",
+			f.label, strings.Join(scripts, " and "))
+	}
+	return ""
+}
+
 // Analyse describes and grades a chain. The chain must be leaf first, as TLS
 // presents it. Passing an empty hostname skips the name check and says so in
 // the notes rather than silently reporting a pass.
@@ -340,6 +441,10 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 		report.Notes = append(report.Notes,
 			"Some fields were longer than this report will carry and have been shortened. "+
 				"The fingerprint is taken over the whole certificate, so it still identifies what the server sent.")
+	}
+
+	if note := mixedScriptNote(leaf); note != "" {
+		report.Notes = append(report.Notes, note)
 	}
 
 	selfSigned := isSelfSigned(leaf)

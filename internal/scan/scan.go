@@ -67,6 +67,21 @@ type Result struct {
 	TLS         *tlsprobe.Report `json:"tls,omitempty"`
 	Certificate *certinfo.Report `json:"certificate,omitempty"`
 
+	// AlternateCertificates grades a chain the server serves at some other
+	// protocol version.
+	//
+	// A server chooses its certificate by what the client offered, so an old
+	// client can be handed a different one — and the one kept for old clients
+	// is the one most likely to be weak. While only the newest handshake was
+	// described, a SHA-1 certificate reachable at TLS 1.0 went unreported
+	// beside a clean modern chain.
+	//
+	// Their findings and notes join the report and their verdicts join the
+	// aggregate, so the worse chain sets the answer. What the report shows in
+	// detail is still the newest handshake's, because that is the one nearly
+	// every visitor's browser will be given.
+	AlternateCertificates []*certinfo.Report `json:"alternateCertificates,omitempty"`
+
 	// Issuance is what a resolver said about which authorities may issue a
 	// certificate for this name.
 	//
@@ -198,6 +213,42 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 		out.Certificate = certReport
 		out.Verdict = policy.Worst(out.Verdict, certReport.Verdict)
 
+		// A chain the server serves to an older client is graded too, and the
+		// worse of the two sets the verdict.
+		//
+		// R5 is the reason. An attacker chooses which version to negotiate,
+		// so a certificate reachable at TLS 1.0 is a certificate reachable,
+		// and describing only the modern one reports a configuration that is
+		// safer than the one a server actually has. tlsprobe fills this in
+		// only when the leaf is a different certificate, so in the ordinary
+		// case the loop does not run.
+		for _, alt := range tlsReport.AlternateChains {
+			altReport, err := certinfo.Analyse(alt.Certificates, host, s.now())
+			if err != nil {
+				// Not fatal. The chain this report describes was analysed
+				// successfully, and refusing the whole scan because a second
+				// chain could not be read would lose the first as well.
+				out.TLS.Notes = append(out.TLS.Notes, fmt.Sprintf(
+					"The certificate served at %s differs from the one described and could not be read, "+
+						"so it was not graded.", alt.Version))
+				continue
+			}
+			// Named, because the findings from both chains arrive in one
+			// list and a reader otherwise has no way to tell which
+			// certificate a finding is about. The fields are the ones
+			// certinfo has already put through R10's replacement, so nothing
+			// from a certificate reaches this sentence unfiltered.
+			if len(altReport.Chain) > 0 {
+				leaf := altReport.Chain[0]
+				altReport.Notes = append(altReport.Notes, fmt.Sprintf(
+					"The certificate served at %s is %s, signed with %s, SHA-256 %s. Its findings are in the list "+
+						"above; the certificate section describes the newest handshake's chain instead.",
+					alt.Version, leaf.Subject, leaf.SignatureAlgorithm, leaf.FingerprintSHA256))
+			}
+			out.AlternateCertificates = append(out.AlternateCertificates, altReport)
+			out.Verdict = policy.Worst(out.Verdict, altReport.Verdict)
+		}
+
 		// The join. tlsprobe saw whether a response arrived; certinfo read
 		// whether one was demanded and whether one could exist. Grading
 		// either half alone produces the two mistakes this rule is written to
@@ -327,6 +378,9 @@ func (r *Result) Findings() []policy.Finding {
 	if r.Certificate != nil {
 		collect(r.Certificate.Grade.Findings)
 	}
+	for _, alt := range r.AlternateCertificates {
+		collect(alt.Grade.Findings)
+	}
 	if r.Stapling != nil {
 		collect(r.Stapling.Findings)
 	}
@@ -341,6 +395,9 @@ func (r *Result) Notes() []string {
 	}
 	if r.Certificate != nil {
 		out = append(out, r.Certificate.Notes...)
+	}
+	for _, alt := range r.AlternateCertificates {
+		out = append(out, alt.Notes...)
 	}
 	if r.Stapling != nil {
 		out = append(out, r.Stapling.Notes...)

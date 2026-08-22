@@ -136,3 +136,40 @@ func TestReportFromAFailedProbeNamesNoAddress(t *testing.T) {
 		}
 	}
 }
+
+// The family behind an unreachable host is named, and only where it can be
+// the explanation.
+//
+// A refusal or a reset proves the path works, so naming an address family
+// there would offer a reason that is not the reason. The sentence must also
+// stay inside I6: it names a property of the target's own DNS and says
+// nothing about this machine's configuration.
+func TestAnUnreachableHostSaysWhichFamilyWasTried(t *testing.T) {
+	unreachable := &safedial.SingleFamilyError{
+		Family: "IPv6",
+		Err:    errors.New(`safedial: connect "example.test:443": dial tcp [2606:4700::1111]:443: connect: network is unreachable`),
+	}
+
+	got, refused := classifyHandshakeError(unreachable, 0x0303)
+	if refused {
+		t.Error("a host that could not be reached was recorded as refusing the version")
+	}
+	if !strings.Contains(got, "IPv6") {
+		t.Errorf("the reply is %q; it does not say which family was tried", got)
+	}
+	for _, leak := range []string{"2606:4700", "dial tcp", "safedial", "example.test"} {
+		if strings.Contains(got, leak) {
+			t.Errorf("the reply %q leaks %q", got, leak)
+		}
+	}
+
+	// A refused connection proves the path works, so the family explains
+	// nothing and must not be offered as though it did.
+	refusedConn := &safedial.SingleFamilyError{
+		Family: "IPv6",
+		Err:    errors.New(`safedial: connect "example.test:443": dial tcp: connect: connection refused`),
+	}
+	if got, _ := classifyHandshakeError(refusedConn, 0x0303); strings.Contains(got, "IPv6") {
+		t.Errorf("a refused connection is explained by an address family: %q", got)
+	}
+}
