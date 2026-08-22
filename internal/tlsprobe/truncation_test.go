@@ -1,6 +1,7 @@
 package tlsprobe
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -267,4 +268,131 @@ func TestTheLimitsOfThisClientAreStatedWhenNothingWasAccepted(t *testing.T) {
 			t.Errorf("%s: the note applies = %v, want %v", name, got, tc.want)
 		}
 	}
+}
+
+// A server may hand an old client a different certificate, and the one kept
+// for old clients is the one most likely to be weak.
+//
+// Selection by the client's offered signature algorithms is an ordinary
+// configuration, not a curiosity. While this report described only the newest
+// handshake, a certificate reachable at TLS 1.0 — the SHA-1 one somebody kept
+// for compatibility — was invisible beside a clean modern chain. R5 settles
+// what to do about it: an attacker chooses the version, so a chain reachable
+// at any version is a chain reachable.
+func TestAChainServedOnlyToOldClientsIsSeen(t *testing.T) {
+	modern, legacy := twoCertificates(t)
+	host, port := serverServingByVersion(t, modern, legacy)
+
+	report, err := (&Prober{Dial: (&net.Dialer{}).DialContext}).Probe(context.Background(), host, port)
+	if err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+
+	if len(report.Certificates) == 0 {
+		t.Fatal("no handshake completed")
+	}
+	if len(report.AlternateChains) != 1 {
+		t.Fatalf("%d alternate chains, want 1; the certificate an old client is given was not seen",
+			len(report.AlternateChains))
+	}
+
+	alt := report.AlternateChains[0]
+	if alt.Certificates[0].Raw == nil || bytes.Equal(alt.Certificates[0].Raw, report.Certificates[0].Raw) {
+		t.Error("the alternate chain holds the same certificate as the primary")
+	}
+
+	var said bool
+	for _, note := range report.Notes {
+		if strings.Contains(note, alt.Version) && strings.Contains(note, "different certificate") {
+			said = true
+		}
+	}
+	if !said {
+		t.Errorf("nothing in the notes says a second certificate was found:\n%v", report.Notes)
+	}
+}
+
+// The ordinary case: one certificate for everyone, and no alternate.
+func TestOneCertificateForEveryVersionProducesNoAlternate(t *testing.T) {
+	only, _ := twoCertificates(t)
+	host, port := serverServingByVersion(t, only, only)
+
+	report, err := (&Prober{Dial: (&net.Dialer{}).DialContext}).Probe(context.Background(), host, port)
+	if err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+	if len(report.AlternateChains) != 0 {
+		t.Errorf("%d alternate chains for a server with one certificate, want 0", len(report.AlternateChains))
+	}
+}
+
+// twoCertificates returns two distinct self-signed certificates for localhost.
+func twoCertificates(t *testing.T) (a, b *tls.Certificate) {
+	t.Helper()
+	return selfSigned(t, 1), selfSigned(t, 2)
+}
+
+func selfSigned(t *testing.T, serial int64) *tls.Certificate {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generating a key: %v", err)
+	}
+	tpl := &x509.Certificate{
+		SerialNumber: big.NewInt(serial),
+		Subject:      pkix.Name{CommonName: "localhost"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		DNSNames:     []string{"localhost"},
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("creating a certificate: %v", err)
+	}
+	return &tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+}
+
+// serverServingByVersion answers with one certificate at TLS 1.2 and another
+// below it, which is what a server selecting by the client's offered
+// signature algorithms does in practice.
+func serverServingByVersion(t *testing.T, modern, legacy *tls.Certificate) (host, port string) {
+	t.Helper()
+
+	config := &tls.Config{
+		MinVersion: tls.VersionTLS10,
+		MaxVersion: tls.VersionTLS12,
+		GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			for _, v := range hello.SupportedVersions {
+				if v >= tls.VersionTLS12 {
+					return modern, nil
+				}
+			}
+			return legacy, nil
+		},
+	}
+
+	l, err := tls.Listen("tcp", "127.0.0.1:0", config)
+	if err != nil {
+		t.Fatalf("listening: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				_ = c.(*tls.Conn).Handshake()
+				_ = c.Close()
+			}()
+		}
+	}()
+
+	host, port, _ = net.SplitHostPort(l.Addr().String())
+	return host, port
 }

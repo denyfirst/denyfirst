@@ -42,6 +42,35 @@ import (
 // scan that", not as "the scan failed".
 var ErrBlocked = errors.New("safedial: destination not permitted")
 
+// SingleFamilyError reports that every address this dialler attempted belonged
+// to one address family, and that none of them answered.
+//
+// It exists because "unreachable" and "unreachable from here" are different
+// findings and the second was being reported as the first. A name that
+// publishes only AAAA records is unreachable from a host with no IPv6 route,
+// however healthy the server is, and until this existed the report said the
+// host could not be reached — a statement about the server, arrived at from a
+// fact about the scanner.
+//
+// The error names the family and nothing else. Which addresses were tried,
+// how many there were, and what this machine's own configuration looks like
+// are all things I6 keeps out of a reply, and none of them is needed: the
+// family is a property of the name being scanned, published in its own DNS,
+// and the reader can check it in a second.
+type SingleFamilyError struct {
+	// Family is "IPv4" or "IPv6".
+	Family string
+
+	// Err is the underlying failure.
+	Err error
+}
+
+func (e *SingleFamilyError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *SingleFamilyError) Unwrap() error { return e.Err }
+
 // blockedPrefixes covers ranges that netip.Addr has no predicate for.
 // Loopback, private (RFC 1918 and RFC 4193 ULA), link-local, multicast and
 // unspecified are handled by the predicates in checkAddr.
@@ -186,7 +215,15 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 
 	inner := net.Dialer{Timeout: d.perAttemptTimeout()}
 
-	var blocked, dialErr error
+	var (
+		blocked, dialErr error
+
+		// Recorded after the policy check, so this holds the addresses that
+		// were really tried rather than the ones that were resolved. An
+		// address refused by policy was never given the chance to answer and
+		// says nothing about whether this host can reach that family.
+		attempted []netip.Addr
+	)
 	for _, addr := range addrs {
 		// Stop as soon as the shared budget is gone rather than starting an
 		// attempt that cannot finish.
@@ -202,6 +239,8 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 			}
 			continue
 		}
+
+		attempted = append(attempted, addr)
 
 		// Dial the inspected literal, never the hostname. This is what closes
 		// the rebinding window.
@@ -220,9 +259,44 @@ func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.
 		return nil, fmt.Errorf("%w%s", blocked, truncNote(truncated, limit))
 	}
 	if dialErr != nil {
-		return nil, fmt.Errorf("safedial: connect %q: %w%s", address, dialErr, truncNote(truncated, limit))
+		err := fmt.Errorf("safedial: connect %q: %w%s", address, dialErr, truncNote(truncated, limit))
+		if family := soleFamily(attempted); family != "" {
+			return nil, &SingleFamilyError{Family: family, Err: err}
+		}
+		return nil, err
 	}
 	return nil, fmt.Errorf("%w: %q has no usable public address%s", ErrBlocked, host, truncNote(truncated, limit))
+}
+
+// soleFamily names the address family when every attempt used it, and returns
+// empty when both were tried or neither was.
+//
+// Both families tried means the failure is not about reachability of a
+// family, so there is nothing to say. The check is symmetric on purpose: an
+// IPv6-only network reaching an IPv4-only name has exactly the problem this
+// describes, and writing the rule for one family because the other is rarer
+// is how a scanner comes to be correct only on the machine it was written on.
+func soleFamily(attempted []netip.Addr) string {
+	var v4, v6 int
+	for _, addr := range attempted {
+		// Unmapped by the caller before the policy check, so ::ffff:1.2.3.4
+		// counts as the IPv4 address it is. Counting it as IPv6 would name
+		// the family that was not the one tried.
+		if addr.Unmap().Is4() {
+			v4++
+		} else {
+			v6++
+		}
+	}
+
+	switch {
+	case v4 > 0 && v6 == 0:
+		return "IPv4"
+	case v6 > 0 && v4 == 0:
+		return "IPv6"
+	default:
+		return ""
+	}
 }
 
 // Dial is DialContext with a background context.

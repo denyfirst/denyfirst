@@ -36,6 +36,7 @@ package tlsprobe
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
@@ -112,6 +113,23 @@ type Report struct {
 	// Certificates is the chain as presented, leaf first, from the newest
 	// protocol version that completed a handshake. Empty if none did.
 	Certificates []*x509.Certificate `json:"-"`
+
+	// AlternateChains holds a chain presented at some other version whose
+	// leaf is not the leaf above.
+	//
+	// Serving different certificates at different protocol versions is a real
+	// configuration rather than a curiosity: a server picks by the signature
+	// algorithms the client offered, and an old client offers a smaller set.
+	// Describing only the newest handshake therefore misses exactly the chain
+	// an old client gets, which is the chain most likely to be the weak one —
+	// a SHA-1 certificate kept for compatibility and reachable only at
+	// TLS 1.0 was invisible to this report while it described the modern one
+	// beside it.
+	//
+	// Compared by the leaf's own bytes. Two handshakes to the same server
+	// normally return the identical certificate, so this is empty in the
+	// ordinary case and costs nothing.
+	AlternateChains []AlternateChain `json:"-"`
 
 	// ServerPreference reports whether the server imposes its own cipher
 	// ordering. False means it follows the client's order, which lets an
@@ -227,6 +245,16 @@ type VersionResult struct {
 	Blocked bool `json:"-"`
 }
 
+// AlternateChain is a certificate chain served at one protocol version that
+// differs from the chain the report describes.
+type AlternateChain struct {
+	// Version is the human-readable protocol version it was served at.
+	Version string
+
+	// Certificates is the chain as presented, leaf first.
+	Certificates []*x509.Certificate
+}
+
 // CipherResult is one negotiated suite together with its grade.
 type CipherResult struct {
 	ID uint16 `json:"-"`
@@ -303,6 +331,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 		}
 		state := states[i]
 		report.Certificates = state.PeerCertificates
+		report.AlternateChains = differingChains(states, results, i)
 		report.Address = addrs[i]
 		report.ALPN = state.NegotiatedProtocol
 		report.OCSPStapled = len(state.OCSPResponse) > 0
@@ -345,6 +374,12 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	if len(report.Certificates) == 0 {
 		report.Notes = append(report.Notes,
 			"No handshake completed, so no certificate chain was retrieved.")
+	}
+
+	for _, alt := range report.AlternateChains {
+		report.Notes = append(report.Notes, fmt.Sprintf(
+			"%s is served a different certificate from the one described above. Both were graded and the "+
+				"worse of the two set the verdict; the details shown are the newest handshake's.", alt.Version))
 	}
 
 	// Preference detection needs a version where we control the ordering.
@@ -414,6 +449,44 @@ func suiteCoverageApplies(results []VersionResult) bool {
 	return slices.ContainsFunc(results, func(v VersionResult) bool {
 		return v.Supported || v.Refused
 	})
+}
+
+// differingChains returns every chain served at a version other than primary
+// whose leaf is not the primary leaf.
+//
+// The comparison is over the leaf's own DER bytes. Anything less — a subject,
+// a serial, a set of names — is a field a server can repeat across two
+// genuinely different certificates, and the question here is whether the
+// bytes an old client is handed are the bytes this report describes.
+//
+// One entry per distinct leaf. A server that serves the same second
+// certificate to TLS 1.1 and TLS 1.0 has one alternate configuration, not
+// two, and grading it twice would say the same thing twice.
+func differingChains(states []*tls.ConnectionState, results []VersionResult, primary int) []AlternateChain {
+	if states[primary] == nil || len(states[primary].PeerCertificates) == 0 {
+		return nil
+	}
+
+	seen := map[[sha256.Size]byte]bool{
+		sha256.Sum256(states[primary].PeerCertificates[0].Raw): true,
+	}
+
+	var out []AlternateChain
+	for i, state := range states {
+		if i == primary || state == nil || len(state.PeerCertificates) == 0 {
+			continue
+		}
+		sum := sha256.Sum256(state.PeerCertificates[0].Raw)
+		if seen[sum] {
+			continue
+		}
+		seen[sum] = true
+		out = append(out, AlternateChain{
+			Version:      results[i].Name,
+			Certificates: state.PeerCertificates,
+		})
+	}
+	return out
 }
 
 // blockedDestination reports that the name was refused by policy rather than
@@ -800,7 +873,24 @@ func classifyHandshakeError(err error, version uint16) (text string, refused boo
 
 	case strings.Contains(msg, "network is unreachable"),
 		strings.Contains(msg, "no route to host"),
-		strings.Contains(msg, "host is down"):
+		strings.Contains(msg, "host is down"),
+		strings.Contains(msg, "address family not supported"):
+		// "Unreachable" and "unreachable from here" are different findings,
+		// and the first was being reported for both.
+		//
+		// A name publishing only AAAA records is unreachable from a host with
+		// no IPv6 route however healthy the server is, and the reply said the
+		// host could not be reached — a statement about somebody else's
+		// server, reached from a fact about this scanner. The family is a
+		// property of the name, published in its own DNS and checkable in a
+		// second, so naming it says what happened without describing this
+		// machine. It is only said when it can be the explanation: a refusal
+		// or a reset proves the path works, and neither reaches this branch.
+		var family *safedial.SingleFamilyError
+		if errors.As(err, &family) {
+			return fmt.Sprintf("the host could not be reached, and every address published for this name is %s; "+
+				"a scanner with no %s route reaches none of them", family.Family, family.Family), false
+		}
 		return "the host could not be reached", false
 
 	case strings.Contains(msg, "first record does not look like a TLS handshake"):
