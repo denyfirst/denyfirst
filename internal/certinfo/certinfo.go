@@ -572,7 +572,7 @@ func describe(c *x509.Certificate, trim *trimmer) Certificate {
 		IsCA:               c.IsCA,
 		SelfSigned:         isSelfSigned(c),
 		KeyUsage:           keyUsages(c.KeyUsage),
-		ExtKeyUsage:        trim.list(extKeyUsages(c.ExtKeyUsage), maxUsageEntries),
+		ExtKeyUsage:        trim.list(extKeyUsages(c.ExtKeyUsage, c.UnknownExtKeyUsage), maxUsageEntries),
 		FingerprintSHA256:  hex.EncodeToString(sum[:]),
 	}
 
@@ -595,6 +595,16 @@ func describe(c *x509.Certificate, trim *trimmer) Certificate {
 // keyDetails returns the algorithm name and its size parameter. An empty
 // algorithm means the key type was not recognised, which the caller reports
 // rather than treating as a pass.
+//
+// A type this switch has no case for still gets a name where the standard
+// library has one, because "DSA, size not read" is a useful thing to put in a
+// report and "" is not. The size stays zero: nothing here can measure a key of
+// a type it does not handle, and inventing a number would be worse than
+// leaving the field empty.
+//
+// This matters more from Go 1.27, which adds ML-DSA keys to crypto/x509. A
+// post-quantum certificate will arrive here as a type this switch does not
+// know, and it should be named rather than reported as a blank.
 func keyDetails(c *x509.Certificate) (string, int) {
 	switch pub := c.PublicKey.(type) {
 	case *rsa.PublicKey:
@@ -603,9 +613,23 @@ func keyDetails(c *x509.Certificate) (string, int) {
 		return "ECDSA", pub.Curve.Params().BitSize
 	case ed25519.PublicKey:
 		return "Ed25519", 0
-	default:
-		return "", 0
 	}
+
+	if name := c.PublicKeyAlgorithm.String(); hasLetter(name) {
+		return name, 0
+	}
+	return "", 0
+}
+
+// hasLetter distinguishes a name from a number.
+//
+// Both PublicKeyAlgorithm.String and SignatureAlgorithm.String render a value
+// they have no name for as its decimal digits — "0" for the zero value, "99"
+// for anything out of range. A report that printed 99 as an algorithm name
+// would be repeating an internal constant at a reader, so the numeric form is
+// treated as no name at all.
+func hasLetter(s string) bool {
+	return strings.IndexFunc(s, unicode.IsLetter) >= 0
 }
 
 func keyUsages(u x509.KeyUsage) []string {
@@ -633,7 +657,16 @@ func keyUsages(u x509.KeyUsage) []string {
 	return out
 }
 
-func extKeyUsages(us []x509.ExtKeyUsage) []string {
+// extKeyUsages names what the certificate says it may be used for.
+//
+// The unknown list is included, and was not until 2026-08-22. Go puts an
+// extended key usage it has no constant for into UnknownExtKeyUsage rather
+// than into ExtKeyUsage, so a certificate carrying one used to render as
+// though it carried nothing else — which is the wrong answer to "what is this
+// certificate allowed to do". The OID is printed as an OID: this package does
+// not hold a registry to turn it into a name, and pretending otherwise is how
+// a report starts inventing.
+func extKeyUsages(us []x509.ExtKeyUsage, unknown []asn1.ObjectIdentifier) []string {
 	var out []string
 	for _, u := range us {
 		switch u {
@@ -654,6 +687,10 @@ func extKeyUsages(us []x509.ExtKeyUsage) []string {
 		default:
 			out = append(out, fmt.Sprintf("unknown(%d)", u))
 		}
+	}
+
+	for _, oid := range unknown {
+		out = append(out, oid.String())
 	}
 	return out
 }

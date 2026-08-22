@@ -3,6 +3,7 @@ package policy
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // Every rule states a reason. This asserts the reason is true of the suite.
@@ -129,6 +130,93 @@ func TestFFDHERuleDoesNotCatchTheEllipticCurveForm(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("%s is a finite-field DHE suite and RFC 10015 prohibits it; no rule fired", name)
+		}
+	}
+}
+
+// The certificate half of R4, which was left open when the cipher half was
+// closed.
+//
+// Go renders an algorithm it has no name for as its decimal value, so the
+// substring matches below it find nothing and the certificate passes the
+// cryptography section without a word. That is the same shape as an
+// unrecognised cipher suite being graded insecure for an invented reason,
+// pointed the other way: here silence reads as approval.
+//
+// From Go 1.27 the key arm becomes reachable in a new way: crypto/x509 gains
+// ML-DSA keys, and a post-quantum certificate arrives as a type this rule set
+// has never sized.
+func TestAnUnreadableAlgorithmIsNotAPass(t *testing.T) {
+	now := time.Date(2026, 8, 22, 12, 0, 0, 0, time.UTC)
+	sound := LeafFacts{
+		NotBefore: now.AddDate(0, 0, -10), NotAfter: now.AddDate(0, 0, 60),
+		KeyAlgorithm: "ECDSA", KeyBits: 256, SignatureAlgorithm: "ECDSA-SHA256",
+		HasSAN: true, ChainTrusted: true, ChainComplete: true, HostnameMatches: true,
+	}
+
+	if got := GradeLeaf(sound, now); got.Verdict != Strong {
+		t.Fatalf("the control case graded %q with %d findings; the table below means nothing if this is not strong",
+			got.Verdict, len(got.Findings))
+	}
+
+	cases := []struct {
+		label    string
+		mutate   func(LeafFacts) LeafFacts
+		wantRule string
+	}{
+		{
+			"key algorithm rendered as a number",
+			func(f LeafFacts) LeafFacts { f.KeyAlgorithm, f.KeyBits = "0", 0; return f },
+			"cert.key-algorithm-unrecognised",
+		},
+		{
+			"key algorithm absent",
+			func(f LeafFacts) LeafFacts { f.KeyAlgorithm, f.KeyBits = "", 0; return f },
+			"cert.key-algorithm-unrecognised",
+		},
+		{
+			"key algorithm named but never sized here",
+			func(f LeafFacts) LeafFacts { f.KeyAlgorithm, f.KeyBits = "DSA", 0; return f },
+			"cert.key-algorithm-unrecognised",
+		},
+		{
+			"signature algorithm rendered as a number",
+			func(f LeafFacts) LeafFacts { f.SignatureAlgorithm = "0"; return f },
+			"cert.signature-algorithm-unrecognised",
+		},
+		{
+			"signature algorithm out of range",
+			func(f LeafFacts) LeafFacts { f.SignatureAlgorithm = "99"; return f },
+			"cert.signature-algorithm-unrecognised",
+		},
+	}
+
+	for _, c := range cases {
+		got := GradeLeaf(c.mutate(sound), now)
+
+		var found bool
+		for _, f := range got.Findings {
+			if f.RuleID == c.wantRule {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: no %s finding. The certificate was graded %q and said nothing about "+
+				"the part that could not be read, which a reader takes as approval.",
+				c.label, c.wantRule, got.Verdict)
+		}
+		if got.Verdict == Strong {
+			t.Errorf("%s: graded strong while something in it went ungraded", c.label)
+		}
+	}
+
+	// Ed25519 has no size parameter and must not collect the finding: the
+	// absence of a check there is a decision, not an omission.
+	ed := sound
+	ed.KeyAlgorithm, ed.KeyBits = "Ed25519", 0
+	for _, f := range GradeLeaf(ed, now).Findings {
+		if f.RuleID == "cert.key-algorithm-unrecognised" {
+			t.Error("Ed25519 was reported as an algorithm this rule set does not know")
 		}
 	}
 }
