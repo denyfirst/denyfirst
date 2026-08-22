@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/denyfirst/denyfirst/internal/policy"
 )
 
 // Certificates are generated in memory rather than checked in as fixtures.
@@ -179,8 +181,11 @@ func TestDescribesTheLeaf(t *testing.T) {
 	if !slices.Contains(got.ExtKeyUsage, "serverAuth") {
 		t.Errorf("ExtKeyUsage = %v, want it to include serverAuth", got.ExtKeyUsage)
 	}
-	if report.Policy != "denyfirst-v1" {
-		t.Errorf("Policy = %q", report.Policy)
+	// Against the constant rather than a literal. A hardcoded "denyfirst-v1"
+	// here is a second copy of the version, and the rule set changed under it
+	// on 2026-08-22 while this test went on asserting the old number.
+	if report.Policy != policy.Version {
+		t.Errorf("Policy = %q, want %q", report.Policy, policy.Version)
 	}
 }
 
