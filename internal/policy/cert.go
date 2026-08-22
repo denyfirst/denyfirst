@@ -175,7 +175,7 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 	if !f.ChainComplete && !f.SelfSigned {
 		add("cert.chain-incomplete", Weak,
 			"Incomplete certificate chain",
-			"The server did not send every intermediate needed to reach a root. Browsers often recover by fetching the missing issuer; command-line clients, mobile apps, and API consumers usually do not.",
+			"The server did not send the certificate that issued this one. Browsers often recover by fetching the missing issuer; command-line clients, mobile apps, and API consumers usually do not.",
 			rfc5280, cabBR)
 	}
 
@@ -207,6 +207,20 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 			"Certificate signed with SHA-1",
 			"A practical SHA-1 collision was demonstrated in 2017, and certificate authorities were required to stop issuing SHA-1 certificates in 2016.",
 			shattered, rfc9155, cabBR)
+	}
+
+	// An algorithm this rule set does not know is not an algorithm it approves
+	// of. LeafFacts documents "" as the unrecognised case and the switch below
+	// used to fall through it in silence, which left key strength ungraded and
+	// the certificate graded strong — the same question that GradeVersion
+	// answers with a weak verdict and a sentence saying so. certinfo already
+	// adds a note; a note does not reach the verdict, and the verdict is what
+	// is read.
+	if f.KeyAlgorithm == "" {
+		add("cert.key-algorithm-unrecognised", Weak,
+			"Key algorithm not recognised",
+			"The public key is of a type this rule set does not know, so its strength was not graded. Nothing here says it is weak; nothing here can say it is sound either.",
+			nist80057, cabBR)
 	}
 
 	switch f.KeyAlgorithm {

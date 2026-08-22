@@ -506,7 +506,7 @@ opinion silently changes ours.
 *Enforced in:* `internal/policy`; `tlsprobe` and `certinfo` only measure
 *Guarded by:* `TestGradeCipherDelegatesToPolicy`, `TestReportNamesThePolicy`
 
-### R2 — Every verdict cites a document
+### R2 — Every verdict cites a document, and the document is the current one
 
 A verdict without a citation is an assertion. The reader must be able to
 disagree with the standard rather than with us.
@@ -631,12 +631,72 @@ the first were uncertain.
 `TestLoggedNoteDoesNotClaimTheReceiptsWereVerified`,
 `TestBothCountsAreReported`, `TestTransparencyReachesThePage`
 
-### R4 — Nothing measured is not the same as passing
+### R4 — Nothing measured is not the same as passing, or as failing
 
 An unreachable server is ungraded, not strong.
 
-*Enforced in:* `internal/policy.Ungraded` and `policy.Worst`
-*Guarded by:* `TestNothingMeasuredIsUngraded`, `TestUnreachableTargetIsUngraded`
+The second half was added on 2026-08-22, after the package was found giving
+three different answers to one question. An unrecognised protocol version was
+graded weak with a sentence saying it had not been graded, which is right. An
+unrecognised cipher suite was graded **insecure** and told the reader its
+session key came from a long-term key — a specific claim, invented, and false
+of every TLS 1.3 suite that collected it. An unrecognised certificate key
+algorithm was graded **strong** with a footnote, which is the same error
+pointing the other way.
+
+So the rule is symmetric now and stated as one sentence: what could not be
+graded is weak, says it was not graded, and asserts nothing further about the
+thing it could not read. Weak rather than ungraded, because `Worst` skips
+ungraded and an unreadable suite would otherwise drop out of the aggregate
+while the server that offered it was called strong.
+
+*Enforced in:* `internal/policy.Ungraded`, `policy.Worst`,
+`policy.GradeVersion` (`version.unknown`), `policy.GradeCipher`
+(`cipher.unrecognised`), `policy.GradeLeaf` (`cert.key-algorithm-unrecognised`)
+*Guarded by:* `TestNothingMeasuredIsUngraded`, `TestUnreachableTargetIsUngraded`,
+`TestEveryStatedReasonIsTrueOfTheSuite`
+
+### R4a — A verdict's stated reason is true of the thing it grades
+
+A verdict is believed because it names a reason. Naming one that does not hold
+is worse than declining to grade, and it is not caught by any check that a
+grade is severe enough.
+
+`FuzzGradeCipher` asserted that a suite graded strong really is forward-secret
+and AEAD. That is the direction which fails safe for this service. The other
+direction — that a suite told it has no forward secrecy really has none — was
+unchecked, and `TLS_SM4_GCM_SM3` collected that sentence for two years of
+policy versions while being a TLS 1.3 suite, where the property is guaranteed
+by the protocol.
+
+Every rule now declares what must be observable about a suite for its sentence
+to be honest, and a rule added without such a declaration fails the test.
+
+*Enforced in:* `internal/policy.cipherRules`
+*Guarded by:* `TestEveryStatedReasonIsTrueOfTheSuite`,
+`TestForwardSecrecyIsNeverDeniedOfASuiteThatHasIt`
+
+### R4b — Trust and expiry are separate questions, asked separately
+
+An expired certificate from an authority nobody trusts is not a trusted
+certificate.
+
+Go checks a certificate's dates before it looks for an issuer, so `Expired` is
+the error it returns whether or not anything would ever have vouched for the
+certificate. Reading that as "trusted apart from the dates" was right for a
+real certificate past its renewal date and wrong for every self-signed or
+private-CA certificate that had gone stale — which is what a scan of an
+abandoned service finds. Three statements went wrong together: the trusted
+flag, the suppression of `cert.chain-untrusted`, and a transparency note that
+turned round to tell a private certificate that browsers refuse it for not
+being logged.
+
+The question is now asked again at the midpoint of the certificate's own
+validity window, and that answer is the one reported.
+
+*Enforced in:* `internal/certinfo.trustedWithinValidity`
+*Guarded by:* `TestAnExpiredUntrustedChainIsNotReportedTrusted`,
+`TestTrustWithinValidityAsksARealQuestion`
 
 ### R5 — One insecure option makes the configuration insecure
 
@@ -664,6 +724,21 @@ verification succeeded. On Windows and macOS the platform verifier fetches a
 missing intermediate over the network; on Linux it does not. Reading the
 verification result would make the same server complete on one machine and
 incomplete on another.
+
+What the rule did not cover, until 2026-08-22, was the sentence written beside
+the result. A chain reported incomplete that verified anyway was explained as
+"this platform's verifier fetched the missing certificate over the network" —
+true on macOS and Windows, false on Linux, which is where this service runs.
+The other explanation is that the issuer is in the trust store already. The
+note now gives both and says which one applies is a property of the machine
+that ran the scan, because that is all that was established.
+
+The finding's own wording was also stronger than the measurement behind it. It
+claimed the server "did not send every intermediate needed to reach a root",
+while `chainComplete` looks only for the issuer of the leaf; a chain missing a
+second intermediate passes it. Measured: leaf and one intermediate sent, the
+next one omitted, `chainComplete` true, and a real client refusing the
+connection. The finding now says what is checked.
 
 *Enforced in:* `internal/certinfo.chainComplete`
 *Guarded by:* `TestMissingIssuerIsAnIncompleteChain`,
@@ -704,9 +779,31 @@ Replaced rather than dropped, so a reader can see that something was there.
 The cut that bounds a long field lands on a character boundary for the same
 reason: half a rune reaches a reader as corruption this report introduced.
 
+**And the same attack aimed at the person rather than the pipe**, which this
+rule missed until 2026-08-22. A control byte makes a terminal act; a Unicode
+format character makes a reader misread, and neither is caught by a rule about
+bytes below 0x20. U+202E reverses the display of everything after it, so a
+certificate whose subject is `safe.test` followed by U+202E and
+`moc.knab-live` is shown as `safe.testevil-bank.com` — by a terminal, and by a
+browser, because `textContent` does not switch off the bidirectional
+algorithm. The zero-width characters do the quieter version: `goo` U+200B
+`gle.test` reads as `google.test` and is a different name. Measured: fifteen
+such characters passed through untouched.
+
+This is the published Trojan Source class, CVE-2021-42574, and it lands
+squarely on a tool whose entire output is a claim about which name a server
+presented. The whole Unicode `Cf` category is replaced rather than a list of
+the dangerous ones, for the reason N1 gives about address families: a deny
+list is worth exactly its completeness, and the characters added after this
+was written would be on nobody's list. The cost is stated rather than hidden —
+a subject legitimately using U+200D to join glyphs in an Indic or Persian name
+renders with a replacement mark. A name shown imperfectly is recoverable; a
+name shown as somebody else's is not.
+
 *Enforced in:* `internal/certinfo.sanitise`, applied by `trimmer.text`
 *Guarded by:* `TestControlCharactersInCertificateFieldsAreNeutralised`,
-`TestC1ControlsAreNeutralisedToo`, `TestTrimmingCutsOnARuneBoundary`
+`TestC1ControlsAreNeutralisedToo`, `TestTrimmingCutsOnARuneBoundary`,
+`TestNothingCanRewriteHowTheReportReads`
 
 ---
 
@@ -1095,11 +1192,32 @@ is open today.
   handler has validated the target, so the branch is defensive. Named in
   `TestEveryRefusalCodeCanBeProduced` rather than left to be discovered, and
   the test fails if the list of such codes grows without an explanation.
-- **One reader is not an audit.** The review that produced most of the rules
-  above was one careful reading, not a funded engagement, and it concentrated
-  where it was strongest: the release procedure, the limits, and the
-  instrumentation. `internal/policy` and `internal/certinfo` had the least of
-  its attention and are where the next reader should start.
+- **One reader is not an audit.** The rules above came from one careful
+  reading, not a funded engagement. It has now covered `internal/policy` and
+  `internal/certinfo` as well, which were its thinnest ground and turned out to
+  hold the errors that mattered most — a prohibited suite graded strong, a
+  verdict whose stated reason was false, and a certificate reported trusted
+  because Go stopped checking at the dates. What remains unread by anyone but
+  the author is `internal/tlsprobe` and `internal/dnsclient` below the parsing
+  that was already reviewed.
+- **Finite-field DHE cannot be observed at all.** `cipher.ffdhe` grades it, and
+  this scanner will never present it a suite to grade: Go offers no FFDHE
+  cipher suites, measured as fifteen ECDHE and zero FFDHE. A TLS 1.2 server
+  configured for finite-field DHE alone is therefore measured as accepting
+  nothing, and the report does not distinguish that from a server that refused
+  everything for its own reasons. The rule is right and unreachable through
+  this front end, which is worth stating rather than counting as coverage.
+- **A name can still be spelled in a lookalike alphabet.** R10 now replaces
+  every Unicode format character, which stops a certificate from reordering or
+  hiding what the report shows. It does nothing about a subject using Cyrillic
+  `а` where Latin `a` is expected: the two are different characters that render
+  identically, and normalising them away would corrupt every legitimate name in
+  those scripts. Hostname matching is unaffected — it compares bytes — so this
+  is a question of what a reader sees rather than of what was verified.
+- **Extended key usages Go does not name are not reported.** A certificate
+  carrying an EKU outside the seven the standard library has constants for puts
+  the OID in `UnknownExtKeyUsage`, which this report does not read. The field
+  reads as though the certificate carried nothing else.
 - **Four commits on `main` carry no signature.** S6. `1fdf674`, `cc163a3`,
   `01fc49f`, `7cd2cfa` — rebase-merged, which strips the signature the author
   put on them. The signed originals are the tag

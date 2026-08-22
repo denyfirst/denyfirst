@@ -41,6 +41,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/denyfirst/denyfirst/internal/policy"
@@ -241,6 +242,27 @@ func (t *trimmer) text(s string) string {
 // C1 is included because several terminals accept 0x9b as CSI, so stripping
 // only the C0 range leaves the same trick spelled differently.
 //
+// And Unicode's format characters are included, which is the half this missed
+// until 2026-08-22. A control byte makes a terminal act; a format character
+// makes a reader misread, and this report exists to be read. U+202E reverses
+// the display of everything after it, so a subject of
+// "safe.test\u202Emoc.knab-live" is shown as safe.testevil-bank.com by a
+// terminal and by a browser alike — textContent does not switch off the
+// bidirectional algorithm. The zero-width characters do the quieter version:
+// "goo\u200Bgle.test" is a different name that reads as google.test. Both are
+// the same attack as the ESC, aimed at the person instead of the pipe, and
+// this is a tool whose entire output is a claim about which name a server
+// presented. Trojan Source, CVE-2021-42574, is the published form.
+//
+// The whole Cf category rather than a list of the characters that are known
+// to be dangerous. A deny list is worth exactly its completeness, which is the
+// argument this project already makes about address families, and the ones
+// added to Unicode after this was written would not be on any list written
+// today. The cost is real and worth stating: a subject legitimately using
+// U+200D to join glyphs in an Indic or Persian name will render with a
+// replacement mark. A name shown imperfectly is recoverable; a name shown as
+// somebody else's is not.
+//
 // Replaced rather than dropped: a reader should be able to see that something
 // was there. This is the same rule dnsclient already applies to CAA values,
 // which are attacker-chosen for exactly the same reason.
@@ -257,7 +279,8 @@ func sanitise(s string) string {
 }
 
 func isDisplayControl(r rune) bool {
-	return r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f)
+	return r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) ||
+		unicode.Is(unicode.Cf, r)
 }
 
 func (t *trimmer) list(items []string, limit int) []string {
@@ -301,7 +324,10 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 	if len(described) > maxChainLength {
 		described = described[:maxChainLength]
 		report.Notes = append(report.Notes, fmt.Sprintf(
-			"The server sent %d certificates. Only the first %d are described; the rest were judged but not listed.",
+			"The server sent %d certificates. Only the first %d were used: the rest are neither "+
+				"described here nor offered to the verifier when it builds a path to a root, so a "+
+				"chain that needs one of them is reported as untrusted. The bound is this report's, "+
+				"not a judgement about the server.",
 			len(chain), maxChainLength))
 	}
 
@@ -340,9 +366,24 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 		// A chain that reaches a trusted root but has run out of time is not
 		// an untrusted chain. Expiry has its own rule; reporting both would
 		// charge one fault twice.
+		//
+		// The inference this used to make was wrong, though, and wrong in the
+		// direction that reassures. Go checks each certificate's dates before
+		// it looks for an issuer, so Expired is the error it returns for an
+		// expired certificate whether or not anything would ever have
+		// vouched for it. Reading that as "trusted apart from the dates"
+		// declared a self-signed or private-CA certificate trusted the moment
+		// it went out of date — and cert.chain-untrusted then never fired,
+		// and the transparency note swung round to telling a private
+		// certificate that browsers would refuse it for not being logged.
+		//
+		// So the question is asked again at a moment the certificate was
+		// actually valid, and that answer is the one reported. Measured
+		// 2026-08-22: a leaf from an untrusted private CA, expired a week
+		// earlier, was reported trusted.
 		var invalid x509.CertificateInvalidError
 		if errors.As(err, &invalid) && invalid.Reason == x509.Expired {
-			report.Trusted = true
+			report.Trusted = trustedWithinValidity(leaf, intermediates)
 		}
 	}
 
@@ -422,8 +463,21 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 
 	if !facts.ChainComplete {
 		if report.Trusted {
+			// Two things can produce this, and the note used to assert the
+			// second as though it were established. It is not: Go delegates
+			// to the platform verifier on macOS and Windows, which do fetch a
+			// missing issuer over the network, and does not on Linux, which
+			// does not — and this service runs on Linux, where the sentence
+			// was simply false. Which one applies is a fact about the machine
+			// that ran the scan; what the operator needs is the same either
+			// way.
 			report.Notes = append(report.Notes,
-				"The issuer was not sent, yet verification succeeded: this platform's verifier fetched the missing certificate over the network. Clients that do not fetch — most command-line tools, mobile applications, and API consumers — will fail against this server.")
+				"The certificate that issued the leaf was not sent, and verification succeeded anyway. "+
+					"Either that issuer is itself in this machine's trust store, or the platform verifier "+
+					"fetched it over the network; which of the two happened is a property of the machine "+
+					"that ran this scan rather than of the server. A client that neither holds the issuer "+
+					"nor fetches one — most command-line tools, mobile applications, and API consumers — "+
+					"will fail against this server.")
 		} else {
 			report.Notes = append(report.Notes,
 				"The server did not send the certificate that issued the leaf.")
@@ -431,6 +485,30 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 	}
 
 	return report, nil
+}
+
+// trustedWithinValidity asks whether the chain would have verified at a moment
+// the leaf was in date, which is the question "is this trusted, apart from
+// having expired" actually requires.
+//
+// The midpoint of the leaf's own window rather than either edge, so the same
+// call answers for a certificate that has expired and one that is not yet
+// valid; Go reports both as Expired. An intermediate that had already expired
+// by then makes this false, which is the right answer: the chain was not
+// verifiable at that moment either.
+func trustedWithinValidity(leaf *x509.Certificate, intermediates *x509.CertPool) bool {
+	window := leaf.NotAfter.Sub(leaf.NotBefore)
+	if window <= 0 {
+		// NotAfter at or before NotBefore. There is no moment to ask about.
+		return false
+	}
+
+	_, err := leaf.Verify(x509.VerifyOptions{
+		Intermediates: intermediates,
+		CurrentTime:   leaf.NotBefore.Add(window / 2),
+		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	})
+	return err == nil
 }
 
 // chainComplete reports whether the server sent the certificate that issued
@@ -589,16 +667,35 @@ func (r *Report) Summary() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s: %s", r.Chain[0].Subject, r.Verdict)
 
-	if r.Grade.DaysRemaining >= 0 {
+	// DaysRemaining truncates toward zero, so a certificate that expired eight
+	// hours ago and one that expires in eight hours both read 0. Choosing the
+	// cheerful reading of that put "0 days remaining" on the same line as a
+	// verdict of insecure and a finding that said the certificate had expired.
+	// The expiry finding is the authority here; this line follows it.
+	switch {
+	case r.expired():
+		b.WriteString(", expired")
+	case r.Grade.DaysRemaining == 0:
+		b.WriteString(", expires within a day")
+	default:
 		fmt.Fprintf(&b, ", %d days remaining", r.Grade.DaysRemaining)
-	} else {
-		fmt.Fprintf(&b, ", expired %d days ago", -r.Grade.DaysRemaining)
 	}
 
 	if n := len(r.Grade.Findings); n > 0 {
 		fmt.Fprintf(&b, ", %d finding(s)", n)
 	}
 	return b.String()
+}
+
+// expired reports what the grade already decided, so the summary line and the
+// findings cannot disagree about whether the certificate is in date.
+func (r *Report) expired() bool {
+	for _, f := range r.Grade.Findings {
+		if f.RuleID == "cert.expired" {
+			return true
+		}
+	}
+	return false
 }
 
 // tlsFeatureOID is the RFC 7633 TLS Feature extension, id-pe-tlsfeature.

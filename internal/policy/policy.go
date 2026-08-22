@@ -29,7 +29,16 @@ import "strings"
 
 // Version identifies this rule set. Every report states which version graded
 // it, so a verdict can be reproduced later even after the rules move on.
-const Version = "denyfirst-v1"
+//
+// v2, 2026-08-22. Two suites change verdict and one changes its reason:
+// finite-field DHE is now insecure rather than strong, because RFC 10015 made
+// it MUST NOT; a suite this rule set does not recognise is now weak and says
+// so, rather than insecure for a reason invented about it; and integrity-only
+// suites are graded for the encryption they lack rather than for forward
+// secrecy they have. A rule change is a version change, because a user who
+// scans an unchanged server twice and gets two grades has been given a reason
+// to distrust both.
+const Version = "denyfirst-v2"
 
 // ReviewBy is when these rules should next be read against their sources.
 //
@@ -40,7 +49,15 @@ const Version = "denyfirst-v1"
 //
 // A test fails once this date passes. The failure is a reminder rather than a
 // defect: read the rules against their references, then move the date.
-const ReviewBy = "2026-11-01"
+//
+// Reading the rules is half of it. The other half was missed in August 2026:
+// check that each reference is still the current document. RFC 8446 had been
+// obsoleted by RFC 9846 and BCP 195 updated twice, and nothing here noticed,
+// because the rules were read against citations rather than the citations
+// being read against the registry. Both halves, every time: open
+// rfc-editor.org/info/rfcNNNN for each reference and look for an "obsoleted
+// by" or "updated by" line before reading a word of the text.
+const ReviewBy = "2026-12-01"
 
 // Verdict is the severity assigned to a finding.
 type Verdict string
@@ -125,10 +142,22 @@ type Finding struct {
 var (
 	rfc7465 = Reference{"RFC 7465 — Prohibiting RC4 Cipher Suites", "https://www.rfc-editor.org/rfc/rfc7465"}
 	rfc7568 = Reference{"RFC 7568 — Deprecating SSLv3", "https://www.rfc-editor.org/rfc/rfc7568"}
-	rfc8446 = Reference{"RFC 8446 — TLS 1.3", "https://www.rfc-editor.org/rfc/rfc8446"}
+	// RFC 9846 replaced RFC 8446 as the TLS 1.3 specification, and obsoleted
+	// RFC 5246 with it. The old number is not kept as an alias: a citation is
+	// worth something only if a reader who follows it lands on the document
+	// that is in force.
+	rfc9846 = Reference{"RFC 9846 — TLS 1.3", "https://www.rfc-editor.org/rfc/rfc9846"}
 	rfc8996 = Reference{"RFC 8996 — Deprecating TLS 1.0 and TLS 1.1", "https://www.rfc-editor.org/rfc/rfc8996"}
 	rfc9155 = Reference{"RFC 9155 — Deprecating MD5 and SHA-1 signature hashes in TLS", "https://www.rfc-editor.org/rfc/rfc9155"}
 	rfc9325 = Reference{"RFC 9325 (BCP 195) — Recommendations for Secure Use of TLS", "https://www.rfc-editor.org/rfc/rfc9325"}
+
+	// BCP 195 is not one document. RFC 10015 raised three key-exchange
+	// recommendations from SHOULD NOT to MUST NOT in July 2026, which is what
+	// moves finite-field DHE from a suite this rule set tolerated to one it
+	// grades insecure.
+	rfc10015 = Reference{"RFC 10015 — Deprecating Obsolete Key Exchange Methods in TLS 1.2", "https://www.rfc-editor.org/rfc/rfc10015"}
+
+	rfc9150 = Reference{"RFC 9150 — TLS 1.3 Authentication and Integrity-Only Cipher Suites", "https://www.rfc-editor.org/rfc/rfc9150"}
 
 	nist80052   = Reference{"NIST SP 800-52 Rev. 2 — Guidelines for TLS Implementations", "https://csrc.nist.gov/pubs/sp/800/52/r2/final"}
 	nist800131a = Reference{"NIST SP 800-131A Rev. 2 — Transitioning Cryptographic Algorithms", "https://csrc.nist.gov/pubs/sp/800/131/a/r2/final"}
@@ -166,9 +195,24 @@ func DescribeCipher(name string) CipherProperties {
 	p := CipherProperties{Name: name}
 
 	switch {
+	case isIntegrityOnlySuite(name):
+		// RFC 9150. A TLS 1.3 suite, so the key exchange is ephemeral, but
+		// there is no encryption at all: the record carries an HMAC and the
+		// payload in the clear. Handled before the branch below because that
+		// one sets AEAD for every TLS 1.3 suite, and these are the exception
+		// the naming scheme gives no way to spot.
+		p.ForwardSecret = true
+		p.KeyExchange = "ephemeral (TLS 1.3)"
 	case isTLS13Suite(name):
-		// RFC 8446 removed static key exchange and non-AEAD ciphers, so both
-		// properties hold for every TLS 1.3 suite by construction.
+		// RFC 9846 removed static key exchange, so an ephemeral one holds for
+		// every TLS 1.3 suite that encrypts.
+		//
+		// One qualification, because the name cannot carry it: TLS 1.3 also
+		// has a PSK-only mode, psk_ke, which has no forward secrecy and is
+		// negotiated through psk_key_exchange_modes rather than through the
+		// suite. Nothing here performs a PSK handshake, so what this reports
+		// is true of every connection this tool makes — and would need
+		// qualifying if that ever stopped being so.
 		p.ForwardSecret = true
 		p.AEAD = true
 		p.KeyExchange = "ephemeral (TLS 1.3)"
@@ -189,9 +233,20 @@ func DescribeCipher(name string) CipherProperties {
 	}
 
 	switch {
+	case isIntegrityOnlySuite(name):
+		p.Cipher = "none"
 	case strings.Contains(name, "_CHACHA20_POLY1305"):
 		p.AEAD = true
 		p.Cipher = "ChaCha20-Poly1305"
+	// Before the generic AES branches: TLS_SM4_GCM_SM3 contains _GCM_, and
+	// reporting a ShangMi suite as AES-GCM is a fact about the connection
+	// stated wrongly. Facts are this function's only job.
+	case strings.HasPrefix(name, "TLS_SM4_GCM"):
+		p.AEAD = true
+		p.Cipher = "SM4-GCM"
+	case strings.HasPrefix(name, "TLS_SM4_CCM"):
+		p.AEAD = true
+		p.Cipher = "SM4-CCM"
 	case strings.Contains(name, "_GCM_"), strings.HasSuffix(name, "_GCM_SHA256"), strings.HasSuffix(name, "_GCM_SHA384"):
 		p.AEAD = true
 		p.Cipher = "AES-GCM"
@@ -231,6 +286,19 @@ var cipherRules = []cipherRule{
 		title:     "No encryption",
 		rationale: "Traffic is authenticated but sent in the clear, so anyone on the path reads it.",
 		refs:      []Reference{rfc9325, nist80052},
+	},
+	{
+		// RFC 9150 without the word NULL in the name, which is how it slipped
+		// past the rule above. The consequence is identical and the sentence
+		// is nearly the same; what differs is that this one is true of these
+		// suites, and "no forward secrecy" — the verdict they used to get —
+		// was not.
+		id:        "cipher.no-encryption",
+		match:     isIntegrityOnlySuite,
+		verdict:   Insecure,
+		title:     "No encryption",
+		rationale: "The record carries an HMAC and the payload in the clear, so the connection is authenticated and readable by anyone on the path.",
+		refs:      []Reference{rfc9150, rfc9325},
 	},
 	{
 		id:        "cipher.anonymous",
@@ -281,15 +349,53 @@ var cipherRules = []cipherRule{
 		refs:      []Reference{rfc9155, nist800131a},
 	},
 	{
+		// Finite-field ephemeral Diffie-Hellman. Forward-secret, and prohibited
+		// anyway, which is why it needs a rule of its own: every property this
+		// package reads off the name says the suite is fine.
+		//
+		// RFC 10015 (July 2026), updating BCP 195: "Clients MUST NOT offer and
+		// servers MUST NOT select FFDHE cipher suites in (D)TLS 1.2
+		// connections." That is the same language RFC 8996 uses about TLS 1.0,
+		// and this rule set already grades that insecure rather than weak. The
+		// reasons are Logjam and the long history of servers negotiating
+		// groups they generated once and never looked at again; the elliptic
+		// curve form is unaffected and remains the recommendation.
+		//
+		// _DHE_ does not match _ECDHE_: the character before DHE is C there,
+		// not an underscore. Asserted in the tests rather than left to be
+		// worked out from the substring.
+		id:        "cipher.ffdhe",
+		match:     func(n string) bool { return strings.Contains(n, "_DHE_") },
+		verdict:   Insecure,
+		title:     "Finite-field Diffie-Hellman key exchange",
+		rationale: "RFC 10015 prohibits offering or selecting finite-field DHE suites in TLS 1.2. The exchange is forward-secret, but the groups are frequently weak or reused, and the elliptic curve form replaces it with no loss.",
+		refs:      []Reference{rfc10015, rfc9325},
+	},
+	{
+		// Narrowed on 2026-08-22, and the narrowing is the fix.
+		//
+		// This used to fire on !ForwardSecret, which is false for every suite
+		// whose key exchange this package cannot read off the name. A suite it
+		// did not recognise was therefore accused of deriving its session key
+		// from a long-term key — a specific, checkable, and frequently untrue
+		// statement. TLS_SM4_GCM_SM3 collected it, and so did every name the
+		// standard library renders as a bare code point.
+		//
+		// It now fires only where the name says the key exchange is static,
+		// which is the only case the rationale describes. Anything unreadable
+		// falls to cipher.unrecognised, which claims nothing.
 		id: "cipher.no-forward-secrecy",
 		match: func(n string) bool {
-			p := DescribeCipher(n)
-			return !p.ForwardSecret
+			switch DescribeCipher(n).KeyExchange {
+			case "static RSA", "static DH", "static ECDH":
+				return true
+			}
+			return false
 		},
 		verdict:   Insecure,
 		title:     "No forward secrecy",
 		rationale: "The session key is derived from a long-term key, so anyone who later obtains the server's private key can decrypt traffic captured months or years earlier.",
-		refs:      []Reference{rfc9325, rfc8446, robot, bsiTR02102},
+		refs:      []Reference{rfc9325, rfc10015, rfc9846, robot, bsiTR02102},
 	},
 	{
 		id: "cipher.cbc",
@@ -300,6 +406,26 @@ var cipherRules = []cipherRule{
 		title:     "CBC mode",
 		rationale: "The MAC-then-encrypt construction in TLS has produced a long line of padding-oracle attacks; AEAD replaces it.",
 		refs:      []Reference{lucky13, rfc9325, mozillaTLS},
+	},
+	{
+		// Last, so that anything actually known about the suite is reported
+		// instead of this.
+		//
+		// GradeVersion has always answered an unrecognised version this way —
+		// weak, and it says it was not graded. GradeCipher answered the same
+		// question with an accusation. One package, one question, two answers,
+		// and the wrong one was the one that spoke with confidence.
+		//
+		// Weak rather than ungraded: Worst() skips ungraded, so an unreadable
+		// suite would drop out of the aggregate and a server accepting one
+		// could still be graded strong overall. Weak carries into the
+		// aggregate without asserting a defect.
+		id:        "cipher.unrecognised",
+		match:     func(n string) bool { return DescribeCipher(n).KeyExchange == "unknown" },
+		verdict:   Weak,
+		title:     "Unrecognised cipher suite",
+		rationale: "This suite is not covered by the rule set and was not graded. Its key exchange could not be read from its name, so nothing here can say whether it is sound.",
+		refs:      []Reference{rfc9325, mozillaTLS},
 	},
 }
 
@@ -433,8 +559,30 @@ func GradeVersion(version uint16) VersionFinding {
 	}
 }
 
+// isTLS13Suite reports whether the name belongs to the TLS 1.3 scheme.
+//
+// RFC 8446 changed how suites are named — TLS_AEAD_HASH, with the key exchange
+// no longer part of the name — and the registry now holds four families under
+// it. Matching the whole set matters more than it looks: a TLS 1.3 suite that
+// is not recognised here falls through to a key exchange of "unknown", and
+// until 2026-08-22 that produced a verdict of insecure with the reason "no
+// forward secrecy", which is the one thing a TLS 1.3 suite cannot lack.
+//
+// Checked against the IANA registry on 2026-08-22. The list is a list rather
+// than a rule about the absence of _WITH_, because two registered values —
+// TLS_EMPTY_RENEGOTIATION_INFO_SCSV and TLS_FALLBACK_SCSV — are signalling
+// values with no _WITH_ and no cipher, and a structural rule would grade them
+// as strong TLS 1.3 suites.
 func isTLS13Suite(name string) bool {
 	return strings.HasPrefix(name, "TLS_AES_") ||
 		strings.HasPrefix(name, "TLS_CHACHA20_POLY1305_") ||
+		strings.HasPrefix(name, "TLS_SM4_") || // RFC 8998
 		strings.HasPrefix(name, "TLS_AEGIS_")
+}
+
+// isIntegrityOnlySuite reports the two RFC 9150 suites, which authenticate
+// without encrypting. Named exactly: the pair is closed, and a prefix rule
+// over "TLS_SHA" would catch nothing else today and something else tomorrow.
+func isIntegrityOnlySuite(name string) bool {
+	return name == "TLS_SHA256_SHA256" || name == "TLS_SHA384_SHA384"
 }
