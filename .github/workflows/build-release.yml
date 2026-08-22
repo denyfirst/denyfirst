@@ -168,6 +168,38 @@ jobs:
           echo "── BUILD ──"
           cat BUILD
 
+      - name: Refuse to stage a build that does not pass its own tests
+        run: |
+          set -euo pipefail
+
+          # A tag can be put on any commit. CI runs on pushes and pull
+          # requests, so the default branch is green; nothing checked that the
+          # commit being released was one of those, and a tag placed on an
+          # older or an unmerged commit produced a draft release with no gate
+          # in front of it at all.
+          #
+          # Run after the build rather than before it. Nothing a gate installs
+          # or compiles can then have influenced the bytes that were produced,
+          # which keeps the reproduction comparing like with like.
+          go vet ./...
+          go test ./...
+
+      - name: Refuse to stage a build with a known vulnerability
+        run: |
+          set -euo pipefail
+
+          # S2 says known vulnerabilities block a release, and until now the
+          # only thing enforcing it ran on pushes and pull requests. That is
+          # not the same claim: govulncheck's answer changes when Go publishes
+          # a security release, without a line of this repository changing, so
+          # a commit that was clean when it merged can be shipped weeks later
+          # carrying a known reachable vulnerability with every check green.
+          #
+          # Pinned to the version CI uses. Two pins that drift apart mean a
+          # release gate and a merge gate that disagree about what is known.
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
       - name: Stage a draft release
         env:
           GH_TOKEN: ${{ github.token }}

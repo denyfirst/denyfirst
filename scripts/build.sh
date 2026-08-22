@@ -30,9 +30,17 @@ commands="denyfirst-scan denyfirstd"
 # toolchain, -buildvcs=false keeps the embedded VCS stamp from varying with
 # how the tree was fetched, and -s -w drop the symbol and DWARF tables.
 #
-# Together they make the output depend on the source and the compiler and
-# nothing else. Any flag added here has to be added for both callers at once,
-# which is now automatic.
+# -X main.version stamps the tag into the binary. Without it a program could
+# not say which release it was: -buildvcs=false is deliberate, and the tag in
+# the filename is lost the moment somebody renames or packages the file, so an
+# operator holding a binary had no way to check whether it was the one that
+# fixed anything. The value comes from the tag argument, which both callers
+# pass identically, so two builds of one tag still produce identical bytes and
+# a reproduction still compares like with like.
+#
+# Together they make the output depend on the source, the compiler and the tag
+# and nothing else. Any flag added here has to be added for both callers at
+# once, which is now automatic.
 for target in $targets; do
     os="${target%/*}"
     arch="${target#*/}"
@@ -43,7 +51,7 @@ for target in $targets; do
 
         CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
             go build -trimpath -buildvcs=false \
-                -ldflags "-s -w" \
+                -ldflags "-s -w -X main.version=${tag}" \
                 -o "${out}/${name}" "./cmd/${command}"
     done
 done

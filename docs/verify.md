@@ -95,13 +95,20 @@ stamp from varying with how the tree was fetched.
 page.** The flags are part of what the hash covers, and a second copy of them
 in a document is free to drift away from the one that made the release. This
 page carried such a copy until 2026-08-20, and it had drifted: it named
-`-X main.version=v0.1.0`, a symbol this program does not define. Go accepts the
-flag silently, folds the whole link command into the build ID, and writes that
-into the binary — so the recipe printed here produced a different hash from the
-release, on the correct source, with the correct compiler, for everyone who
-followed it. A verification step that fails for honest reasons does not fail
-safe. It teaches the reader that mismatches here are normal, which is the one
-lesson that must never be taught about this check.
+`-X main.version=v0.1.0` at a time when this program defined no such symbol.
+Go accepts the flag silently, folds the whole link command into the build ID,
+and writes that into the binary — so the recipe printed here produced a
+different hash from the release, on the correct source, with the correct
+compiler, for everyone who followed it. A verification step that fails for
+honest reasons does not fail safe. It teaches the reader that mismatches here
+are normal, which is the one lesson that must never be taught about this check.
+
+The symbol exists now, and the script sets it, which does not make the old
+recipe right — it makes the point sharper. The flags are whatever
+`scripts/build.sh` says they are on the day of the release, and no document
+can promise to keep up. Pass the tag exactly as it is written on the release:
+the version is linked into the binary, so building `v0.2.0` as `v0.2.0.1` or
+as `0.2.0` produces different bytes, correctly.
 
 There is now one copy of the build command, in `scripts/build.sh`, used by the
 release workflow, by the reproduction workflow, by the signing script and by
@@ -197,6 +204,36 @@ explanation for why it no longer matched.
 The `Reproduce` workflow in this repository does this automatically after every
 release, on a GitHub runner. Its result is public, so the check exists whether
 or not anyone runs it by hand.
+
+---
+
+---
+
+## Ask a binary what it is
+
+```sh
+./denyfirst-scan -version
+```
+
+```
+denyfirst-scan v0.2.0
+policy denyfirst-v2
+```
+
+Two lines, because they answer different questions. The first is the release,
+linked in at build time from the tag; the second is the rule set that produces
+verdicts. A verdict from one policy version is not comparable with a verdict
+from another, so a report carries the policy version too.
+
+A binary that prints `(unknown: not built by scripts/build.sh)` was built some
+other way — most likely by `go build` from a checkout, which is a perfectly
+good thing to be, and is not a release.
+
+`denyfirstd -version` answers the same way.
+
+The version is linked into the binary rather than read from the filename, so
+it is covered by the hash in `SHA256SUMS`. Renaming the file does not change
+what it says about itself.
 
 ---
 
