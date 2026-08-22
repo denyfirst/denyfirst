@@ -46,7 +46,7 @@ func TestHandshakeErrorsCarryNoInfrastructure(t *testing.T) {
 	}
 
 	for _, err := range cases {
-		got := classifyHandshakeError(err, 0x0304)
+		got, _ := classifyHandshakeError(err, 0x0304)
 
 		if got == "" {
 			t.Errorf("classifyHandshakeError(%v) returned nothing; a reader is left with a silent gap", err)
@@ -65,16 +65,22 @@ func TestHandshakeErrorsCarryNoInfrastructure(t *testing.T) {
 // offer a version is not the server refusing it, and conflating the two turns
 // a limitation of this tool into a claim about somebody else's server.
 func TestClientRefusalIsNotServerRefusal(t *testing.T) {
-	ours := classifyHandshakeError(
+	ours, oursRefused := classifyHandshakeError(
 		errors.New("tls: no supported versions satisfy MinVersion and MaxVersion"), 0x0301)
 	if !strings.Contains(ours, "not tested") {
 		t.Errorf("a refusal by our own client reads as %q; it must say the version was not tested", ours)
 	}
+	if oursRefused {
+		t.Error("our own client declining to offer a version was recorded as the server refusing it")
+	}
 
-	theirs := classifyHandshakeError(
+	theirs, theirsRefused := classifyHandshakeError(
 		errors.New("remote error: tls: protocol version not supported"), 0x0301)
 	if !strings.Contains(theirs, "server refused") {
 		t.Errorf("a refusal by the server reads as %q", theirs)
+	}
+	if !theirsRefused {
+		t.Error("the one case that is a server refusal was not recorded as one")
 	}
 }
 
@@ -95,7 +101,7 @@ func TestCommonFailuresAreDistinguished(t *testing.T) {
 	}
 
 	for name, tc := range cases {
-		got := classifyHandshakeError(tc.err, 0x0303)
+		got, _ := classifyHandshakeError(tc.err, 0x0303)
 		if !strings.Contains(got, tc.want) {
 			t.Errorf("%s: got %q, want it to mention %q", name, got, tc.want)
 		}

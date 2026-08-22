@@ -2,6 +2,7 @@ package certinfo
 
 import (
 	"crypto/x509"
+	"encoding/asn1"
 	"strings"
 	"testing"
 	"time"
@@ -167,5 +168,41 @@ func TestSummaryDoesNotCallAnExpiredCertificateCurrent(t *testing.T) {
 	}
 	if !strings.Contains(summary, "expired") {
 		t.Errorf("Summary() = %q, and the report carries a cert.expired finding; the two disagree", summary)
+	}
+}
+
+// A capability the standard library has no name for is still a capability.
+//
+// Go puts an extended key usage it holds no constant for into
+// UnknownExtKeyUsage rather than into ExtKeyUsage, and this report used to
+// read only the second. A certificate carrying an OID outside the seven Go
+// names therefore rendered as though it carried nothing but the ones it did
+// name — which is the wrong answer to "what is this certificate allowed to
+// do", and wrong in the direction that makes the certificate look narrower
+// than it is.
+//
+// The OID is printed as an OID. This package holds no registry that would
+// turn it into a name, and a report that guesses at one has started
+// inventing.
+func TestAnUnnamedExtendedKeyUsageIsStillReported(t *testing.T) {
+	root := newRoot(t)
+
+	// id-kp-documentSigning, 1.3.6.1.5.5.7.3.36: real, registered, and not
+	// one of the seven crypto/x509 has a constant for.
+	oid := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 3, 36}
+	leaf := newLeaf(t, root, leafOpts{unknownEKU: []asn1.ObjectIdentifier{oid}})
+
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+	if err != nil {
+		t.Fatalf("Analyse: %v", err)
+	}
+
+	usages := strings.Join(report.Chain[0].ExtKeyUsage, " ")
+	if !strings.Contains(usages, oid.String()) {
+		t.Errorf("extended key usages = %q; the certificate also carries %s and the report does not say so",
+			usages, oid)
+	}
+	if !strings.Contains(usages, "serverAuth") {
+		t.Errorf("extended key usages = %q; the named usage was lost", usages)
 	}
 }

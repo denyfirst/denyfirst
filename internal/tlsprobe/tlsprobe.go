@@ -194,6 +194,27 @@ type VersionResult struct {
 	// then go quiet, and the report says strong.
 	CipherListComplete bool `json:"cipherListComplete"`
 
+	// Refused is true only when the server answered and declined this
+	// version.
+	//
+	// "Refused" is a claim about the server, and most of the ways a probe
+	// fails are not: our own client declining to offer a version, a name that
+	// did not resolve, a timeout, a reset, a connection the policy would not
+	// make. Every one of those leaves Supported false too, so a front end
+	// that prints "refused" whenever Supported is false reports a server as
+	// having turned down an obsolete version it may in fact still accept.
+	//
+	// That is the flattering direction, and it is the one this project has to
+	// be most careful about — a scan that could not measure TLS 1.0 must not
+	// read as a scan that found it switched off. The bit is therefore set
+	// where the failure is classified rather than inferred from the absence
+	// of success, and both front ends say "not measured" when it is false.
+	//
+	// No omitempty. False is the answer in every case but one, and a field
+	// that disappears when it matters is a field a reader has to know about
+	// in advance.
+	Refused bool `json:"refused"`
+
 	// Error explains a failed handshake. A refusal by the server and a
 	// refusal by our own client are different findings, and the text
 	// distinguishes them.
@@ -241,7 +262,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 			result := VersionResult{Version: version, Name: versionName(version)}
 
 			if err != nil {
-				result.Error = classifyHandshakeError(err, version)
+				result.Error, result.Refused = classifyHandshakeError(err, version)
 				result.Blocked = errors.Is(err, safedial.ErrBlocked)
 				mu.Lock()
 				results[i] = result
@@ -354,9 +375,11 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	// report. The first bounds what was offered at all; the second explains
 	// why one version shows a single suite. Dropping either leaves the reader
 	// to assume the list is exhaustive.
-	if slices.ContainsFunc(results, func(v VersionResult) bool { return v.Supported }) {
+	if suiteCoverageApplies(results) {
 		report.Notes = append(report.Notes,
-			"Only cipher suites implemented by Go's TLS stack were offered. Suites outside it, and SSLv2 or SSLv3, are not covered.")
+			"Only cipher suites implemented by Go's TLS stack were offered. Suites outside it, and SSLv2 or SSLv3, are not covered. "+
+				"A server that speaks a version but shares no suite with this client answers a handshake the same way as one that refuses the version, "+
+				"so a refusal here is not proof the version is switched off.")
 	}
 
 	if slices.ContainsFunc(results, func(v VersionResult) bool {
@@ -369,6 +392,28 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	report.Duration = time.Since(start)
 	report.DurationMs = report.Duration.Milliseconds()
 	return report, nil
+}
+
+// suiteCoverageApplies reports whether the sentence bounding what this client
+// offered belongs in the report.
+//
+// A refusal counts as well as a success, and that half was missing.
+//
+// "handshake failure" is what a server sends when it will not speak a
+// version, and it is also what it sends when it speaks the version and shares
+// no suite with this client. The two are indistinguishable from the outside,
+// so a host configured for suites Go does not implement is reported as
+// refusing every version. The note was attached to success alone, so in that
+// case — every row a refusal, verdict ungraded, nothing measured — it was
+// dropped, which is exactly the report that most needs it.
+//
+// Nothing at all answering is the one case it stays out of. A name that did
+// not resolve was never offered anything, and a sentence about which suites
+// were offered would be describing a conversation that never happened.
+func suiteCoverageApplies(results []VersionResult) bool {
+	return slices.ContainsFunc(results, func(v VersionResult) bool {
+		return v.Supported || v.Refused
+	})
 }
 
 // blockedDestination reports that the name was refused by policy rather than
@@ -701,9 +746,13 @@ func versionName(v uint16) string {
 // default is a phrase rather than the error. A caller who needs the detail can
 // run the command line tool, where the operator and the reader are the same
 // person.
-func classifyHandshakeError(err error, version uint16) string {
+// The second return value says whether the server itself declined the
+// version. Only one branch below can answer yes; everything else is a
+// description of something that went wrong on the way, and calling any of it
+// a refusal credits the server with a decision it never made.
+func classifyHandshakeError(err error, version uint16) (text string, refused bool) {
 	if err == nil {
-		return ""
+		return "", false
 	}
 	msg := err.Error()
 
@@ -714,60 +763,60 @@ func classifyHandshakeError(err error, version uint16) string {
 	case strings.Contains(msg, "no supported versions"),
 		strings.Contains(msg, "unsupported protocol version"),
 		strings.Contains(msg, "no cipher suite supported"):
-		return fmt.Sprintf("not tested: this build of Go declined to offer %s", versionName(version))
+		return fmt.Sprintf("not tested: this build of Go declined to offer %s", versionName(version)), false
 
 	// The server answered and said no.
 	case strings.Contains(msg, "protocol version not supported"),
 		strings.Contains(msg, "handshake failure"),
 		strings.Contains(msg, "no application protocol"),
 		strings.Contains(msg, "insufficient security"):
-		return fmt.Sprintf("server refused %s", versionName(version))
+		return fmt.Sprintf("server refused %s", versionName(version)), true
 
 	// Refused by policy before anything was dialled. The reason belongs in
 	// the report; the address that triggered it does not.
 	case errors.Is(err, safedial.ErrBlocked):
-		return "not scanned: this is not a destination the service will connect to"
+		return "not scanned: this is not a destination the service will connect to", false
 
 	case strings.Contains(msg, "no such host"),
 		strings.Contains(msg, "server misbehaving"),
 		strings.Contains(msg, "no addresses"):
-		return "the name did not resolve"
+		return "the name did not resolve", false
 
 	case errors.Is(err, context.DeadlineExceeded),
 		strings.Contains(msg, "i/o timeout"),
 		strings.Contains(msg, "context deadline exceeded"):
-		return "the connection timed out"
+		return "the connection timed out", false
 
 	case errors.Is(err, context.Canceled):
-		return "the scan was cancelled before this version was reached"
+		return "the scan was cancelled before this version was reached", false
 
 	case strings.Contains(msg, "connection refused"):
-		return "the connection was refused"
+		return "the connection was refused", false
 
 	case strings.Contains(msg, "connection reset"),
 		strings.Contains(msg, "broken pipe"),
 		strings.Contains(msg, "EOF"):
-		return "the connection closed during the handshake"
+		return "the connection closed during the handshake", false
 
 	case strings.Contains(msg, "network is unreachable"),
 		strings.Contains(msg, "no route to host"),
 		strings.Contains(msg, "host is down"):
-		return "the host could not be reached"
+		return "the host could not be reached", false
 
 	case strings.Contains(msg, "first record does not look like a TLS handshake"):
-		return "the server answered with something that is not TLS"
+		return "the server answered with something that is not TLS", false
 
 	case strings.Contains(msg, "certificate"):
 		// Reached only if a certificate problem stops the handshake despite
 		// InsecureSkipVerify, which is unusual. The chain is described by
 		// certinfo when one arrives; here there is nothing to describe.
-		return "the handshake failed while the certificate was being processed"
+		return "the handshake failed while the certificate was being processed", false
 
 	default:
 		// Deliberately not err.Error(). An unrecognised failure is the case
 		// most likely to carry an address or a path, and it is exactly the
 		// case nobody has reviewed.
-		return fmt.Sprintf("%s could not be established", versionName(version))
+		return fmt.Sprintf("%s could not be established", versionName(version)), false
 	}
 }
 
