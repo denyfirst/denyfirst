@@ -756,6 +756,46 @@ misissuance.
 *Guarded by:* `TestMaxValidityDaysFollowsTheSchedule`,
 `TestValidityIsJudgedAtIssuance`
 
+### R11 — A measurement that stopped early is not a measurement
+
+Cipher enumeration makes one handshake for every suite a server accepts — up
+to twenty-two at TLS 1.2. A host that rate-limits, resets, or simply tires of
+answering will end that before the list does, and until 2026-08-22 every such
+ending was read the same way as the one legitimate ending: the server saying it
+had nothing left in common.
+
+The direction of the error is what makes it serious. A Go server answers with
+its strongest suite first, so a list cut short loses the weak end — the suites
+that would have set the verdict. Measured: a server accepting two GCM suites
+and two CBC suites was graded **strong** instead of weak when the connection
+stopped answering after the second handshake. It also means the scanned host
+can choose its own grade: answer twice, then go quiet.
+
+Two things follow, and the second is the one that matters.
+
+**Only the server saying no finishes a list.** A handshake failure alert, or
+insufficient security, is the server having considered what was left. A
+timeout, a reset, a refused connection, an unexpected close, or the round cap
+is the question going unanswered, and the suites not yet reached stay unknown.
+
+**An unfinished list forfeits `strong` and keeps everything worse.** The
+asymmetry is the one R5 already rests on: worst-case aggregation only moves one
+way, so a suite that was seen stays seen however the enumeration ended, while
+the absence of anything worse is precisely what an unfinished list cannot
+support. `Strong` is the verdict that claims an absence, so it is the one that
+is withdrawn — to `Ungraded`, not to `Weak`, because the server has not been
+shown to be doing anything wrong and R6 forbids grading a correct
+configuration down for a connection that dropped.
+
+The field is `CipherListComplete`, and its zero value is `false` on purpose. A
+producer that forgets it gets `Ungraded` rather than a grade it did not earn.
+
+*Enforced in:* `internal/tlsprobe.enumerateCiphers`,
+`internal/tlsprobe.isNoSharedSuite`, `internal/tlsprobe.summarise`
+*Guarded by:* `TestATruncatedSuiteListIsNotReportedAsComplete`,
+`TestAnUnfinishedListCannotProduceStrong`,
+`TestOnlyARefusalFinishesAnEnumeration`
+
 ### R10 — A report cannot act on the display that shows it
 
 Every field taken from a certificate is text, and only text. Control
@@ -933,7 +973,18 @@ DNSSEC chain and not this service's, and its absence is ambiguous by
 construction: an unsigned zone and an answer nobody validated look the same
 from here, and most zones are unsigned.
 
-Nine states are distinguished, and a test fails when two of them read the
+**A walk that ran out of budget is a tenth state, and it was reading as the
+one that means the opposite.** CAA is inherited, so the search goes label by
+label towards the root, and the budget bounds it. A walk that reached the top
+and found nothing means any authority may issue; a walk that stopped partway
+means the name carrying the policy was never asked. Both produced an empty
+record list, and the report published the first sentence for both. At the old
+budget of four, `a.b.c.d.example.com` was searched as far as `d.example.com`
+and reported as unrestricted, while a policy on `example.com` would have
+governed it. The budget is six now, which covers seven labels, and
+`Answer.Complete` says when it still stopped short.
+
+Ten states are distinguished, and a test fails when two of them read the
 same. One exists because `microsoft.com` publishes a record set carrying only
 `contactemail`: a CAA record set exists, no `issue` property is in it, and
 nothing is restricted. A report saying CAA is present would have been true and
@@ -962,7 +1013,8 @@ none of them is a fault of the name being scanned.
 *Guarded by:* `TestDescribeIssuanceSeparatesEveryState`,
 `TestNotCheckedIsNotAnAccusation`, `TestProvenanceIsAlwaysStated`,
 `TestEveryCheckedStateMentionsTransparency`, `TestNoRecordSaysWhatFollowsFromIt`,
-`TestIssuanceIsOnTheFaceOfTheReport`, `TestIssuanceSitsAboveTransparency`
+`TestIssuanceIsOnTheFaceOfTheReport`, `TestIssuanceSitsAboveTransparency`,
+`TestAnUnfinishedWalkDoesNotClaimNobodyIsRestricted`
 
 ### N5 — A resolver's reply is treated as hostile
 
@@ -1099,6 +1151,37 @@ exactly like one that passed.
 CI, which fails if the release build flags appear anywhere but
 `scripts/build.sh`
 
+### S7 — The toolchain is a supported one, and the analysis gates still run
+
+Go supports each major release until two newer ones exist. On 2026-08-22 that
+made the supported lines 1.27 and 1.26, and this project was on 1.25.13 —
+receiving no further security fixes, while being built almost entirely on
+`crypto/tls` and `crypto/x509`.
+
+The `go` directive is the only place a version is named. Nothing pins a
+toolchain in CI, in `scripts/build.sh`, or on the server, so one line moves all
+three: an older toolchain downloads the named one through the module mechanism
+and re-execs it, verified against the checksum database.
+
+**1.26.7 rather than 1.27.0, and the reasoning is worth keeping.** Both are
+supported, so the security argument is satisfied either way. 1.27 costs
+something: staticcheck's newest release, 2026.1 (`v0.7.0`), supports Go 1.26,
+and no release yet reads a 1.27 module. Measured on the branch — `Build and
+test` passed on 1.27 while `Static analysis` and `Known vulnerabilities` both
+failed. Trading a static analysis gate for a security benefit that 1.26.7
+already provides is not a trade. Move to 1.27 when staticcheck ships support,
+and check at every review whether it has.
+
+The three GODEBUG settings 1.27 removes — `tlsrsakex`, `tls3des`,
+`tls10server` — all govern defaults, and this scanner sets `MinVersion` and
+`CipherSuites` explicitly, so the eventual move costs nothing in what it can
+detect. Measured: explicit `MinVersion` reaches TLS 1.0 and 1.1, and the
+library still lists seven static-RSA and two 3DES suites.
+
+*Enforced in:* `go.mod`
+*Guarded by:* the `Build and test`, `Static analysis` and `Known
+vulnerabilities` jobs in CI, which is where the 1.27 attempt was caught
+
 ### S6 — What reaches `main` is what was signed
 
 Everything above rests on being able to say who wrote a line. Commits are
@@ -1214,6 +1297,12 @@ is open today.
   identically, and normalising them away would corrupt every legitimate name in
   those scripts. Hostname matching is unaffected — it compares bytes — so this
   is a question of what a reader sees rather than of what was verified.
+- **Only the newest version's certificate chain is described.** The chain is
+  taken from the most modern handshake that succeeded, and a server may present
+  a different certificate at a different protocol version — selection by
+  offered signature algorithms is a real configuration. A chain served only to
+  TLS 1.0 clients is not seen, so a SHA-1 certificate reachable that way would
+  go unreported while the report describes the modern one.
 - **Extended key usages Go does not name are not reported.** A certificate
   carrying an EKU outside the seven the standard library has constants for puts
   the OID in `UnknownExtKeyUsage`, which this report does not read. The field

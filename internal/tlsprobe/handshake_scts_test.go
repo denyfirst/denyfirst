@@ -25,7 +25,7 @@ func handshakeSCT(logID byte, version byte, signatureLen int) []byte {
 // correctly the difference between a report saying four logs and a report
 // saying two.
 func TestHandshakeLogIDsReadsTheIdentifiers(t *testing.T) {
-	got := handshakeLogIDs([][]byte{
+	got, _ := handshakeLogIDs([][]byte{
 		handshakeSCT(0xab, 0, 70),
 		handshakeSCT(0xcd, 0, 260),
 	})
@@ -60,14 +60,14 @@ func TestHandshakeLogIDsSkipsWhatItCannotRead(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := handshakeLogIDs(tc.scts); len(got) != 0 {
+			if got, _ := handshakeLogIDs(tc.scts); len(got) != 0 {
 				t.Errorf("read %v from an entry it should have skipped", got)
 			}
 		})
 	}
 
 	// A bad entry beside a good one drops only the bad one.
-	got := handshakeLogIDs([][]byte{
+	got, _ := handshakeLogIDs([][]byte{
 		make([]byte, 20),
 		handshakeSCT(0xef, 0, 70),
 	})
@@ -80,7 +80,7 @@ func TestHandshakeLogIDsSkipsWhatItCannotRead(t *testing.T) {
 // numbers are reported, and reading the second as the first is the mistake
 // this whole path exists to avoid.
 func TestHandshakeLogIDsCountsALogOnce(t *testing.T) {
-	got := handshakeLogIDs([][]byte{
+	got, _ := handshakeLogIDs([][]byte{
 		handshakeSCT(7, 0, 70),
 		handshakeSCT(7, 0, 70),
 		handshakeSCT(8, 0, 70),
@@ -94,7 +94,7 @@ func TestHandshakeLogIDsCountsALogOnce(t *testing.T) {
 // A handshake carrying nothing is the ordinary case, because almost every
 // authority embeds the timestamps in the certificate instead.
 func TestHandshakeLogIDsOfNothing(t *testing.T) {
-	if got := handshakeLogIDs(nil); len(got) != 0 {
+	if got, _ := handshakeLogIDs(nil); len(got) != 0 {
 		t.Errorf("read %v from no timestamps at all", got)
 	}
 }

@@ -177,6 +177,23 @@ type VersionResult struct {
 
 	Ciphers []CipherResult `json:"ciphers,omitempty"`
 
+	// CipherListComplete is false when enumeration stopped for a reason other
+	// than the server running out of suites it shares with this client.
+	//
+	// The distinction decides whether Ciphers is a measurement or a lower
+	// bound, and the difference is not cosmetic. Enumeration makes one
+	// handshake per suite the server accepts — up to twenty-two at TLS 1.2 —
+	// and a host that rate-limits, resets, or simply gets tired will cut that
+	// short. Go's server preference answers with its strongest suite first,
+	// so what a truncated list loses is the weak end: the suites that would
+	// have set the verdict. Measured on 2026-08-22, a server accepting two
+	// GCM suites and two CBC suites was graded strong instead of weak when
+	// the connection stopped answering after the second handshake.
+	//
+	// That also makes it something the scanned host can choose. Answer twice,
+	// then go quiet, and the report says strong.
+	CipherListComplete bool `json:"cipherListComplete"`
+
 	// Error explains a failed handshake. A refusal by the server and a
 	// refusal by our own client are different findings, and the text
 	// distinguishes them.
@@ -237,10 +254,13 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 
 			if version == tls.VersionTLS13 {
 				// Go does not expose TLS 1.3 suite selection, so report what
-				// was negotiated instead of enumerating.
+				// was negotiated instead of enumerating. One suite is all
+				// there is to have, so the list is as complete as it can be;
+				// the note below says what that means.
 				result.Ciphers = []CipherResult{gradeCipher(state.CipherSuite)}
+				result.CipherListComplete = true
 			} else {
-				result.Ciphers = p.enumerateCiphers(ctx, host, port, version)
+				result.Ciphers, result.CipherListComplete = p.enumerateCiphers(ctx, host, port, version)
 			}
 
 			mu.Lock()
@@ -266,12 +286,40 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 		report.ALPN = state.NegotiatedProtocol
 		report.OCSPStapled = len(state.OCSPResponse) > 0
 		report.SCTCount = len(state.SignedCertificateTimestamps)
-		report.SCTLogIDs = handshakeLogIDs(state.SignedCertificateTimestamps)
+		var unreadable int
+		report.SCTLogIDs, unreadable = handshakeLogIDs(state.SignedCertificateTimestamps)
+		if unreadable > 0 {
+			// Said rather than left as a difference between two numbers.
+			// certinfo raises a note when an embedded list cannot be parsed;
+			// this is the same fact arriving by the other route, and the
+			// reader who has to subtract one field from another to notice it
+			// is the reader who does not notice it.
+			report.Notes = append(report.Notes, fmt.Sprintf(
+				"%d of the %d transparency timestamps in the handshake could not be read, so the logs "+
+					"behind them are not counted. The total still includes them.",
+				unreadable, report.SCTCount))
+		}
 		break
 	}
 
 	report.Verdict, report.Findings = summarise(results)
 	report.BlockedDestination = blockedDestination(results)
+
+	// Said plainly, because the alternative is a list that reads as the whole
+	// answer. A reader who is not told the enumeration stopped early will take
+	// the suites shown for the suites accepted, which is the reading this
+	// project objects to in other tools.
+	for _, v := range results {
+		if !v.Supported || v.CipherListComplete {
+			continue
+		}
+		report.Notes = append(report.Notes, fmt.Sprintf(
+			"The cipher suite list for %s is incomplete. Enumeration needs one handshake per suite "+
+				"the server accepts, and this host stopped answering before the list ran out, so what "+
+				"is shown is what was reached rather than everything accepted. Suites are found "+
+				"strongest first, so the ones missing are the ones that would have lowered the grade.",
+			v.Name))
+	}
 
 	if len(report.Certificates) == 0 {
 		report.Notes = append(report.Notes,
@@ -285,6 +333,18 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 		known, prefers := p.detectServerPreference(ctx, host, port, results[idx])
 		report.PreferenceKnown = known
 		report.ServerPreference = prefers
+
+		if !known {
+			// Attempted and failed, which is not the same as not attempted,
+			// and the field alone cannot tell a reader which happened.
+			report.Notes = append(report.Notes,
+				"Cipher preference could not be determined: the two handshakes it needs did not both complete.")
+		} else if !results[idx].CipherListComplete {
+			// Answered from a list that was cut short, so the pair compared
+			// may not include the suite the server would really have chosen.
+			report.Notes = append(report.Notes,
+				"Cipher preference was determined from an incomplete suite list, so it describes the suites that were reached rather than everything the server accepts.")
+		}
 	} else {
 		report.Notes = append(report.Notes,
 			"Cipher preference could not be determined: it requires a pre-1.3 version offering at least two suites.")
@@ -374,39 +434,99 @@ func summarise(results []VersionResult) (policy.Verdict, []policy.Finding) {
 		return b.Verdict.Rank() - a.Verdict.Rank()
 	})
 
-	return policy.Worst(verdicts...), findings
+	worst := policy.Worst(verdicts...)
+
+	// A list that was cut short can support "something weak is here" and
+	// cannot support "nothing weak is here".
+	//
+	// The asymmetry is the same one R5 already rests on. Worst-case
+	// aggregation only ever moves one way, so a suite that was seen stays
+	// seen however the enumeration ended; what an unfinished list cannot do is
+	// carry the absence of anything worse. Strong is precisely the verdict
+	// that claims an absence, so it is the one an unfinished list forfeits.
+	//
+	// Ungraded rather than weak. The server has not been shown to be doing
+	// anything wrong — the measurement did not finish — and grading a correct
+	// configuration down for a connection that dropped is the failure R6
+	// exists to prevent. Ungraded says what happened: no verdict was reached.
+	if worst == policy.Strong {
+		for _, v := range results {
+			if v.Supported && !v.CipherListComplete {
+				return policy.Ungraded, findings
+			}
+		}
+	}
+
+	return worst, findings
 }
 
 // enumerateCiphers offers every candidate, records what the server picks,
 // removes it, and repeats. The number of handshakes is the number of suites
 // the server supports, not the number offered.
-func (p *Prober) enumerateCiphers(ctx context.Context, host, port string, version uint16) []CipherResult {
+//
+// The second return value says whether the list is finished. Every loop that
+// can end two ways has to say which one happened, and this one used to treat
+// any handshake error as "nothing left that both sides accept" — which is one
+// specific answer from the server, not a description of a timeout, a reset, or
+// a host that stopped answering halfway through twenty-two connections.
+//
+// Getting that wrong is optimistic, which is the direction that matters. The
+// suites arrive strongest first, because that is the order a Go server
+// prefers, so a truncated list drops the weak end and the verdict improves.
+// A host can do it on purpose.
+func (p *Prober) enumerateCiphers(ctx context.Context, host, port string, version uint16) (found []CipherResult, complete bool) {
 	remaining := candidateSuites(version)
-	found := make([]CipherResult, 0, len(remaining))
+	found = make([]CipherResult, 0, len(remaining))
 
-	for round := 0; len(remaining) > 0 && round < maxEnumerationRounds; round++ {
+	for round := 0; len(remaining) > 0; round++ {
+		if round >= maxEnumerationRounds {
+			// Above anything Go can offer, so this is a server answering with
+			// suites it was not offered, or something stranger. Either way the
+			// list is not finished.
+			return found, false
+		}
 		if ctx.Err() != nil {
-			break
+			return found, false
 		}
 
 		state, _, err := p.handshake(ctx, host, port, version, remaining)
 		if err != nil {
-			// Nothing left that both sides accept.
-			break
+			return found, isNoSharedSuite(err)
 		}
 
 		// A server that answers with a suite we did not offer is out of
-		// spec. Removing nothing would loop forever, so stop.
+		// spec. Removing nothing would loop forever, so stop — and say the
+		// list is unfinished, because it is.
 		idx := slices.Index(remaining, state.CipherSuite)
 		if idx < 0 {
-			break
+			return found, false
 		}
 
 		found = append(found, gradeCipher(state.CipherSuite))
 		remaining = slices.Delete(remaining, idx, idx+1)
 	}
 
-	return found
+	// Everything Go can offer was offered and accounted for.
+	return found, true
+}
+
+// isNoSharedSuite reports whether the server answered and said no, as opposed
+// to the conversation failing.
+//
+// This is the one ending that finishes an enumeration honestly: the server
+// considered what was left and had nothing in common with it. A timeout, a
+// reset, a refused connection or a closed socket all mean the question went
+// unanswered, and the suites not yet reached stay unknown.
+//
+// Matched on the alert the server sends rather than on our own guess about
+// what silence means. classifyHandshakeError already draws this line for the
+// version probe; this is the same line drawn where it decides a verdict.
+func isNoSharedSuite(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "handshake failure") ||
+		strings.Contains(msg, "insufficient security") ||
+		strings.Contains(msg, "no cipher suite supported") ||
+		strings.Contains(msg, "protocol version not supported")
 }
 
 // detectServerPreference offers the same suites in reversed order. A server
@@ -660,21 +780,22 @@ func classifyHandshakeError(err error, version uint16) string {
 // log appearing both here and inside the certificate is counted once.
 //
 // An entry too short to hold those fields, or announcing a version this has
-// not seen, is skipped rather than guessed at. The count beside this reports
-// how many arrived, so a skipped entry shows up as a difference between the
-// two rather than disappearing.
-func handshakeLogIDs(scts [][]byte) []string {
+// not seen, is skipped rather than guessed at, and counted so the caller can
+// say so. It used to be skipped and not counted, on the reasoning that the
+// total beside it would make the gap visible — which asks a reader to notice
+// that two numbers disagree and work out why.
+func handshakeLogIDs(scts [][]byte) (ids []string, unreadable int) {
 	const (
 		versionV1 = 0
 		idLen     = 32
 		minSCT    = 1 + idLen + 8 + 2
 	)
 
-	var out []string
 	seen := make(map[string]struct{}, len(scts))
 
 	for _, sct := range scts {
 		if len(sct) < minSCT || sct[0] != versionV1 {
+			unreadable++
 			continue
 		}
 		id := hex.EncodeToString(sct[1 : 1+idLen])
@@ -682,7 +803,7 @@ func handshakeLogIDs(scts [][]byte) []string {
 			continue
 		}
 		seen[id] = struct{}{}
-		out = append(out, id)
+		ids = append(ids, id)
 	}
-	return out
+	return ids, unreadable
 }

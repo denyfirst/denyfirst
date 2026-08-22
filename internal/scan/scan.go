@@ -269,6 +269,10 @@ func (s *Scanner) checkIssuance(ctx context.Context, host string) *policy.Issuan
 		Validated:  answer.Validated,
 		FoundAt:    answer.Name,
 		SearchedTo: answer.Name,
+		// Carried through rather than assumed: an empty record list means one
+		// thing when the walk reached the top and the opposite when it ran
+		// out of budget partway.
+		SearchComplete: answer.Complete,
 	}
 	if len(answer.Records) == 0 {
 		facts.FoundAt = ""
