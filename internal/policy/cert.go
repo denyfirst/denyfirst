@@ -196,6 +196,17 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 	// ── Cryptography ─────────────────────────────────────────────────
 	sig := strings.ToUpper(f.SignatureAlgorithm)
 	switch {
+	case !hasLetter(sig):
+		// Go renders a signature algorithm it has no name for as its decimal
+		// value — "0", "99" — so neither branch below matches and the
+		// certificate used to pass the cryptography section in silence. The
+		// key algorithm got this treatment on 2026-08-22 and the signature
+		// algorithm did not, which is the same omission left half-closed.
+		add("cert.signature-algorithm-unrecognised", Weak,
+			"Signature algorithm not recognised",
+			"The algorithm that signed this certificate is not one this rule set knows, so whether the hash behind it is sound was not established. Nothing here says it is weak; nothing here can say it is sound either.",
+			rfc5280, rfc9155)
+
 	case strings.Contains(sig, "MD2"), strings.Contains(sig, "MD5"):
 		add("cert.signature-md5", Insecure,
 			"Certificate signed with MD5 or MD2",
@@ -209,20 +220,18 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 			shattered, rfc9155, cabBR)
 	}
 
-	// An algorithm this rule set does not know is not an algorithm it approves
-	// of. LeafFacts documents "" as the unrecognised case and the switch below
-	// used to fall through it in silence, which left key strength ungraded and
-	// the certificate graded strong — the same question that GradeVersion
-	// answers with a weak verdict and a sentence saying so. certinfo already
-	// adds a note; a note does not reach the verdict, and the verdict is what
-	// is read.
-	if f.KeyAlgorithm == "" {
-		add("cert.key-algorithm-unrecognised", Weak,
-			"Key algorithm not recognised",
-			"The public key is of a type this rule set does not know, so its strength was not graded. Nothing here says it is weak; nothing here can say it is sound either.",
-			nist80057, cabBR)
-	}
-
+	// Every case, not only the ones with a size to check.
+	//
+	// This used to be a switch with arms for RSA and ECDSA and no default, so
+	// a key of any other type left the cryptography section in silence and the
+	// certificate could still be graded strong. GradeVersion answers the same
+	// question with a weak verdict and a sentence saying it was not graded;
+	// this now does too.
+	//
+	// The default arm becomes reachable in a new way from Go 1.27, which adds
+	// ML-DSA keys to crypto/x509. A post-quantum certificate is not weak, but
+	// it is not something this rule set has read either, and saying so is the
+	// only honest answer until somebody adds the case.
 	switch f.KeyAlgorithm {
 	case "RSA":
 		if f.KeyBits < 2048 {
@@ -238,6 +247,22 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 				"Curves below P-256 fall short of the 128-bit security level expected of a public certificate.",
 				cabBR, nist80057)
 		}
+	case "Ed25519":
+		// No size parameter to check: the curve is the security level, and
+		// there is only one. Listed rather than left to the default so that
+		// the absence of a finding here is a decision and not an omission.
+
+	default:
+		named := f.KeyAlgorithm
+		if named == "" {
+			named = "of an unnamed type"
+		} else {
+			named = named + " key"
+		}
+		add("cert.key-algorithm-unrecognised", Weak,
+			"Key algorithm not recognised",
+			fmt.Sprintf("The public key is %s, which this rule set does not know how to size, so its strength was not graded. Nothing here says it is weak; nothing here can say it is sound either.", named),
+			nist80057, cabBR)
 	}
 
 	// ── Lifetime ─────────────────────────────────────────────────────

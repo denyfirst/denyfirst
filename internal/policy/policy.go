@@ -25,7 +25,10 @@
 // revisit the rules, not to change the answer silently.
 package policy
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // Version identifies this rule set. Every report states which version graded
 // it, so a verdict can be reproduced later even after the rules move on.
@@ -578,6 +581,17 @@ func isTLS13Suite(name string) bool {
 		strings.HasPrefix(name, "TLS_CHACHA20_POLY1305_") ||
 		strings.HasPrefix(name, "TLS_SM4_") || // RFC 8998
 		strings.HasPrefix(name, "TLS_AEGIS_")
+}
+
+// hasLetter distinguishes an algorithm name from a number.
+//
+// Both of the standard library's algorithm String methods render a value they
+// have no name for as its decimal digits — "0" for the zero value, "99" for
+// anything out of range. A rule matching on substrings of a name has to be
+// able to tell that apart from a name, or it silently matches nothing and the
+// certificate passes.
+func hasLetter(s string) bool {
+	return strings.IndexFunc(s, unicode.IsLetter) >= 0
 }
 
 // isIntegrityOnlySuite reports the two RFC 9150 suites, which authenticate
