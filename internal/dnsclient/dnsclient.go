@@ -101,6 +101,17 @@ type Answer struct {
 	// grandparent existing.
 	Existed bool
 
+	// Complete is false when the walk ran out of budget before it reached the
+	// top of the name.
+	//
+	// An empty Records list means one of two things, and they lead to
+	// opposite conclusions. The walk reached the root and found no policy, so
+	// any authority may issue — or the walk stopped partway and the name that
+	// carries the policy was never asked. A caller that cannot tell them
+	// apart will publish the first sentence in both cases, which is how a
+	// restricted name comes to be reported as unrestricted.
+	Complete bool
+
 	// Queries counts the lookups the walk took, so a caller can charge them
 	// against a budget and say so when the budget ran out.
 	Queries int
@@ -134,8 +145,20 @@ type Client struct {
 	Timeout time.Duration
 
 	// MaxQueries bounds the walk. CAA is inherited from parents, so a name
-	// with many labels could take many lookups, each one telling the resolver
-	// about another name.
+	// with many labels could take many lookups.
+	//
+	// Six rather than four since 2026-08-22, and the two extra are not
+	// arbitrary. The walk goes label by label towards the root, so a budget of
+	// four stops after four names — which reaches the registrable domain for
+	// anything up to five labels and misses it from six. a.b.c.d.example.com
+	// was answered by searching as far as d.example.com and concluding that
+	// any authority may issue for it, while example.com may carry a policy
+	// governing the whole tree. Six covers seven labels, which is past
+	// anything ordinary.
+	//
+	// It is still a bound, so it can still stop short, and Answer.Complete
+	// now says when it did. A budget that quietly changes the meaning of the
+	// answer is worse than a smaller one that admits it.
 	MaxQueries int
 
 	// Dial is the network dialler, for tests. Nil means net.Dialer.
@@ -151,7 +174,7 @@ func (c *Client) timeout() time.Duration {
 
 func (c *Client) maxQueries() int {
 	if c.MaxQueries <= 0 {
-		return 4
+		return 6
 	}
 	return c.MaxQueries
 }
@@ -178,6 +201,11 @@ func (c *Client) LookupCAA(ctx context.Context, name string) (Answer, error) {
 
 	labels := strings.Split(strings.TrimSuffix(name, "."), ".")
 	out := Answer{Existed: true}
+
+	// Complete until the budget says otherwise. A walk that ran out partway
+	// and one that reached the top produce the same empty record list, and
+	// only one of them supports the sentence "no authority is restricted".
+	out.Complete = len(labels) <= c.maxQueries()
 
 	for i := 0; i < len(labels) && out.Queries < c.maxQueries(); i++ {
 		at := strings.Join(labels[i:], ".")

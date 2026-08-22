@@ -122,6 +122,12 @@ func TestUnsupportedVersionsDoNotContributeFindings(t *testing.T) {
 			Supported: true,
 			Grade:     policy.GradeVersion(tls.VersionTLS13),
 			Ciphers:   []CipherResult{gradeCipher(tls.TLS_AES_128_GCM_SHA256)},
+
+			// Set deliberately, and the zero value is deliberately the other
+			// way. An unfinished suite list forfeits a verdict of strong, so
+			// a producer that forgets this field gets ungraded rather than a
+			// grade it did not earn. Fixtures have to say so too.
+			CipherListComplete: true,
 		},
 	}
 

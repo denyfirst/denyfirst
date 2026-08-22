@@ -52,9 +52,20 @@ func TestDescribeIssuanceSeparatesEveryState(t *testing.T) {
 			name: "nothing anywhere up the tree",
 			facts: IssuanceFacts{
 				Checked: true, Exists: true, Validated: true,
-				SearchedTo: "az",
+				SearchedTo: "az", SearchComplete: true,
 			},
 			want: "no CAA at this name or above it, searched to az",
+		},
+		{
+			// The same empty answer, reached the other way. The walk ran out
+			// of budget, so the names above it were never asked, and the
+			// sentence above would be claiming an absence nobody looked for.
+			name: "nothing found, but the walk stopped short",
+			facts: IssuanceFacts{
+				Checked: true, Exists: true, Validated: true,
+				SearchedTo: "d.example.com", SearchComplete: false,
+			},
+			want: "no CAA found, but the search stopped at d.example.com before reaching the top",
 		},
 		{
 			name: "nobody may issue",
@@ -187,7 +198,7 @@ func TestEveryCheckedStateMentionsTransparency(t *testing.T) {
 // The finding a name with no CAA most needs to read.
 func TestNoRecordSaysWhatFollowsFromIt(t *testing.T) {
 	joined := strings.Join(DescribeIssuance(IssuanceFacts{
-		Checked: true, Exists: true, SearchedTo: "az",
+		Checked: true, Exists: true, SearchedTo: "az", SearchComplete: true,
 	}).Notes, " ")
 
 	for _, required := range []string{
@@ -197,6 +208,36 @@ func TestNoRecordSaysWhatFollowsFromIt(t *testing.T) {
 	} {
 		if !strings.Contains(joined, required) {
 			t.Errorf("the note does not say %q", required)
+		}
+	}
+}
+
+// A walk that ran out of budget must not be reported as one that found
+// nothing.
+//
+// The two produce the same empty record list and lead to opposite
+// conclusions. CAA is inherited, so a policy on example.com governs
+// a.b.c.d.example.com — and with a budget of four the walk reached only
+// d.example.com and reported that any authority may issue. The sentence was a
+// claim about every parent, made after visiting some of them.
+func TestAnUnfinishedWalkDoesNotClaimNobodyIsRestricted(t *testing.T) {
+	short := DescribeIssuance(IssuanceFacts{
+		Checked: true, Exists: true,
+		SearchedTo: "d.example.com", SearchComplete: false,
+	})
+
+	joined := strings.Join(short.Notes, " ") + " " + short.Line
+	for _, forbidden := range []string{
+		"Any publicly trusted certificate authority may therefore issue",
+		"no CAA at this name or above it",
+	} {
+		if strings.Contains(joined, forbidden) {
+			t.Errorf("an unfinished walk said %q, which is a claim about parents it never asked", forbidden)
+		}
+	}
+	for _, required := range []string{"stopped", "not established"} {
+		if !strings.Contains(strings.ToLower(joined), required) {
+			t.Errorf("an unfinished walk does not say %q, so a reader cannot tell it from a finished one", required)
 		}
 	}
 }

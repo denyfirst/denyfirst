@@ -73,6 +73,14 @@ type IssuanceFacts struct {
 	// SearchedTo is the highest name the walk reached.
 	SearchedTo string `json:"searchedTo,omitempty"`
 
+	// SearchComplete is false when the walk ran out of budget before reaching
+	// the top of the name, so the names above SearchedTo were never asked.
+	//
+	// Without it the empty answer has two readings and this package publishes
+	// the wrong one: "no CAA record was found for this name or for any parent"
+	// is a claim about every parent, and a walk cut short did not visit them.
+	SearchComplete bool `json:"searchComplete"`
+
 	// Validated is the AD bit from the answer the records came from.
 	//
 	// It is the resolver's claim that it verified the DNSSEC chain, not this
@@ -161,6 +169,24 @@ func DescribeIssuance(f IssuanceFacts) Issuance {
 					"nobody and restricts nobody: any publicly trusted authority may still issue for "+
 					"this name. Whoever published it knows what CAA is, which makes this more likely "+
 					"to be a step not finished than a decision. %s", f.FoundAt, pairing),
+				provenance,
+			},
+		}
+
+	case len(f.Authorities) == 0 && len(f.Wildcards) == 0 && !f.SearchComplete:
+		// The walk stopped before the top, so the names above it were never
+		// asked, and one of them is where a policy for the whole tree would
+		// live. Saying nothing restricts issuance here would be reporting an
+		// absence that was not looked for.
+		return Issuance{
+			Facts: f,
+			Line:  fmt.Sprintf("no CAA found, but the search stopped at %s before reaching the top", f.SearchedTo),
+			Notes: []string{
+				"No CAA record was found between this name and " + f.SearchedTo + ", and the search " +
+					"stopped there rather than continuing towards the root. CAA is inherited, so a " +
+					"policy published on a shorter name would govern this one and would not have been " +
+					"seen. Whether any authority is restricted from issuing for this name is therefore " +
+					"not established either way. " + pairing,
 				provenance,
 			},
 		}
