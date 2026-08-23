@@ -1,5 +1,7 @@
 package policy
 
+import "time"
+
 // Certificate status stapling, graded.
 //
 // This rule set is unusual in that its most obvious rule is deliberately not
@@ -46,10 +48,42 @@ var (
 type StapleFacts struct {
 	// Stapled is true when the server sent a certificate status response.
 	//
-	// It says a response arrived. It does not say the response was
-	// well-formed, current, signed by the issuer, or about this certificate,
-	// because none of that is checked. See the notes this produces.
+	// It says a response arrived, and nothing more. The fields below say what
+	// reading it established.
 	Stapled bool
+
+	// Validated is true when the response was parsed, matched against this
+	// certificate by issuer name hash, issuer key hash and serial number,
+	// found to be current, and verified against the issuer's signature or a
+	// responder the issuer delegated to.
+	//
+	// Until 2026-08-22 there was no such field, and a stapled response was
+	// reported as a fact about revocation. A server can staple anything: an
+	// empty file, a year-old response, a response about another certificate,
+	// or one signed by nobody. All of them produced the same sentence, and a
+	// reader takes that sentence to mean revocation was checked.
+	Validated bool
+
+	// Status is what a validated response says: "good", "revoked" or
+	// "unknown". Empty when Validated is false, because a status read out of
+	// a response nobody could verify is a number a stranger chose.
+	Status string
+
+	// RevokedAt is when the responder says the certificate was withdrawn.
+	RevokedAt time.Time
+
+	// Unverifiable explains why a stapled response established nothing. It is
+	// this project's own sentence rather than anything the server sent.
+	Unverifiable string
+
+	// IssuerMissing is true when the chain did not include the certificate
+	// that issued the leaf, so nothing could be verified.
+	//
+	// Kept apart from Unverifiable because it is not a fault of the response
+	// and not an answer about revocation: cert.chain-incomplete already
+	// grades it, and charging the same omission twice would report one
+	// mistake as two.
+	IssuerMissing bool
 
 	// MustStaple is true when the leaf carries the RFC 7633 TLS Feature
 	// extension asking for status_request.
@@ -111,24 +145,91 @@ func GradeStapling(f StapleFacts) StapleFinding {
 	// requirement was placed there by whoever requested the certificate. The
 	// server is not falling short of an outside recommendation; it is falling
 	// short of its own.
-	if f.MustStaple && !f.Stapled {
+	// A response that cannot be verified is, to a client honouring the
+	// extension, the same outcome as no response: the handshake fails. This
+	// rule used to fire only on an absent one, so a certificate demanding a
+	// staple and getting sixteen bytes of rubbish passed it.
+	if f.MustStaple && !(f.Stapled && f.Validated) {
+		what := "and the handshake carried none"
+		if f.Stapled {
+			what = "and the response it carried could not be verified"
+		}
 		add("cert.must-staple-not-stapled", Insecure,
-			"Certificate requires stapling and none was sent",
-			"The certificate carries the TLS Feature extension asking for a stapled status response, and the handshake carried none. Clients that honour the extension will refuse the connection; the rest will connect believing a revocation check took place that did not.",
+			"Certificate requires stapling and no valid response was sent",
+			"The certificate carries the TLS Feature extension asking for a stapled status response, "+what+
+				". Clients that honour the extension will refuse the connection; the rest will connect believing a revocation check took place that did not.",
 			rfc7633, rfc6960, rfc9325)
+	}
+
+	// ── What a verified response said ────────────────────────────────
+	//
+	// The finding this whole path exists for. A revoked certificate is not a
+	// weakness to weigh against others: the authority has withdrawn it, every
+	// client that checks will refuse it, and the ones that do not are
+	// trusting a key somebody asked to have untrusted.
+	if f.Validated && f.Status == "revoked" {
+		when := ""
+		if !f.RevokedAt.IsZero() {
+			when = " on " + f.RevokedAt.UTC().Format("2006-01-02")
+		}
+		add("cert.revoked", Insecure,
+			"The certificate has been revoked",
+			"The stapled status response, verified against the issuing authority, says this certificate was revoked"+when+
+				". Revocation is how a certificate is withdrawn before it expires, usually because its key was exposed or it was issued in error. Clients that check will refuse the connection.",
+			rfc6960, rfc9325)
+	}
+
+	// A responder that has never heard of a certificate it should be
+	// authoritative for is not reassurance, and reading it as "not revoked"
+	// is the mistake RFC 6960 warns about directly.
+	if f.Validated && f.Status == "unknown" {
+		add("cert.revocation-unknown", Weak,
+			"The authority does not recognise this certificate",
+			"The stapled response verifies against the issuing authority and says the status of this certificate is unknown. That is not the same as not revoked: the responder is authoritative for this issuer and does not have a record of this serial.",
+			rfc6960)
+	}
+
+	// Bytes that claim to be an authority's statement and are not one.
+	//
+	// Weak rather than insecure, and the distinction is R6's. The certificate
+	// may be perfectly good; what is broken is the server's stapling, and the
+	// harm is that a reader — and a client that does not hard-fail — is shown
+	// a revocation check that did not happen. A certificate that demands
+	// stapling is covered above, where the consequence is a refused
+	// connection rather than a false reassurance.
+	if f.Stapled && !f.Validated && !f.IssuerMissing {
+		add("cert.staple-unverifiable", Weak,
+			"The stapled status response could not be verified",
+			"A certificate status response was stapled into the handshake and it does not establish anything: "+f.Unverifiable+
+				". A response that cannot be verified is not a revocation check, and a client that does not insist on one will connect believing it got a guarantee it did not.",
+			rfc6960, rfc7633)
 	}
 
 	// ── Notes ────────────────────────────────────────────────────────
 	switch {
-	case f.Stapled:
-		// The most important sentence in this file. A report that says a
-		// response was stapled, and stops there, has told a reader that
-		// revocation was checked. It was not.
+	case f.Stapled && f.IssuerMissing:
 		out.Notes = append(out.Notes,
-			"A certificate status response was stapled into the handshake, and it was not read. "+
-				"Its signature was not verified, its dates were not compared against the clock, and "+
-				"the serial it describes was not matched against this certificate. What this shows is "+
-				"that the server is stapling, not that the certificate is good.")
+			"A certificate status response was stapled and could not be checked, because the server did not "+
+				"send the certificate that issued this one. Every check a response needs is against the issuer: "+
+				"matching it to this certificate, and verifying its signature. This is not held against the "+
+				"response — the incomplete chain is reported separately — but nothing about revocation was established.")
+
+	case f.Stapled && f.Validated:
+		// This sentence used to say the response was not read, and it was
+		// the most important sentence in the file for exactly that reason.
+		// It is now the other half: what was checked, and what still is not.
+		out.Notes = append(out.Notes,
+			"The stapled response was read and verified: it describes this certificate by issuer and serial, "+
+				"it is current, and its signature checks out against the issuing authority. What is still not "+
+				"checked is the responder's own revocation status, which would need a second request over the "+
+				"network; RFC 6960 lets an issuer waive that, and responder certificates are short-lived for "+
+				"the same reason.")
+
+	case f.Stapled:
+		out.Notes = append(out.Notes,
+			"A certificate status response was stapled and it established nothing. Reading it is what tells "+
+				"a stapling server apart from a server stapling whatever it has: the response has to describe "+
+				"this certificate, be current, and carry the issuing authority's signature.")
 
 	case f.HasResponder:
 		// Not a finding. See the reasoning at the top of this file; this is

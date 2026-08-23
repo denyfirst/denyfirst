@@ -142,7 +142,16 @@ type Report struct {
 
 	ALPN        string `json:"alpn,omitempty"`
 	OCSPStapled bool   `json:"ocspStapled"`
-	SCTCount    int    `json:"sctCount"`
+
+	// OCSPResponse is the stapled certificate status response, as sent.
+	//
+	// Kept because observing that bytes arrived is not the same as reading
+	// them, and the difference is the difference between "the server is
+	// stapling" and "the certificate is not revoked". Not serialised: it is
+	// input to a check rather than a fact about the server, and the check's
+	// result is what a reader needs.
+	OCSPResponse []byte `json:"-"`
+	SCTCount     int    `json:"sctCount"`
 
 	// BlockedDestination reports that every attempt was refused by safedial
 	// before anything was dialled: the name resolved only to private,
@@ -335,6 +344,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 		report.Address = addrs[i]
 		report.ALPN = state.NegotiatedProtocol
 		report.OCSPStapled = len(state.OCSPResponse) > 0
+		report.OCSPResponse = state.OCSPResponse
 		report.SCTCount = len(state.SignedCertificateTimestamps)
 		var unreadable int
 		report.SCTLogIDs, unreadable = handshakeLogIDs(state.SignedCertificateTimestamps)

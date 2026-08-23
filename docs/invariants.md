@@ -538,38 +538,71 @@ same. No connection is ever opened to a responder.
 *Enforced in:* `internal/certinfo.Analyse`, in the notes
 *Guarded by:* `TestRevocationIsDeclaredUnchecked`
 
-### R3b — A stapled response is reported, not believed
+### R3b — A stapled response is read, and what reading it cannot settle is said
 
-A status response that arrives in the handshake costs nothing to observe: it
-is already on the wire and no third party learns anything. So the report says
-whether one arrived.
+A certificate stops deserving trust before it expires when its key is stolen,
+when it was issued in error, or when a domain changes hands. Revocation is the
+mechanism, and a stapled OCSP response is the authority's signed statement
+that a certificate was not revoked as of a moment — handed to the client by
+the server, so the client never tells the authority which site it is visiting.
 
-It says no more than that. The response is not parsed, its signature is not
-verified against the issuer, its dates are not compared against the clock, and
-the serial it describes is not matched against the certificate in hand. A
-report that prints "stapled" and stops has told a reader that revocation was
-checked, which is the distance between an observation and a guarantee.
+Until 2026-08-22 this project observed that bytes arrived and reported *a
+status response was stapled*. It parsed nothing. A server can staple anything:
+an empty file, a year-old response, a response about a different certificate,
+one signed by nobody, or one that says revoked. Every one of them produced the
+same sentence, and a reader takes that sentence to mean revocation was
+checked.
 
-Absence of a staple is reported and not graded. The CA/Browser Forum no longer
-requires certificate authorities to run OCSP and several have withdrawn it, so
-a certificate issued now may name no responder at all; marking a server down
-for failing to send a response nothing exists to produce would penalise a
-correct configuration, which R6 forbids. The certificate's own CRL
-distribution points decide which of the three sentences a reader gets, so the
-report does not claim a list exists where none does.
+The direction is the worst available. Revocation is the emergency brake of the
+whole system, and the case it exists for — a certificate that really has been
+withdrawn — is exactly the case a server has a motive to paper over by
+continuing to staple the last response that said good.
 
-One thing here is graded. A certificate carrying the RFC 7633 TLS Feature
-extension has instructed clients to refuse the connection without a status
-response. A server that then sends none is not falling short of an outside
-recommendation; it is falling short of its own certificate, and clients that
-honour the extension close the connection.
+**Four things have to hold before a status is reported.** The responder
+answered successfully with a basic response. The entry describes *this*
+certificate, by issuer name hash, issuer key hash and serial number, all
+three — the serial alone is unique per authority rather than globally, and the
+issuer hashes alone describe every certificate that authority ever signed. It
+was produced in the past and has not expired. And it is signed by the issuer,
+or by a responder the issuer both signed and marked with the OCSP-signing
+extended key usage — without that second condition any certificate the
+authority ever issued, including the one being checked, could vouch for its
+own revocation status.
 
-*Enforced in:* `internal/policy.GradeStapling`, joined in `internal/scan.Scan`
-from `tlsprobe`'s observation and `certinfo`'s reading of the leaf
-*Guarded by:* `TestGradeStaplingGradesOnlyTheBrokenPromise`,
-`TestStapledNoteDoesNotClaimTheResponseWasChecked`,
-`TestUnstapledNotesDistinguishThreeSituations`,
-`TestListClaimIsNotMadeWithoutAList`, `TestMissingStapleIsNotAFinding`
+Anything else is a response that establishes nothing, reported as such, and
+never as good news.
+
+**What still is not checked, and why it stays that way.** The responder
+certificate's own revocation status. Checking it means fetching another
+response, over the network, from an address the scanned party chooses; nothing
+in this package fetches anything, and only bytes the server already sent are
+read. RFC 6960 §4.2.2.2.1 lets an issuer waive the check, and responder
+certificates carry short lifetimes for that reason.
+
+**A missing issuer is not a failure of the response.** Every check is against
+the issuer, so a chain that omits it establishes nothing — and produces no
+finding here, because `cert.chain-incomplete` already grades the omission and
+charging one mistake twice reports it as two.
+
+Everything this reads is chosen by the scanned server, which makes it the most
+hostile input this project accepts and the only cryptographic parser it owns.
+It is bounded at every length, it returns errors rather than panicking, and it
+is fuzzed on the nightly schedule.
+
+*Enforced in:* `internal/ocsp.Check`, `internal/policy.GradeStapling`
+*Guarded by:* `TestAGoodResponseIsRead`, `TestARevokedCertificateIsReported`,
+`TestAnUnknownStatusIsNotGood`,
+`TestAResponseAboutAnotherCertificateIsRefused`,
+`TestAResponseFromAnotherAuthorityIsRefused`,
+`TestAnExpiredResponseIsRefused`, `TestAResponseFromTheFutureIsRefused`,
+`TestAResponseSignedByNobodyIsRefused`, `TestADelegatedResponderIsAccepted`,
+`TestACertificateCannotVouchForItselfWithoutTheDelegation`,
+`TestAResponderFromAnotherAuthorityIsRefused`,
+`TestAnUnsuccessfulResponseIsNotAStatus`,
+`TestWithoutTheIssuerNothingIsClaimed`,
+`TestRubbishIsRefusedWithoutPanicking`,
+`TestAnUnknownResponseTypeIsRefused`,
+`TestTheStapledNoteSaysWhichOfTheThreeHappened`, `FuzzCheck`
 
 ### R3c — Transparency receipts are counted, not believed
 
@@ -1552,9 +1585,19 @@ Anything below is open today.
 - **Transparency receipts are counted and not verified.** R3c. Checking one
   needs the issuing log's public key, and the qualified-log list is maintained
   by browsers on their own schedule.
-- **A stapled response is observed, not validated.** R3b. Verifying one needs
-  an OCSP parser and a signature check against the issuer, and this project
-  carries no dependency that would provide either.
+- **A stapled response's responder is not itself checked for revocation.**
+  R3b. The response is now parsed and verified; what remains is the responder
+  certificate's own status, and checking it means fetching a second response
+  over the network from an address the scanned party chooses. This scanner
+  fetches nothing. RFC 6960 lets an issuer waive the check and responder
+  certificates are short-lived for the same reason, so this is a residual
+  rather than a hole — but it is a residual, and a compromised responder key
+  would not be caught here.
+- **No real responder's bytes are in the test corpus.** Every OCSP response
+  the tests read was built by the tests. The structures round-trip, the
+  refusals are exercised in both directions and the parser is fuzzed, but a
+  real authority's encoding has not been through it. The first response a
+  live scan verifies should be captured as a fixture.
 - **The per-target limit still answers at its edge.** A9. The threshold now
   sits outside ordinary traffic, so a probe learns nothing about a person; what
   remains is that a host genuinely being checked eight times in a window can be
@@ -1623,16 +1666,6 @@ Anything below is open today.
   provenance exists; it is one `git diff` away rather than in the log, which is
   not the same thing. Closing it needs a force-push to `main`, and opening that
   door costs more than the four commits are worth.
-- **No release has been reproduced.** S3. `reproduce.yml` has been watched —
-  dispatched by hand against v0.1.0 on 2026-08-20 — and it refused, correctly,
-  because that release predates the record of what built it. So the workflow is
-  known to run and known to fail closed, and the property it exists to
-  demonstrate is still undemonstrated: no release in this project has been
-  rebuilt byte-for-byte by a second party. v0.2.0 is the first tag that can be,
-  because it carries `scripts/build.sh` in its own tree and the release records
-  that script's hash. The entry stays open until a run of `reproduce.yml`
-  against a published release has gone green, which is a thing that happens or
-  does not rather than a thing anybody can promise.
 - **`release.ps1 -Compare` has not run end to end.** The bash path was exercised
   by hand on 2026-08-20 and built all ten artifacts, which is most of it, but
   the surrounding script — download, verify, compare, sign — has not been run
