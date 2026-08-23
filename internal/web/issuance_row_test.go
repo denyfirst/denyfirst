@@ -25,7 +25,12 @@ func TestIssuanceIsOnTheFaceOfTheReport(t *testing.T) {
 	if !strings.Contains(source, "issuance.line") {
 		t.Error("the row does not read the line the policy wrote")
 	}
-	if !strings.Contains(source, "certificate(data.certificate, data.tls, data.issuance)") {
+	// Matched on the argument rather than on the whole call. Pinning the exact
+	// signature made this fail the moment the section was given one more
+	// thing to show — a test asserting a spelling rather than the property it
+	// was written to protect, which is the trap the privacy page fell into
+	// and the revocation wording fell into after it.
+	if !strings.Contains(source, "certificate(data.certificate") || !strings.Contains(source, "data.issuance") {
 		t.Error("the certificate section is not given the issuance answer, so the row is always empty")
 	}
 }

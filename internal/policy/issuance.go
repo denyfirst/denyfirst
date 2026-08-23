@@ -236,7 +236,7 @@ func describeAuthorities(f IssuanceFacts) string {
 		// A single semicolon is the way a zone says nobody may issue.
 		parts = append(parts, "no authority is permitted to issue")
 	case len(f.Authorities) > 0:
-		parts = append(parts, "issuance limited to "+list(f.Authorities))
+		parts = append(parts, "issuance limited to "+list(readable(f.Authorities)))
 	default:
 		// issuewild without issue. RFC 8659 leaves ordinary issuance
 		// unrestricted here, which is worth saying rather than implying.
@@ -247,13 +247,64 @@ func describeAuthorities(f IssuanceFacts) string {
 	case len(f.Wildcards) == 1 && f.Wildcards[0] == ";":
 		parts = append(parts, "wildcards refused")
 	case len(f.Wildcards) > 0:
-		parts = append(parts, "wildcards limited to "+list(f.Wildcards))
+		parts = append(parts, "wildcards limited to "+list(readable(f.Wildcards)))
 	}
 
 	if f.FoundAt != "" {
 		return strings.Join(parts, "; ") + " (from " + f.FoundAt + ")"
 	}
 	return strings.Join(parts, "; ")
+}
+
+// readable separates each CAA value into the authority it names and the
+// parameters that follow it.
+//
+// RFC 8659 §4.2 puts parameters after the domain, separated by semicolons:
+// `pki.goog; cansignhttpexchanges=yes` is one value naming one authority. The
+// whole string used to go into the list unchanged, and the list is joined with
+// commas while the clauses around it are joined with semicolons — so a real
+// record set came out as
+//
+//	issuance limited to comodoca.com, digicert.com; cansignhttpexchanges=yes,
+//	letsencrypt.org, pki.goog; cansignhttpexchanges=yes and ssl.com
+//
+// which a reader cannot parse and might read as naming an authority called
+// cansignhttpexchanges=yes. Measured on kapitalbank.az, 2026-08-23.
+//
+// The parameter is worth showing rather than dropping. cansignhttpexchanges
+// authorises that authority to sign Signed HTTP Exchanges, which is a wider
+// power than issuing an ordinary certificate, and a reader deciding whether a
+// zone's restrictions are tight enough needs to see it.
+func readable(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		domain, params, found := strings.Cut(value, ";")
+		domain = strings.TrimSpace(domain)
+
+		if domain == "" {
+			// An empty value permits nobody, which is meaningful on its own
+			// and must not silently vanish from a list.
+			out = append(out, "an empty value, which names no authority")
+			continue
+		}
+		if !found {
+			out = append(out, domain)
+			continue
+		}
+
+		var settings []string
+		for _, p := range strings.Split(params, ";") {
+			if p = strings.TrimSpace(p); p != "" {
+				settings = append(settings, p)
+			}
+		}
+		if len(settings) == 0 {
+			out = append(out, domain)
+			continue
+		}
+		out = append(out, domain+" ("+strings.Join(settings, ", ")+")")
+	}
+	return out
 }
 
 // list writes names as prose, so a report does not read like a data structure.

@@ -111,6 +111,20 @@ type StapleFinding struct {
 	Verdict  Verdict   `json:"verdict"`
 	Findings []Finding `json:"findings,omitempty"`
 
+	// Stapled, Validated and Status carry the facts a front end needs to say
+	// which of the three things happened, rather than inferring it from the
+	// presence of a finding.
+	//
+	// Serialised because the page has to distinguish them. Reading a rule
+	// identifier out of the findings list would work until a rule is renamed,
+	// and the sentence a reader sees would then quietly stop matching what
+	// was measured — which is how the page came to be still saying "a status
+	// response was stapled" a policy version after that stopped being the
+	// whole story.
+	Stapled   bool   `json:"stapled"`
+	Validated bool   `json:"validated"`
+	Status    string `json:"status,omitempty"`
+
 	// Notes explains what was established and, more importantly, what was
 	// not. A reader who is told a response was stapled and not told it went
 	// unverified will read the first as the second.
@@ -119,7 +133,12 @@ type StapleFinding struct {
 
 // GradeStapling applies the rules above.
 func GradeStapling(f StapleFacts) StapleFinding {
-	out := StapleFinding{Verdict: Strong}
+	out := StapleFinding{
+		Verdict:   Strong,
+		Stapled:   f.Stapled,
+		Validated: f.Validated,
+		Status:    f.Status,
+	}
 
 	add := func(id string, v Verdict, title, rationale string, refs ...Reference) {
 		out.Findings = append(out.Findings, Finding{

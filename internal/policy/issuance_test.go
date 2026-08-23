@@ -241,3 +241,68 @@ func TestAnUnfinishedWalkDoesNotClaimNobodyIsRestricted(t *testing.T) {
 		}
 	}
 }
+
+// A CAA value is an authority and, optionally, parameters after it.
+//
+// RFC 8659 §4.2 separates them with a semicolon inside one value, and this
+// list is joined with commas while the clauses around it are joined with
+// semicolons. The whole value used to go in unchanged, so a real record set
+// came out as
+//
+//	issuance limited to comodoca.com, digicert.com; cansignhttpexchanges=yes,
+//	letsencrypt.org, pki.goog; cansignhttpexchanges=yes and ssl.com
+//
+// which a reader cannot parse and might read as naming an authority called
+// cansignhttpexchanges=yes. These are the values kapitalbank.az publishes,
+// read from a live scan on 2026-08-23.
+func TestCAAParametersAreNotMistakenForAuthorities(t *testing.T) {
+	line := describeAuthorities(IssuanceFacts{
+		Checked: true, Exists: true, FoundAt: "kapitalbank.az",
+		Authorities: []string{
+			"comodoca.com",
+			"digicert.com; cansignhttpexchanges=yes",
+			"letsencrypt.org",
+			"pki.goog; cansignhttpexchanges=yes",
+			"ssl.com",
+		},
+	})
+
+	// The parameter has to be attached to the authority it belongs to, not
+	// floating between two commas.
+	for _, want := range []string{
+		"digicert.com (cansignhttpexchanges=yes)",
+		"pki.goog (cansignhttpexchanges=yes)",
+	} {
+		if !strings.Contains(line, want) {
+			t.Errorf("the line does not contain %q:\n  %s", want, line)
+		}
+	}
+
+	// And the semicolon must not survive inside the list, where it collides
+	// with the separator between clauses.
+	if strings.Contains(line, "com; cansignhttpexchanges") ||
+		strings.Contains(line, "goog; cansignhttpexchanges") {
+		t.Errorf("a parameter is still separated from its authority by a semicolon:\n  %s", line)
+	}
+}
+
+// An authority with no parameters is written plainly, and an empty value —
+// which permits nobody — must not silently vanish from a list.
+func TestAuthoritiesWithoutParametersAreUnchanged(t *testing.T) {
+	got := readable([]string{"letsencrypt.org", "digicert.com;", " ", ";"})
+
+	want := []string{
+		"letsencrypt.org",
+		"digicert.com",
+		"an empty value, which names no authority",
+		"an empty value, which names no authority",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("readable returned %d values, want %d: %q", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("value %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}

@@ -289,18 +289,43 @@ function ciphers(tls) {
 // The four states a reader has to be able to tell apart. Returns undefined
 // when the report says nothing about revocation, so the row is left out
 // entirely rather than filled with a guess.
-function revocationText(revocation, tls) {
+function revocationText(revocation, tls, stapling) {
   if (!revocation) return undefined;
 
   const stapled = !!(tls && tls.ocspStapled);
   const mustStaple = !!revocation.mustStaple;
   const responders = Number(revocation.responderCount) || 0;
 
-  if (mustStaple && !stapled) {
-    return "the certificate requires a stapled response and none was sent";
+  // Whether the response was read, not merely counted.
+  //
+  // This line said "a status response was stapled" for a whole policy
+  // version after that stopped being the whole story. The service now parses
+  // the response, matches it to this certificate, checks it has not expired
+  // and verifies the issuing authority's signature — and the certificate
+  // section, which is where a reader looks for exactly this, went on
+  // reporting the byte count.
+  //
+  // Negated rather than compared: a response absent the field is treated as
+  // unverified, so a producer that forgets gets the cautious sentence.
+  const verified = !!(stapling && stapling.validated);
+  const status = stapling && stapling.status;
+
+  if (mustStaple && !(stapled && verified)) {
+    return stapled
+      ? "the certificate requires a stapled response and the one sent could not be verified"
+      : "the certificate requires a stapled response and none was sent";
   }
-  if (mustStaple) return "stapled, and the certificate requires it";
-  if (stapled) return "a status response was stapled";
+  if (stapled && verified) {
+    const said = status && status !== "good"
+      ? ", and the authority says the status is " + status
+      : ", and verified against the issuing authority";
+    return mustStaple
+      ? "stapled and verified, and the certificate requires it" + (status && status !== "good" ? said : "")
+      : "a status response was stapled" + said;
+  }
+  if (stapled) {
+    return "a status response was stapled and it establishes nothing; the findings say why";
+  }
   if (responders > 0) {
     return "not stapled; the certificate names a responder a client would have to ask";
   }
@@ -362,7 +387,7 @@ function transparencyText(transparency, tls) {
   return stamps + " from " + from + where;
 }
 
-function certificate(cert, tls, issuance) {
+function certificate(cert, tls, issuance, stapling) {
   if (!cert || !Array.isArray(cert.chain) || !cert.chain.length) {
     return document.createDocumentFragment();
   }
@@ -415,7 +440,7 @@ function certificate(cert, tls, issuance) {
   // no longer required to run OCSP, and several have stopped. The
   // distinction between a server that could staple and did not and one that
   // has nothing to staple is the whole content of this line.
-  pair("Revocation", revocationText(cert.revocation, tls));
+  pair("Revocation", revocationText(cert.revocation, tls, stapling));
 
   // Issuance sits above transparency because the two are halves of one
   // question in the order they happen: who may obtain a certificate for this
@@ -503,7 +528,7 @@ function render(data) {
   frag.appendChild(findings(data.findings, verdict));
   frag.appendChild(versions(data.tls));
   frag.appendChild(ciphers(data.tls));
-  frag.appendChild(certificate(data.certificate, data.tls, data.issuance));
+  frag.appendChild(certificate(data.certificate, data.tls, data.issuance, data.stapling));
   frag.appendChild(notes(data.notes, verdict));
   show(frag);
 }
