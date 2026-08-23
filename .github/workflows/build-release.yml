@@ -236,4 +236,10 @@ jobs:
 
           echo
           echo "Draft staged. The maintainer signs it with:"
-          echo "  .\\scripts\\release.ps1 -Tag ${TAG}"
+          # The child-process form, because the bare path does not work: a
+          # default Windows installation refuses to run a script file at all,
+          # so this line used to print an instruction that fails before the
+          # script starts. The procedure is docs/releasing.md.
+          echo "  powershell.exe -ExecutionPolicy Bypass -File .\\scripts\\release.ps1 -Tag ${TAG} -Compare"
+          echo
+          echo "The procedure, including the dry run, is docs/releasing.md."
