@@ -40,7 +40,30 @@
     is where it actually lives: the installer adds cmd\ to PATH but not bin\.
 
 .EXAMPLE
-    .\scripts\release.ps1 -Tag v0.1.0
+    powershell.exe -ExecutionPolicy Bypass -File .\scripts\release.ps1 -Tag v0.2.0
+
+    On a default Windows installation PowerShell refuses to run any script
+    file, so `.\scripts\release.ps1` fails before this script starts. The
+    child process above is allowed to and changes nothing outside itself.
+
+    This example used to be the bare path, which is an instruction that does
+    not work on the one kind of machine it is written for. Do not relax the
+    machine's policy instead: the execution policy is not a security boundary
+    -- -ExecutionPolicy Bypass is a documented flag, not a trick -- so making
+    it permanent buys no safety and loses the accident it does prevent. What
+    protects this step is that the script is in this repository and has been
+    read.
+
+.EXAMPLE
+    powershell.exe -ExecutionPolicy Bypass -File .\scripts\release.ps1 -Tag v0.2.0 -Compare
+
+    -Compare needs the tag checked out. It rebuilds from the tag's own build
+    script, and against a different working tree it reports a difference count
+    for the wrong source.
+
+.NOTES
+    The whole procedure, including the dry run that has to happen before a
+    first release and after any change to this script, is docs/releasing.md.
 #>
 
 [CmdletBinding()]
