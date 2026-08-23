@@ -145,3 +145,98 @@ func serverByVersion(t *testing.T, modern, legacy *tls.Certificate) (host, port 
 	host, port, _ = net.SplitHostPort(l.Addr().String())
 	return host, port
 }
+
+// The issuer is found by signature, not by position.
+//
+// This used to be chain[1], on the reasoning that a server sends its chain
+// leaf first. Most do, and RFC 8446 dropped the requirement: a TLS 1.3 sender
+// SHOULD order the chain and a receiver MAY accept any order.
+//
+// Getting it wrong does not fail quietly. Every OCSP check is against the
+// issuer, so a response about a perfectly good certificate would fail to match
+// and be reported as cert.staple-unverifiable — a Weak finding against a
+// server doing everything right, which a reader cannot tell from a real one.
+func TestTheIssuerIsFoundWhereverItSitsInTheChain(t *testing.T) {
+	root := newTestCA(t, "Root CA")
+	other := newTestCA(t, "Unrelated CA")
+	leaf := root.sign(t, 5150)
+
+	cases := map[string][]*x509.Certificate{
+		"the usual order":         {leaf, root.cert},
+		"an unrelated cert first": {leaf, other.cert, root.cert},
+		"the issuer last":         {leaf, other.cert, other.cert, root.cert},
+	}
+
+	for name, chain := range cases {
+		got := issuerOf(leaf, chain)
+		if got == nil {
+			t.Errorf("%s: no issuer found; a stapled response would be called unverifiable", name)
+			continue
+		}
+		if !got.Equal(root.cert) {
+			t.Errorf("%s: found %q, want %q", name, got.Subject.CommonName, root.cert.Subject.CommonName)
+		}
+	}
+
+	// A chain that really does not carry the issuer has to say so rather than
+	// return whatever was nearby.
+	if got := issuerOf(leaf, []*x509.Certificate{leaf, other.cert}); got != nil {
+		t.Errorf("an unrelated certificate was returned as the issuer: %q", got.Subject.CommonName)
+	}
+}
+
+type testCA struct {
+	cert *x509.Certificate
+	key  *ecdsa.PrivateKey
+}
+
+func newTestCA(t *testing.T, name string) testCA {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generating a key: %v", err)
+	}
+	tpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: name},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("creating %s: %v", name, err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("parsing %s: %v", name, err)
+	}
+	return testCA{cert: cert, key: key}
+}
+
+func (c testCA) sign(t *testing.T, serial int64) *x509.Certificate {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generating a key: %v", err)
+	}
+	tpl := &x509.Certificate{
+		SerialNumber: big.NewInt(serial),
+		Subject:      pkix.Name{CommonName: "leaf.test"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		DNSNames:     []string{"leaf.test"},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, c.cert, &key.PublicKey, c.key)
+	if err != nil {
+		t.Fatalf("signing: %v", err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("parsing the leaf: %v", err)
+	}
+	return cert
+}
