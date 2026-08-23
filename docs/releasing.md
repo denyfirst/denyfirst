@@ -131,13 +131,22 @@ git checkout v0.2.0
 powershell.exe -ExecutionPolicy Bypass -File .\scripts\release.ps1 -Tag v0.2.0 -Compare
 ```
 
-On Windows the comparison reports differences, and that is expected: a
-cross-compile from Windows puts a different `GOROOT` into the runtime package
-and `-trimpath` does not reach it. What matters on Windows is everything the
-script does before that — the commit matches the tag, the build script matches
-the hash recorded in `BUILD`, and every file matches the checksum list. Run
-the comparison on Linux if you want it to mean something; `reproduce.yml` does
-it there anyway, after publication, in public.
+**Expect every artifact to match, on Windows too.** This page used to say the
+opposite — that a cross-compile from Windows puts a different `GOROOT` into
+the runtime package and the comparison could only mean something on Linux.
+Measured on 2026-08-23 against v0.3.0: ten artifacts, ten identical, from
+Windows. The toolchain came from the module cache rather than from an
+installed `GOROOT`, and `-trimpath` does normalise module cache paths.
+
+That holds whenever the `go` directive in `go.mod` names a version other than
+the Go on your PATH, which is the ordinary case here. If they happen to be the
+same version, the build uses the installed `GOROOT` and the bytes will differ
+by that path — so read the `goroot` line in `BUILD` before treating a
+difference as anything else.
+
+A mismatch is now worth stopping for. Telling a verifier that mismatches are
+normal on their platform is the one lesson this check must never teach, and it
+was being taught in four places.
 
 Anything the script refuses to sign, it says why and signs nothing. Do not
 work around it.
