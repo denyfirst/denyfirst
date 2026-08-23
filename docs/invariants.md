@@ -589,7 +589,18 @@ hostile input this project accepts and the only cryptographic parser it owns.
 It is bounded at every length, it returns errors rather than panicking, and it
 is fuzzed on the nightly schedule.
 
-*Enforced in:* `internal/ocsp.Check`, `internal/policy.GradeStapling`
+One more thing decides whether any of it runs against the right certificate.
+Every check is against the issuer, and the issuer used to be taken as
+`chain[1]` — the second certificate the server sent. RFC 8446 dropped the
+requirement that a chain be ordered: a sender SHOULD order it and a receiver
+MAY accept any order, so a server sending an unrelated cross-signed
+alternative first is not doing anything wrong. Taking the wrong one there
+produces a `cert.staple-unverifiable` finding against a server doing
+everything right, which is the false-accusation direction again. The issuer is
+now found by checking which certificate in the chain actually signed the leaf.
+
+*Enforced in:* `internal/ocsp.Check`, `internal/policy.GradeStapling`,
+`internal/scan.issuerOf`
 *Guarded by:* `TestAGoodResponseIsRead`, `TestARevokedCertificateIsReported`,
 `TestAnUnknownStatusIsNotGood`,
 `TestAResponseAboutAnotherCertificateIsRefused`,
@@ -604,7 +615,9 @@ is fuzzed on the nightly schedule.
 `TestAnUnknownResponseTypeIsRefused`,
 `TestTheStapledNoteSaysWhichOfTheThreeHappened`,
 `TestTheShapesRealRespondersEmit`, `TestTheRightEntryIsFoundAmongSeveral`,
-`FuzzCheck`
+`TestRealResponsesFromRealAuthorities`,
+`TestTheFixturesCoverBothSigningArrangements`,
+`TestTheIssuerIsFoundWhereverItSitsInTheChain`, `FuzzCheck`
 
 ### R3c — Transparency receipts are counted, not believed
 
@@ -1612,12 +1625,27 @@ Anything below is open today.
   from a real finding. Capture the first response a live scan verifies and
   commit it as a fixture.
 
-  This could not be closed from the author's own machine. Every outbound TLS
-  connection there is intercepted and re-presented by a gateway that staples
-  nothing, so twenty-one hosts each appeared to staple nothing — a confident
-  measurement of the path rather than of the servers, which is precisely the
-  error R3d exists to name. It has to be done from a host with unintercepted
-  egress.
+  *Closed 2026-08-23.* Measured from a host with unintercepted egress: of
+  fourteen well-known sites, five staple — DigiCert, Sectigo, Apple, Microsoft
+  and PayPal — and nine, including GitHub, Cloudflare and Mozilla, send
+  nothing. All five verified on the first attempt, across four encoders,
+  response sizes from 471 to 2341 bytes, and both signing arrangements. The
+  bytes are in `internal/ocsp/testdata` with the moment to judge each at,
+  because a real response expires within days and a test that goes red on a
+  Tuesday teaches people to ignore it.
+
+  It could not be closed from the author's own machine, and the reason is
+  worth keeping. Every outbound TLS connection there is intercepted and
+  re-presented by a gateway that staples nothing, so twenty-one hosts each
+  appeared to staple nothing — a confident measurement of the path rather than
+  of the servers, which is precisely the error R3d exists to name. The tell
+  was that every one of them showed a chain of exactly three certificates.
+
+  What the measurement also settles: this check reaches about a third of
+  hosts. A revoked certificate on a server that does not staple is invisible
+  here, and `revoked.badssl.com` — a host that exists to serve one — is among
+  the nine. Each report says so on its own Revocation line rather than leaving
+  it to be inferred.
 - **The per-target limit still answers at its edge.** A9. The threshold now
   sits outside ordinary traffic, so a probe learns nothing about a person; what
   remains is that a host genuinely being checked eight times in a window can be

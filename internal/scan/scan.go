@@ -273,12 +273,10 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 		// an incomplete chain is already a finding and charging it twice
 		// would report one mistake as two.
 		if facts.Stapled {
-			var issuer *x509.Certificate
-			if len(tlsReport.Certificates) > 1 {
-				issuer = tlsReport.Certificates[1]
-			}
+			leaf := tlsReport.Certificates[0]
+			issuer := issuerOf(leaf, tlsReport.Certificates)
 
-			response, err := ocsp.Check(tlsReport.OCSPResponse, tlsReport.Certificates[0], issuer, s.now())
+			response, err := ocsp.Check(tlsReport.OCSPResponse, leaf, issuer, s.now())
 			switch {
 			case errors.Is(err, ocsp.ErrNoIssuer):
 				facts.IssuerMissing = true
@@ -327,6 +325,36 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 	out.Issuance = s.checkIssuance(ctx, host)
 
 	return out, nil
+}
+
+// issuerOf finds the certificate in the chain that signed the leaf.
+//
+// This used to be `chain[1]`, on the reasoning that a server sends its chain
+// leaf first. Most do, and RFC 8446 dropped the requirement that they must:
+// a TLS 1.3 sender SHOULD order the chain and a receiver MAY accept any
+// order, so a server that sends its intermediates the other way round, or
+// includes a cross-signed alternative, is not doing anything wrong.
+//
+// Taking the wrong certificate here does not fail quietly. Every OCSP check
+// is against the issuer, so a response about a perfectly good certificate
+// would fail to match and be reported as cert.staple-unverifiable — a Weak
+// finding raised against a server doing everything right, which a reader
+// cannot tell from a real one. That is the direction this project minds most.
+//
+// The signature is what decides, rather than a name comparison: a subject can
+// be repeated across certificates and only one of them holds the key that
+// signed this leaf. CheckSignatureFrom also refuses a candidate that is not a
+// certificate authority, which is the same rule a verifier would apply.
+func issuerOf(leaf *x509.Certificate, chain []*x509.Certificate) *x509.Certificate {
+	for _, candidate := range chain {
+		if candidate == leaf {
+			continue
+		}
+		if err := leaf.CheckSignatureFrom(candidate); err == nil {
+			return candidate
+		}
+	}
+	return nil
 }
 
 // checkIssuance asks a resolver which authorities may issue for the name.
