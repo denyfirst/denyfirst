@@ -21,17 +21,52 @@ func TestGradeStaplingGradesOnlyTheBrokenPromise(t *testing.T) {
 			want:  Insecure,
 		},
 		{
+			// Honoured means a response that verifies. Bytes alone used to
+			// satisfy this, so a certificate demanding a staple and getting
+			// sixteen bytes of rubbish passed.
 			name:  "must-staple demanded and honoured",
-			facts: StapleFacts{MustStaple: true, HasResponder: true, Stapled: true},
+			facts: StapleFacts{MustStaple: true, HasResponder: true, Stapled: true, Validated: true, Status: "good"},
 			want:  Strong,
 		},
 		{
+			// To a client honouring the extension this is the same outcome as
+			// no response at all: the handshake fails.
+			name:  "must-staple demanded and the response does not verify",
+			facts: StapleFacts{MustStaple: true, HasResponder: true, Stapled: true, Unverifiable: "the response expired"},
+			want:  Insecure,
+		},
+		{
 			// Stapling without being asked to is good practice and is not
-			// graded either way. Nothing here validates the response, so
-			// awarding a grade for it would be awarding a grade for a byte
-			// count.
+			// graded upward. A response that verifies and says good earns no
+			// points; it removes a doubt.
 			name:  "stapled without being required",
-			facts: StapleFacts{HasResponder: true, Stapled: true},
+			facts: StapleFacts{HasResponder: true, Stapled: true, Validated: true, Status: "good"},
+			want:  Strong,
+		},
+		{
+			// The finding this whole path exists for.
+			name:  "the authority says the certificate is revoked",
+			facts: StapleFacts{HasResponder: true, Stapled: true, Validated: true, Status: "revoked"},
+			want:  Insecure,
+		},
+		{
+			// Not the same as not revoked.
+			name:  "the authority does not recognise the certificate",
+			facts: StapleFacts{HasResponder: true, Stapled: true, Validated: true, Status: "unknown"},
+			want:  Weak,
+		},
+		{
+			// The certificate may be fine; the stapling is not, and a reader
+			// shown a check that did not happen is the harm.
+			name:  "stapled and unverifiable",
+			facts: StapleFacts{HasResponder: true, Stapled: true, Unverifiable: "the signature does not verify"},
+			want:  Weak,
+		},
+		{
+			// Nothing could be checked and it is not the response's fault.
+			// cert.chain-incomplete already grades the omission.
+			name:  "stapled with no issuer in the chain",
+			facts: StapleFacts{HasResponder: true, Stapled: true, IssuerMissing: true},
 			want:  Strong,
 		},
 		{
@@ -84,8 +119,11 @@ func TestMissingStapleIsNotAFinding(t *testing.T) {
 		{},
 		{HasCRL: true},
 		{HasResponder: true, HasCRL: true},
-		{Stapled: true},
-		{HasResponder: true, HasCRL: true, Stapled: true},
+		{Stapled: true, Validated: true, Status: "good"},
+		{HasResponder: true, HasCRL: true, Stapled: true, Validated: true, Status: "good"},
+		// Verified, current, and about this certificate: there is nothing
+		// left to say against the server.
+		{MustStaple: true, HasResponder: true, Stapled: true, Validated: true, Status: "good"},
 	} {
 		got := GradeStapling(facts)
 		if len(got.Findings) != 0 {
@@ -129,19 +167,43 @@ func TestMustStapleFindingCitesItsSources(t *testing.T) {
 	}
 }
 
-// A stapled response is not a checked response, and the note has to say so.
+// The note has to distinguish the three things a stapled response can be.
 //
-// This is the sentence that stops the report from claiming more than it
-// measured: nothing in this project parses an OCSP response, verifies its
-// signature, or matches its serial. A reader who sees "stapled" and is not
-// told that will conclude revocation was checked.
-func TestStapledNoteDoesNotClaimTheResponseWasChecked(t *testing.T) {
-	note := strings.ToLower(strings.Join(GradeStapling(StapleFacts{Stapled: true}).Notes, " "))
+// This test used to require the note to say the response was "not read",
+// which was the honest sentence while nothing parsed one. It is now false,
+// and a test asserting a false sentence is worse than no test: it would have
+// kept the old claim in place through the change that made it wrong.
+//
+// What replaces it is the distinction, which is what a reader actually needs:
+// a response that was verified, one that was not, and one that could not be
+// because the issuer was missing.
+func TestTheStapledNoteSaysWhichOfTheThreeHappened(t *testing.T) {
+	verified := strings.ToLower(strings.Join(
+		GradeStapling(StapleFacts{Stapled: true, Validated: true, Status: "good"}).Notes, " "))
+	unverified := strings.ToLower(strings.Join(
+		GradeStapling(StapleFacts{Stapled: true, Unverifiable: "the signature does not verify"}).Notes, " "))
+	noIssuer := strings.ToLower(strings.Join(
+		GradeStapling(StapleFacts{Stapled: true, IssuerMissing: true}).Notes, " "))
 
-	for _, required := range []string{"not read", "signature was not verified"} {
-		if !strings.Contains(note, required) {
-			t.Errorf("the note for a stapled response does not say %q; it reads: %s", required, note)
-		}
+	if verified == unverified || unverified == noIssuer || verified == noIssuer {
+		t.Fatal("two of the three stapled cases share a sentence; the difference between them is the point")
+	}
+
+	// A verified response must not be described as though nothing was
+	// checked, and must still name what remains unchecked.
+	if strings.Contains(verified, "established nothing") {
+		t.Errorf("a verified response is described as establishing nothing: %s", verified)
+	}
+	if !strings.Contains(verified, "responder's own revocation") {
+		t.Errorf("the verified note does not say what is still not checked: %s", verified)
+	}
+
+	// An unverified one must not read as a check.
+	if !strings.Contains(unverified, "established nothing") {
+		t.Errorf("an unverifiable response is not described as establishing nothing: %s", unverified)
+	}
+	if !strings.Contains(noIssuer, "issued this one") {
+		t.Errorf("the missing-issuer note does not say what was missing: %s", noIssuer)
 	}
 }
 

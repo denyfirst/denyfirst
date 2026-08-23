@@ -9,6 +9,7 @@ package scan
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/denyfirst/denyfirst/internal/certinfo"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
+	"github.com/denyfirst/denyfirst/internal/ocsp"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
 )
@@ -255,12 +257,43 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 		// avoid: marking a server down for not stapling a response no
 		// authority publishes, or passing one that ignores its own
 		// certificate's instruction to staple.
-		stapling := policy.GradeStapling(policy.StapleFacts{
+		facts := policy.StapleFacts{
 			Stapled:      tlsReport.OCSPStapled,
 			MustStaple:   certReport.Revocation.MustStaple,
 			HasResponder: certReport.Revocation.ResponderCount > 0,
 			HasCRL:       certReport.Revocation.CRLCount > 0,
-		})
+		}
+
+		// Reading the response, which is the difference between "the server
+		// is stapling" and "the certificate is not revoked".
+		//
+		// The issuer comes from the chain the server sent, and has to: every
+		// check is against it. Without one nothing is claimed, and that is
+		// recorded as its own fact rather than folded into a failure, because
+		// an incomplete chain is already a finding and charging it twice
+		// would report one mistake as two.
+		if facts.Stapled {
+			var issuer *x509.Certificate
+			if len(tlsReport.Certificates) > 1 {
+				issuer = tlsReport.Certificates[1]
+			}
+
+			response, err := ocsp.Check(tlsReport.OCSPResponse, tlsReport.Certificates[0], issuer, s.now())
+			switch {
+			case errors.Is(err, ocsp.ErrNoIssuer):
+				facts.IssuerMissing = true
+			case err != nil:
+				// The package writes its own sentences and never passes an
+				// error through from elsewhere, so this is safe to show.
+				facts.Unverifiable = strings.TrimPrefix(err.Error(), "ocsp: ")
+			default:
+				facts.Validated = true
+				facts.Status = string(response.Status)
+				facts.RevokedAt = response.RevokedAt
+			}
+		}
+
+		stapling := policy.GradeStapling(facts)
 		out.Stapling = &stapling
 		out.Verdict = policy.Worst(out.Verdict, stapling.Verdict)
 

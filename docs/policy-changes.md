@@ -14,6 +14,57 @@ free to improve without breaking that.
 
 ---
 
+## `denyfirst-v2` → `denyfirst-v3`
+
+Released in v0.3.0, 2026-08. One change, and it is the largest single change
+this project has made to what a report means.
+
+### The stapled response is now read
+
+Until now this project observed that bytes arrived in the handshake and said
+*a certificate status response was stapled*. It never parsed one. A server can
+staple anything — an empty file, a year-old response, a response about a
+different certificate, one signed by nobody, or one that says revoked — and
+all of them produced the same sentence, which a reader takes to mean
+revocation was checked.
+
+The response is now parsed and has to pass every one of these before its
+status is reported: the responder answered successfully with a basic response;
+the entry describes **this** certificate by issuer name hash, issuer key hash
+and serial number, all three; it was produced in the past and has not expired;
+and it is signed by the issuer, or by a responder the issuer both signed and
+marked with the OCSP-signing extended key usage.
+
+| Rule | Verdict | When |
+|---|---|---|
+| `cert.revoked` | Insecure | A verified response says the certificate was withdrawn |
+| `cert.revocation-unknown` | Weak | A verified response says the authority has no record of this serial. Not the same as *not revoked* |
+| `cert.staple-unverifiable` | Weak | Bytes were stapled and establish nothing: malformed, expired, about another certificate, or unsigned |
+
+`cert.must-staple-not-stapled` changed meaning. It fired only when no response
+arrived, so a certificate demanding a staple and receiving sixteen bytes of
+rubbish passed it. It now fires unless a response arrives **and verifies**,
+which is what a client honouring RFC 7633 requires — for such a client an
+unverifiable response and an absent one are the same outcome: the handshake
+fails.
+
+Two things deliberately did **not** change. A missing staple is still not
+graded, for the reason at the top of `internal/policy/staple.go`: the
+authority decides whether a response exists, and several no longer publish
+OCSP at all. And a chain that omits the issuer produces no finding here —
+nothing can be verified without it, `cert.chain-incomplete` already grades the
+omission, and charging one mistake twice would report it as two.
+
+### What is still not checked
+
+The responder certificate's own revocation status. Checking it means fetching
+another response over the network from an address the scanned party chooses,
+and this scanner fetches nothing: it reads only bytes the server already sent.
+RFC 6960 §4.2.2.2.1 lets an issuer waive the check, and responder certificates
+are short-lived for the same reason.
+
+---
+
 ## `denyfirst-v1` → `denyfirst-v2`
 
 Released in v0.2.0, 2026-08.

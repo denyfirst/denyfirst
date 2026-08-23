@@ -60,6 +60,10 @@ jobs:
             target: FuzzParseReply
           - package: ./internal/dnsclient
             target: FuzzSkipName
+          # Everything this target reads is chosen by the scanned server, and
+          # it is the only cryptographic parser this project owns.
+          - package: ./internal/ocsp
+            target: FuzzCheck
           - package: ./internal/httpapi
             target: FuzzScanHandler
 
