@@ -599,8 +599,17 @@ produces a `cert.staple-unverifiable` finding against a server doing
 everything right, which is the false-accusation direction again. The issuer is
 now found by checking which certificate in the chain actually signed the leaf.
 
+The certificate section says which of those happened, and for a policy version
+it did not. `internal/ocsp` landed, the notes and the findings were rewritten,
+and the one line a reader looks at for revocation went on saying *a status
+response was stapled* — the sentence the whole round existed to replace. The
+same defect as R12, in the same file, one round later, found by reading a live
+report rather than by any test. `StapleFinding` now carries the outcome as
+serialised fields rather than leaving a front end to infer it from a rule
+identifier, and a test requires the page to read them.
+
 *Enforced in:* `internal/ocsp.Check`, `internal/policy.GradeStapling`,
-`internal/scan.issuerOf`
+`internal/scan.issuerOf`, `internal/web/assets/app.js` (`revocationText`)
 *Guarded by:* `TestAGoodResponseIsRead`, `TestARevokedCertificateIsReported`,
 `TestAnUnknownStatusIsNotGood`,
 `TestAResponseAboutAnotherCertificateIsRefused`,
@@ -617,7 +626,8 @@ now found by checking which certificate in the chain actually signed the leaf.
 `TestTheShapesRealRespondersEmit`, `TestTheRightEntryIsFoundAmongSeveral`,
 `TestRealResponsesFromRealAuthorities`,
 `TestTheFixturesCoverBothSigningArrangements`,
-`TestTheIssuerIsFoundWhereverItSitsInTheChain`, `FuzzCheck`
+`TestTheIssuerIsFoundWhereverItSitsInTheChain`,
+`TestTheRevocationLineSaysWhetherTheResponseWasVerified`, `FuzzCheck`
 
 ### R3c — Transparency receipts are counted, not believed
 
@@ -994,6 +1004,37 @@ the ordinary case nothing here runs.
 *Guarded by:* `TestAChainServedOnlyToOldClientsIsSeen`,
 `TestOneCertificateForEveryVersionProducesNoAlternate`,
 `TestAWeakCertificateBehindAnOldVersionIsGraded`
+
+
+### R9a — A CAA value is an authority and its parameters, not one string
+
+RFC 8659 §4.2 puts parameters after the authority inside a single value:
+`pki.goog; cansignhttpexchanges=yes` names one authority and sets one
+parameter. The whole value used to go into the list unchanged, and the list is
+joined with commas while the clauses around it are joined with semicolons — so
+a real record set rendered as
+
+> issuance limited to comodoca.com, digicert.com; cansignhttpexchanges=yes,
+> letsencrypt.org, pki.goog; cansignhttpexchanges=yes and ssl.com
+
+which a reader cannot parse, and which invites reading
+`cansignhttpexchanges=yes` as an authority of its own. Measured on
+kapitalbank.az, 2026-08-23, from a live report.
+
+The parameter is shown rather than dropped. `cansignhttpexchanges` authorises
+that authority to sign Signed HTTP Exchanges, which is a wider power than
+issuing an ordinary certificate, and a reader judging whether a zone's
+restrictions are tight enough needs to see it. An empty value permits nobody
+and is named rather than allowed to vanish from a list.
+
+This is the third instance of one pattern in as many days: the packages
+computed the right answer and the sentence built from it said something else.
+It was found by reading a live report, which no test in this repository does.
+
+*Enforced in:* `internal/policy.readable`, applied by
+`internal/policy.describeAuthorities`
+*Guarded by:* `TestCAAParametersAreNotMistakenForAuthorities`,
+`TestAuthoritiesWithoutParametersAreUnchanged`
 
 ### R10 — A report cannot act on the display that shows it
 

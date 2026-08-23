@@ -34,15 +34,26 @@ func TestRevocationStateReachesThePage(t *testing.T) {
 		}
 	}
 
-	// The four states have to be distinguishable in the output. A page that
-	// prints "not stapled" for both a server that could have stapled and a
+	// The states have to be distinguishable in the output. A page that prints
+	// "not stapled" for both a server that could have stapled and a
 	// certificate with nothing to staple has collapsed the only distinction
 	// that matters, and the first reading — that something is wrong — is the
 	// wrong one for most certificates issued now.
+	//
+	// There were four states and there are now six: reading the response
+	// splits "stapled" into verified and unverifiable, in both the ordinary
+	// and the must-staple case. This list used to require the exact sentence
+	// "stapled, and the certificate requires it", which the more precise
+	// wording no longer contains — a test pinning a phrase rather than a
+	// state, which is the trap the privacy page fell into. Each entry below
+	// is now the shortest fragment that identifies its state and nothing
+	// about how it is phrased.
 	for _, state := range []string{
 		"requires a stapled response and none was sent",
-		"stapled, and the certificate requires it",
+		"the one sent could not be verified",
+		"the certificate requires it",
 		"a status response was stapled",
+		"establishes nothing",
 		"names a responder a client would have to ask",
 		"names no responder",
 	} {
@@ -74,5 +85,43 @@ func TestCertificateSectionIsGivenTheHandshake(t *testing.T) {
 	// transport report is passed at all.
 	if !strings.Contains(source, "certificate(data.certificate, data.tls") {
 		t.Error("certificate() is not given the transport report")
+	}
+}
+
+// The certificate section has to say whether the stapled response was read.
+//
+// This line said "a status response was stapled" for a whole policy version
+// after that stopped being the whole story. internal/ocsp parses the
+// response, matches it to the certificate, checks it has not expired and
+// verifies the authority's signature — and the one line a reader looks at for
+// exactly this went on reporting a byte count. The same defect as R12, in the
+// same file, one round later.
+func TestTheRevocationLineSaysWhetherTheResponseWasVerified(t *testing.T) {
+	source, err := assets.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("reading the script: %v", err)
+	}
+	script := string(source)
+
+	if !strings.Contains(script, "function revocationText(revocation, tls, stapling)") {
+		t.Error("revocationText is not given the stapling result, so it cannot say whether it verified")
+	}
+	if !strings.Contains(script, "stapling.validated") {
+		t.Error("the script never reads whether the response verified")
+	}
+	if !strings.Contains(script, "establishes nothing") {
+		t.Error("an unverifiable response has no sentence of its own")
+	}
+
+	// Negated rather than compared against false: a response missing the
+	// field must get the cautious sentence, which is the polarity the Go
+	// fields were given for the same reason.
+	if strings.Contains(script, "stapling.validated === true") {
+		t.Error("an absent validated field would be read as verified")
+	}
+
+	// The page has to be handed the field in the first place.
+	if !strings.Contains(script, "data.stapling") {
+		t.Error("the report's stapling result never reaches the certificate section")
 	}
 }
