@@ -210,11 +210,22 @@
     <h3>Nothing is asked of third parties either</h3>
 
     <p>
-      Revocation is not checked, because asking a certificate authority
-      whether a certificate is still valid would tell that authority somebody
-      is looking at it. Transparency logs are not queried for the same reason.
-      A certificate is described from what the server sent and from nothing
+      No certificate authority is asked anything. Enquiring whether a
+      certificate is still valid would tell that authority somebody is looking
+      at it, and transparency logs are not queried for the same reason. A
+      certificate is described from what the server sent and from nothing
       else, and every report says so.
+    </p>
+
+    <p>
+      That does not mean revocation goes unexamined. What a server sends can
+      include a status response the authority signed earlier and handed to it
+      &mdash; the point of stapling is that the authority learns nothing about
+      who is visiting &mdash; and that response is read: it has to describe
+      this certificate, be current, and carry the authority's signature before
+      a report says anything it claims. Reading bytes already in hand asks
+      nobody anything, which is why it belongs on this page rather than
+      against it.
     </p>
 
     <h3>Why more than one connection</h3>
@@ -231,9 +242,11 @@
 
     <p>
       Each host has its own budget, independent of who asks. Once a host has
-      been checked twice, further requests for it are refused for a while,
-      even from different people. That limit exists so this cannot be aimed at
-      one server in bulk, by accident or otherwise.
+      been checked several times in a short window &mdash; the exact number is
+      varied per host and is described under
+      <a href="#kept">what is kept</a> &mdash; further requests for it are
+      refused for a while, even from different people. That limit exists so
+      this cannot be aimed at one server in bulk, by accident or otherwise.
     </p>
 
     <h2 id="stopping">Stopping a scan</h2>

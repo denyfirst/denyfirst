@@ -1666,7 +1666,12 @@ Anything below is open today.
   provenance exists; it is one `git diff` away rather than in the log, which is
   not the same thing. Closing it needs a force-push to `main`, and opening that
   door costs more than the four commits are worth.
-- **`release.ps1 -Compare` has not run end to end.** The bash path was exercised
-  by hand on 2026-08-20 and built all ten artifacts, which is most of it, but
-  the surrounding script — download, verify, compare, sign — has not been run
-  as one piece since it changed. The first time must not be a release evening.
+- **The prose pages drift, and only some sentences have a test behind them.**
+  The privacy page and the README each carried a claim that stopped being true
+  the day OCSP validation landed — *revocation is not checked* — and the
+  privacy page stated the per-target threshold twice, as eight in one section
+  and twice in another, with a test guarding only the first. Both are fixed and
+  both now have a test. What remains is the general case: these pages make
+  claims in prose, a test can only check the sentences somebody thought to
+  pin, and every rule added to `internal/policy` is a chance for one of them to
+  go quietly wrong. Re-read them whenever a policy version changes.

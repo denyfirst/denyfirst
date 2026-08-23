@@ -1,6 +1,7 @@
 package web
 
 import (
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -136,4 +137,80 @@ func TestScriptBuildsClassNamesFromOneList(t *testing.T) {
 		}
 		t.Errorf("a class name is built by concatenation outside the helpers: %s", trimmed)
 	}
+}
+
+// A page that denies doing something this project now does is worse than a
+// page that says nothing.
+//
+// The privacy page and the README both said revocation is not checked. That
+// was true and load-bearing for as long as it was true, and it stopped being
+// true the day internal/ocsp landed — while both sentences stayed. A reader
+// deciding whether to rely on a report reads those pages, not the changelog.
+//
+// The rule is pinned to the code rather than to a date: as long as a rule with
+// this identifier exists, neither page may say the check does not happen.
+func TestThePagesDoNotDenyACheckThatNowHappens(t *testing.T) {
+	if !strings.Contains(gradesRevocation(), "cert.revoked") {
+		t.Skip("no revocation rule; the pages are free to say it is not checked")
+	}
+
+	pages := map[string]string{
+		"assets/privacy.html": "",
+		"../../README.md":     "",
+	}
+	for path := range pages {
+		var body []byte
+		var err error
+		if strings.HasPrefix(path, "assets/") {
+			body, err = assets.ReadFile(path)
+		} else {
+			body, err = os.ReadFile(path)
+		}
+		if err != nil {
+			t.Fatalf("reading %s: %v", path, err)
+		}
+		text := strings.ToLower(string(body))
+
+		for _, denial := range []string{
+			"revocation is not checked",
+			"no revocation check",
+			"revocation is not\n      checked",
+		} {
+			if strings.Contains(text, denial) {
+				t.Errorf("%s still says %q, and it is checked", path, denial)
+			}
+		}
+	}
+}
+
+// The privacy page states the per-target threshold in more than one place, and
+// only one of them had a test. The other said "twice" long after the limit
+// moved to eight — the page contradicting itself two sections apart, which is
+// the reading a visitor is most likely to take at face value.
+//
+// A number is not restated. The second mention now points at the first.
+func TestTheThresholdIsStatedInOnePlace(t *testing.T) {
+	body, err := assets.ReadFile("assets/privacy.html")
+	if err != nil {
+		t.Fatalf("reading the privacy page: %v", err)
+	}
+	text := strings.ToLower(string(body))
+
+	for _, restated := range []string{"been checked twice", "checked twice,"} {
+		if strings.Contains(text, restated) {
+			t.Errorf("the page restates the threshold as %q while the limit is %d",
+				restated, httpapi.TargetThreshold())
+		}
+	}
+}
+
+// gradesRevocation returns the rule identifiers this policy can raise about a
+// stapled response, read from the source so the test above cannot be silenced
+// by renaming a rule.
+func gradesRevocation() string {
+	body, err := os.ReadFile("../../internal/policy/staple.go")
+	if err != nil {
+		return ""
+	}
+	return string(body)
 }
