@@ -26,8 +26,8 @@ graded by the same policy version gives the same answer next year.
 
 **Every report says what it did not check.** Go's TLS stack implements
 roughly twenty-seven of the three hundred suites in the IANA registry, and
-gives a client no way to choose among TLS 1.3 suites. Revocation is not
-checked at all. All of that is printed alongside the findings, because a short
+gives a client no way to choose among TLS 1.3 suites. Revocation is checked
+only from what the server itself stapled. All of that is printed alongside the findings, because a short
 list of problems can mean a well-configured server or a scan that could not
 see very far, and a reader deserves to know which.
 
@@ -117,19 +117,29 @@ reported is what any client receives on connecting.
 finishes. No path is tried, no header is sent, and the target's home page is
 never fetched.
 
-**No revocation check.** Asking a certificate authority whether a serial is
-still valid would tell it which certificate somebody is looking at. A chain
-reported as trusted reaches a root and is in date; it may still have been
-revoked, and the report says so.
+**Nothing is asked of a certificate authority.** Asking one whether a serial
+is still valid would tell it which certificate somebody is looking at, so this
+never does. Nothing here fetches anything: every byte a report rests on is a
+byte the server itself sent.
 
-The report does say whether the server stapled a status response, because
-that arrives in the handshake and costs nobody anything to observe. It says
-no more: the response is not parsed, its signature is not verified, and its
-serial is not matched against the certificate. A missing staple is a fact
-rather than a fault — certificate authorities are no longer required to run
-OCSP and several have stopped — so it is not graded. The one graded case is a
-certificate that demands stapling under RFC 7633 and does not get it, which
-breaks the connection for every client that honours the extension.
+What the server sends can include a stapled status response, and that is read.
+Until 2026-08-22 it was not: this reported that some bytes had arrived, which
+a reader takes to mean revocation was checked, and a server can staple an
+empty file, a year-old response, a response about a different certificate or
+one signed by nobody. A status is now reported only when the response
+describes this certificate by issuer and serial, has not expired, and carries
+the issuing authority's signature — otherwise the report says it establishes
+nothing. A revoked certificate is graded insecure.
+
+A missing staple is still a fact rather than a fault — certificate authorities
+are no longer required to run OCSP and several have stopped — so it is still
+not graded. A certificate that demands stapling under RFC 7633 and receives no
+*valid* response is, because that breaks the connection for every client that
+honours the extension.
+
+What is still not checked is the responder certificate's own revocation
+status, which would need a second request over the network, and a chain with
+no revocation channel at all: `docs/invariants.md` says so under R3b.
 
 **No port scanning.** Only ports that speak TLS from the first byte: 443,
 8443, 465, 636, 990, 993, 995 and 5061.

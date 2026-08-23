@@ -351,7 +351,20 @@ func TestPrivacyPageAnswersEveryUrgentQuestion(t *testing.T) {
 		"rented server",
 
 		// The limits of what the tool claims.
-		"revocation is not checked",
+		//
+		// This used to require "revocation is not checked", which was the
+		// honest sentence for as long as nothing parsed a response. When
+		// internal/ocsp landed, this test was the thing holding a false
+		// statement on a page whose whole value is that its statements are
+		// true — a test can pin a claim in place exactly as well as it can
+		// protect one, and nothing distinguishes the two from inside.
+		//
+		// What is required now is the property that did not change: no
+		// authority is contacted. The claim that did change is checked
+		// against the code in TestThePagesDoNotDenyACheckThatNowHappens
+		// rather than against a sentence.
+		"no certificate authority is asked anything",
+		"transparency logs are not queried",
 		"without warranty",
 	}
 
