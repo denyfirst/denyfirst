@@ -602,7 +602,9 @@ is fuzzed on the nightly schedule.
 `TestWithoutTheIssuerNothingIsClaimed`,
 `TestRubbishIsRefusedWithoutPanicking`,
 `TestAnUnknownResponseTypeIsRefused`,
-`TestTheStapledNoteSaysWhichOfTheThreeHappened`, `FuzzCheck`
+`TestTheStapledNoteSaysWhichOfTheThreeHappened`,
+`TestTheShapesRealRespondersEmit`, `TestTheRightEntryIsFoundAmongSeveral`,
+`FuzzCheck`
 
 ### R3c — Transparency receipts are counted, not believed
 
@@ -1594,10 +1596,28 @@ Anything below is open today.
   rather than a hole — but it is a residual, and a compromised responder key
   would not be caught here.
 - **No real responder's bytes are in the test corpus.** Every OCSP response
-  the tests read was built by the tests. The structures round-trip, the
-  refusals are exercised in both directions and the parser is fuzzed, but a
-  real authority's encoding has not been through it. The first response a
-  live scan verifies should be captured as a fixture.
+  the tests read was built by the tests. What that used to mean was worse than
+  it sounds: the built responses all had one shape — name-form responder
+  identifier, SHA-1 CertID, ECDSA signature, one entry, no extensions, an
+  omitted version — and a real authority varies every one of those. Nine
+  variants are now exercised, together and separately, including a key-form
+  responder identifier, a SHA-256 CertID, an RSA signature from a delegate, a
+  nonce, an archive cutoff, an absent `nextUpdate`, an explicit version and
+  three entries with ours last. They are also fuzz seeds.
+
+  What remains is that no authority's actual bytes have been through it. The
+  failure that would cause is the one this project minds most: a
+  `cert.staple-unverifiable` finding, which is `Weak`, raised against a server
+  doing everything correctly — a false accusation, which a reader cannot tell
+  from a real finding. Capture the first response a live scan verifies and
+  commit it as a fixture.
+
+  This could not be closed from the author's own machine. Every outbound TLS
+  connection there is intercepted and re-presented by a gateway that staples
+  nothing, so twenty-one hosts each appeared to staple nothing — a confident
+  measurement of the path rather than of the servers, which is precisely the
+  error R3d exists to name. It has to be done from a host with unintercepted
+  egress.
 - **The per-target limit still answers at its edge.** A9. The threshold now
   sits outside ordinary traffic, so a probe learns nothing about a person; what
   remains is that a host genuinely being checked eight times in a window can be

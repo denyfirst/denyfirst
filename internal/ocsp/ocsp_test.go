@@ -1,9 +1,11 @@
 package ocsp
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha1" // #nosec G505 -- building the CertID RFC 6960 specifies.
 	"crypto/sha256"
 	"crypto/x509"
@@ -123,6 +125,17 @@ type spec struct {
 	responderID  *x509.Certificate
 	outerStatus  int
 	responseType asn1.ObjectIdentifier
+
+	// Shapes real responders emit that the happy-path fixture does not.
+	certIDHash      asn1.ObjectIdentifier // nil means SHA-1, which is what they use
+	responderByKey  bool                  // [2] KeyHash instead of [1] Name
+	explicitVersion bool                  // v1 written out instead of defaulted
+	noNextUpdate    bool
+	nonce           bool // a nonce in responseExtensions
+	singleExtension bool
+	extraEntries    int // further SingleResponses about other certificates
+	rsaSigner       *rsa.PrivateKey
+	rsaCert         *x509.Certificate
 }
 
 func build(t testing.TB, a authority, s spec) []byte {
@@ -146,8 +159,22 @@ func build(t testing.TB, a authority, s spec) []byte {
 	if err != nil {
 		t.Fatalf("reading the issuer key: %v", err)
 	}
-	nameHash := sha1.Sum(s.issuer.RawSubject) // #nosec G401
-	keyHash := sha1.Sum(keyBytes)             // #nosec G401
+
+	hashOID := s.certIDHash
+	if hashOID == nil {
+		hashOID = oidSHA1
+	}
+	var nameHash, keyHash []byte
+	switch {
+	case hashOID.Equal(oidSHA256):
+		n := sha256.Sum256(s.issuer.RawSubject)
+		k := sha256.Sum256(keyBytes)
+		nameHash, keyHash = n[:], k[:]
+	default:
+		n := sha1.Sum(s.issuer.RawSubject) // #nosec G401
+		k := sha1.Sum(keyBytes)            // #nosec G401
+		nameHash, keyHash = n[:], k[:]
+	}
 
 	var status asn1.RawValue
 	switch s.statusTag {
@@ -172,21 +199,77 @@ func build(t testing.TB, a authority, s spec) []byte {
 		Class: asn1.ClassContextSpecific, Tag: 1, IsCompound: true,
 		Bytes: responderName.RawSubject,
 	}
+	if s.responderByKey {
+		// [2] EXPLICIT KeyHash, where KeyHash is an OCTET STRING of the
+		// SHA-1 of the responder's public key. Several real responders use
+		// this form rather than the name.
+		h := sha1.Sum(keyBytes) // #nosec G401
+		inner, err := asn1.Marshal(h[:])
+		if err != nil {
+			t.Fatalf("marshalling the key hash: %v", err)
+		}
+		responder = asn1.RawValue{
+			Class: asn1.ClassContextSpecific, Tag: 2, IsCompound: true, Bytes: inner,
+		}
+	}
+
+	var responseExtensions []pkix.Extension
+	if s.nonce {
+		responseExtensions = append(responseExtensions, pkix.Extension{
+			Id:    asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1, 2},
+			Value: []byte{0x04, 0x10, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		})
+	}
+	var singleExtensions []pkix.Extension
+	if s.singleExtension {
+		// id-pkix-ocsp-archive-cutoff, which responders really do send.
+		singleExtensions = append(singleExtensions, pkix.Extension{
+			Id:    asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1, 6},
+			Value: []byte{0x18, 0x0f, '2', '0', '2', '0', '0', '1', '0', '1', '0', '0', '0', '0', '0', '0', 'Z'},
+		})
+	}
+
+	nextUpdate := s.nextUpdate
+	if s.noNextUpdate {
+		nextUpdate = time.Time{}
+	}
 
 	data := responseData{
 		ResponderID: responder,
 		ProducedAt:  s.producedAt,
+		Extensions:  responseExtensions,
 		Responses: []singleResponse{{
 			CertID: certID{
-				HashAlgorithm:  pkix.AlgorithmIdentifier{Algorithm: oidSHA1},
-				IssuerNameHash: nameHash[:],
-				IssuerKeyHash:  keyHash[:],
+				HashAlgorithm:  pkix.AlgorithmIdentifier{Algorithm: hashOID},
+				IssuerNameHash: nameHash,
+				IssuerKeyHash:  keyHash,
 				SerialNumber:   leafSerial,
 			},
 			Status:     status,
 			ThisUpdate: s.thisUpdate,
-			NextUpdate: s.nextUpdate,
+			NextUpdate: nextUpdate,
+			Extensions: singleExtensions,
 		}},
+	}
+
+	// Entries about other certificates, placed before the real one, so a
+	// parser that reads only the first gets the wrong answer.
+	for i := range s.extraEntries {
+		other := singleResponse{
+			CertID: certID{
+				HashAlgorithm:  pkix.AlgorithmIdentifier{Algorithm: hashOID},
+				IssuerNameHash: nameHash,
+				IssuerKeyHash:  keyHash,
+				SerialNumber:   big.NewInt(int64(900000 + i)),
+			},
+			Status:     asn1.RawValue{Class: asn1.ClassContextSpecific, Tag: 1, IsCompound: true, Bytes: nil},
+			ThisUpdate: s.thisUpdate,
+			NextUpdate: nextUpdate,
+		}
+		data.Responses = append([]singleResponse{other}, data.Responses...)
+	}
+	if s.explicitVersion {
+		data.Version = 0
 	}
 
 	tbs, err := asn1.Marshal(data)
@@ -194,22 +277,39 @@ func build(t testing.TB, a authority, s spec) []byte {
 		t.Fatalf("marshalling the response data: %v", err)
 	}
 
-	key := s.signerKey
-	if key == nil {
-		key = a.key
-	}
 	sum := sha256sum(tbs)
-	sig, err := ecdsa.SignASN1(rand.Reader, key, sum)
-	if err != nil {
-		t.Fatalf("signing: %v", err)
+
+	var (
+		sig    []byte
+		sigOID = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 2} // ecdsa-with-SHA256
+	)
+	if s.rsaSigner != nil {
+		// sha256WithRSAEncryption, which is what most real responders use.
+		sig, err = rsa.SignPKCS1v15(rand.Reader, s.rsaSigner, crypto.SHA256, sum)
+		if err != nil {
+			t.Fatalf("signing with RSA: %v", err)
+		}
+		sigOID = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 11}
+	} else {
+		key := s.signerKey
+		if key == nil {
+			key = a.key
+		}
+		sig, err = ecdsa.SignASN1(rand.Reader, key, sum)
+		if err != nil {
+			t.Fatalf("signing: %v", err)
+		}
 	}
 
 	basic := basicResponse{
 		TBSResponseData:    responseData{Raw: tbs},
-		SignatureAlgorithm: pkix.AlgorithmIdentifier{Algorithm: asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 2}},
+		SignatureAlgorithm: pkix.AlgorithmIdentifier{Algorithm: sigOID},
 		Signature:          asn1.BitString{Bytes: sig, BitLength: len(sig) * 8},
 	}
-	if s.signerCert != nil {
+	switch {
+	case s.rsaCert != nil:
+		basic.Certificates = []asn1.RawValue{{FullBytes: s.rsaCert.Raw}}
+	case s.signerCert != nil:
 		basic.Certificates = []asn1.RawValue{{FullBytes: s.signerCert.Raw}}
 	}
 
@@ -530,6 +630,15 @@ func FuzzCheck(f *testing.F) {
 	f.Add(build(f, ca, spec{leaf: leaf, issuer: ca.cert}))
 	f.Add(build(f, ca, spec{leaf: leaf, issuer: ca.cert, statusTag: 1}))
 
+	// The shapes a real authority emits, so the fuzzer starts from responses
+	// that exercise the branches a hand-written happy path never reaches.
+	f.Add(build(f, ca, spec{
+		leaf: leaf, issuer: ca.cert,
+		responderByKey: true, certIDHash: oidSHA256, explicitVersion: true,
+		nonce: true, singleExtension: true, extraEntries: 2,
+	}))
+	f.Add(build(f, ca, spec{leaf: leaf, issuer: ca.cert, noNextUpdate: true}))
+
 	f.Fuzz(func(t *testing.T, der []byte) {
 		got, err := Check(der, leaf, ca.cert, now)
 		if err != nil {
@@ -541,4 +650,98 @@ func FuzzCheck(f *testing.F) {
 			t.Fatalf("Check returned no error and status %q", got.Status)
 		}
 	})
+}
+
+// The shapes real responders emit.
+//
+// Every response this parser had ever seen was one the tests built, and they
+// all had the same shape: a name-form responder identifier, a SHA-1 CertID, an
+// ECDSA signature, one entry, no extensions, an omitted version. A real
+// authority varies every one of those, and a parser that only handles the
+// shape it was written against fails on the first live response — reporting
+// cert.staple-unverifiable, which is weak, against a server doing everything
+// right.
+//
+// That direction is the one this project cannot accept: a false accusation is
+// worse than a missed finding, because the reader has no way to tell it from a
+// real one. So each variant is exercised on its own, and each has to come back
+// good rather than merely not crash.
+func TestTheShapesRealRespondersEmit(t *testing.T) {
+	ca := newAuthority(t, "Test CA")
+	leaf := ca.issue(t, 4242, nil)
+
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generating an RSA key: %v", err)
+	}
+	rsaResponder := ca.issueRSAResponder(t, rsaKey)
+
+	cases := map[string]spec{
+		"responder identified by key hash": {responderByKey: true},
+		"SHA-256 CertID":                   {certIDHash: oidSHA256},
+		"version written out":              {explicitVersion: true},
+		"no nextUpdate":                    {noNextUpdate: true},
+		"a nonce in the response":          {nonce: true},
+		"an archive cutoff on the entry":   {singleExtension: true},
+		"three entries, ours last":         {extraEntries: 2},
+		"RSA signature from a delegate":    {rsaSigner: rsaKey, rsaCert: rsaResponder},
+		"everything at once": {
+			responderByKey: true, certIDHash: oidSHA256, explicitVersion: true,
+			nonce: true, singleExtension: true, extraEntries: 2,
+			rsaSigner: rsaKey, rsaCert: rsaResponder,
+		},
+	}
+
+	for name, tc := range cases {
+		tc.leaf, tc.issuer = leaf, ca.cert
+
+		got, err := Check(build(t, ca, tc), leaf, ca.cert, now)
+		if err != nil {
+			t.Errorf("%s: a well-formed response was refused: %v", name, err)
+			continue
+		}
+		if got.Status != Good {
+			t.Errorf("%s: status = %q, want %q", name, got.Status, Good)
+		}
+	}
+}
+
+// With several entries in one response, the right one has to be found. A
+// parser that reads the first would report another certificate's revocation
+// against this one, which is a false accusation rather than a missed finding.
+func TestTheRightEntryIsFoundAmongSeveral(t *testing.T) {
+	ca := newAuthority(t, "Test CA")
+	leaf := ca.issue(t, 4242, nil)
+
+	// The two entries placed in front of ours say revoked.
+	got, err := Check(build(t, ca, spec{leaf: leaf, issuer: ca.cert, extraEntries: 2}), leaf, ca.cert, now)
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if got.Status != Good {
+		t.Errorf("status = %q; another certificate's entry was read as this one's", got.Status)
+	}
+}
+
+// issueRSAResponder issues a delegated responder certificate over an RSA key,
+// which is what most authorities actually sign responses with.
+func (a authority) issueRSAResponder(t testing.TB, key *rsa.PrivateKey) *x509.Certificate {
+	t.Helper()
+	tpl := &x509.Certificate{
+		SerialNumber: big.NewInt(98),
+		Subject:      pkix.Name{CommonName: "rsa-responder.test"},
+		NotBefore:    now.AddDate(0, 0, -1),
+		NotAfter:     now.AddDate(0, 0, 7),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, a.cert, &key.PublicKey, a.key)
+	if err != nil {
+		t.Fatalf("issuing the RSA responder: %v", err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("parsing the RSA responder: %v", err)
+	}
+	return cert
 }
