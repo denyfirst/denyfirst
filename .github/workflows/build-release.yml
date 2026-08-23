@@ -12,16 +12,26 @@ name: Build release artifacts
 # would be worth more to an attacker than a backdoor and far harder to notice.
 #
 # The reproduction check exists to close that gap, and it closes nothing
-# unless it runs. Cross-compiling from Windows produces different bytes to
-# building on Linux, because GOROOT ends up in the runtime package and
-# -trimpath does not reach it. The check therefore failed on every honest
-# release, which is worse than having no check at all: a red mark nobody can
-# act on teaches everyone to ignore it.
+# unless it runs. That used to be the argument for building here: a
+# cross-compile from the maintainer's Windows machine was believed to produce
+# different bytes, because GOROOT ends up in the runtime package and -trimpath
+# was thought not to reach it, so the check would have failed on every honest
+# release — which is worse than no check at all.
 #
-# So the build happens here and the maintainer signs the result rather than
-# producing it. Two parties are now involved in a release: this workflow,
-# which builds but cannot sign, and the maintainer, who signs but does not
-# build. Compromising either alone yields nothing.
+# Measured on 2026-08-23 and the belief was wrong: ten artifacts built from
+# Windows against v0.3.0 matched this workflow's byte for byte, because the
+# toolchain came from the module cache rather than an installed GOROOT and
+# -trimpath does normalise module cache paths. The correction is recorded
+# rather than quietly dropped, because the sentence had been repeated in four
+# places and was steering people away from a check that works.
+#
+# The reason to build here survives it, and it is the stronger reason anyway:
+# a signature says a release came from whoever holds the key and says nothing
+# about whether the binaries correspond to the source, so the two have to be
+# done by different parties. The build happens here and the maintainer signs
+# the result rather than producing it: this workflow builds and cannot sign,
+# the maintainer signs and does not build, and compromising either alone
+# yields nothing.
 #
 # # Why a draft release rather than an artifact
 #
@@ -236,4 +246,10 @@ jobs:
 
           echo
           echo "Draft staged. The maintainer signs it with:"
-          echo "  .\\scripts\\release.ps1 -Tag ${TAG}"
+          # The child-process form, because the bare path does not work: a
+          # default Windows installation refuses to run a script file at all,
+          # so this line used to print an instruction that fails before the
+          # script starts. The procedure is docs/releasing.md.
+          echo "  powershell.exe -ExecutionPolicy Bypass -File .\\scripts\\release.ps1 -Tag ${TAG} -Compare"
+          echo
+          echo "The procedure, including the dry run, is docs/releasing.md."

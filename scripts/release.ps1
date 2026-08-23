@@ -18,11 +18,10 @@
     Compromising either alone yields nothing, and the build is visible to
     everyone while it happens.
 
-    Optionally rebuilds locally and compares. That check is off by default
-    because it only holds on Linux — cross-compiling from Windows puts a
-    different GOROOT in the runtime package, which -trimpath does not reach —
-    and a check that fails on every honest release teaches people to ignore
-    it.
+    Optionally rebuilds locally and compares. It is off by default because it
+    needs bash and a checkout of the tag, not because of the platform: the
+    claim that it only held on Linux was tested on 2026-08-23 and is wrong.
+    See -Compare.
 
 .PARAMETER Tag
     The version being released, such as v0.1.0.
@@ -32,15 +31,51 @@
     key on purpose: one being lost must not cost the other.
 
 .PARAMETER Compare
-    Rebuild locally and compare against what the workflow produced. Meaningful
-    on Linux; on Windows the difference is the host, not the source.
+    Rebuild locally and compare against what the workflow produced.
+
+    This used to say the comparison only meant something on Linux, because a
+    cross-compile from Windows puts a different GOROOT into the runtime
+    package and -trimpath does not reach it. Measured on 2026-08-23, from
+    Windows, against v0.3.0: ten artifacts, ten identical. The reason is in
+    the release's own BUILD record — the toolchain came from the module cache
+    rather than from an installed GOROOT, and -trimpath does normalise module
+    cache paths.
+
+    So it holds wherever the toolchain is the fetched one, which is whenever
+    the go directive in go.mod names a version other than the Go on PATH. When
+    they are the same version, the build uses the installed GOROOT and the
+    bytes will differ by that path. BUILD records the goroot for exactly this
+    comparison; check it before concluding anything from a mismatch.
 
     Runs scripts/build.sh — the one the release's BUILD record names — so it
     needs bash. Found on PATH, or in the usual Git for Windows locations, which
     is where it actually lives: the installer adds cmd\ to PATH but not bin\.
 
 .EXAMPLE
-    .\scripts\release.ps1 -Tag v0.1.0
+    powershell.exe -ExecutionPolicy Bypass -File .\scripts\release.ps1 -Tag v0.2.0
+
+    On a default Windows installation PowerShell refuses to run any script
+    file, so `.\scripts\release.ps1` fails before this script starts. The
+    child process above is allowed to and changes nothing outside itself.
+
+    This example used to be the bare path, which is an instruction that does
+    not work on the one kind of machine it is written for. Do not relax the
+    machine's policy instead: the execution policy is not a security boundary
+    -- -ExecutionPolicy Bypass is a documented flag, not a trick -- so making
+    it permanent buys no safety and loses the accident it does prevent. What
+    protects this step is that the script is in this repository and has been
+    read.
+
+.EXAMPLE
+    powershell.exe -ExecutionPolicy Bypass -File .\scripts\release.ps1 -Tag v0.2.0 -Compare
+
+    -Compare needs the tag checked out. It rebuilds from the tag's own build
+    script, and against a different working tree it reports a difference count
+    for the wrong source.
+
+.NOTES
+    The whole procedure, including the dry run that has to happen before a
+    first release and after any change to this script, is docs/releasing.md.
 #>
 
 [CmdletBinding()]
@@ -223,7 +258,8 @@ find in the history. Nothing was signed.
 
     if ($Compare) {
         Write-Host "`nRebuilding locally to compare" -ForegroundColor Cyan
-        Write-Host "  (meaningful on Linux; on Windows a difference is the host, not the source)" -ForegroundColor DarkGray
+        Write-Host "  (identical bytes are expected wherever the toolchain came from the module cache;" -ForegroundColor DarkGray
+        Write-Host "   compare the goroot line in BUILD before reading a difference as tampering)" -ForegroundColor DarkGray
 
         $local = Join-Path $repoRoot 'dist-local'
         if (Test-Path $local) { Remove-Item -Recurse -Force $local }

@@ -1558,6 +1558,57 @@ reason: a page naming things nobody can find is a page nobody can check.
 *Guarded by:* `TestTheChangeLogCoversTheCurrentPolicy`,
 `TestTheChangeLogNamesRulesThatExist`
 
+### S12 — A tag cannot be moved or deleted
+
+A signature over a tag is a statement about which commit was released. If the
+tag can be moved, the statement expires the moment somebody moves it: the
+hashes people verified against stay valid, the signature still checks out, and
+the tag now names something else. If it can be deleted, a release can be
+withdrawn from the record rather than superseded in it.
+
+Both restrictions are on. They are a repository ruleset rather than anything a
+checkout can assert, which is why they are written here beside S6's merge
+settings, and this is the first thing to look at if a signature ever appears to
+cover the wrong source.
+
+The cost is real and worth naming: a dry run leaves a signed tag behind for
+ever. `gh release delete --cleanup-tag` fails on the second half, correctly,
+and the recovery is to delete the draft release and leave the tag — which is
+why release candidates carry `-rcN` rather than reusing the number that will
+ship. Measured on 2026-08-22, on `v0.2.0-rc1`, which is still there.
+
+*Enforced in:* the repository's tag ruleset — restrict deletions and restrict
+updates, both on
+*Guarded by:* nothing a test can reach. `docs/releasing.md` records it as a
+prerequisite so that a procedure depending on it says so.
+
+### S13 — The release procedure is written down, and its first instruction works
+
+Every property above depends on somebody carrying out a sequence of steps in
+order, on one machine, a few times a year. Until 2026-08-22 that sequence
+existed in a chat window and nowhere in this repository — so the one procedure
+that decides what people download was the one procedure a reader could not
+check, and a maintainer who lost the window would have had to reconstruct it
+from three workflow files and a PowerShell script.
+
+`docs/releasing.md` is that sequence, including the dry run, what each step
+establishes, and the two repository settings it rests on.
+
+The first instruction has to work, which is not a detail. `release.ps1`'s own
+example was `.\scripts\release.ps1 -Tag v0.1.0`, and on a default Windows
+installation PowerShell refuses to run a script file at all — so the release
+procedure's entry point was a documented command that fails before the script
+starts, on the single kind of machine it exists to run on. This is the same
+class of defect as the `-X main.version` recipe in `docs/verify.md`: a document
+naming a command nobody had run. The example now names the invocation that
+works, and says why not to fix it by relaxing the machine's policy — the
+execution policy is not a security boundary, so making it permanent buys
+nothing and loses the accident it does prevent.
+
+*Enforced in:* `docs/releasing.md`, `scripts/release.ps1`'s help
+*Guarded by:* `TestTheReleaseProcedureIsWrittenDown`,
+`TestTheDocumentedInvocationIsTheOneThatWorks`
+
 ## Known gaps
 
 Listed rather than hidden. An unnamed gap is a surprise; a named one is work.
