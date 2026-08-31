@@ -75,26 +75,139 @@ jobs:
           git fetch -q --depth 1 origin "${GITHUB_SHA}"
           git checkout -q FETCH_HEAD
 
+      # The matrix values are read through the environment rather than
+      # interpolated into the script. They are literals from this file, so
+      # nothing is exploitable today; the habit is what protects the edit that
+      # one day puts something less predictable in a matrix.
       - name: Fuzz ${{ matrix.target }}
         env:
           DURATION: ${{ inputs.duration || '120' }}
+          PKG: ${{ matrix.package }}
+          TARGET: ${{ matrix.target }}
         run: |
-          go test "${{ matrix.package }}" \
-            -run '^$' \
-            -fuzz '^${{ matrix.target }}$' \
-            -fuzztime "${DURATION}s"
+          set -uo pipefail
 
-      # A crash leaves a reproducer under testdata/fuzz. Keeping it is the
-      # whole point: the file turns a random discovery into a permanent
-      # regression test once it is committed.
-      - name: Keep the reproducer
-        if: failure()
-        run: |
-          if [ -d "${{ matrix.package }}/testdata/fuzz" ]; then
-            echo "Reproducers found. Commit these to testdata/fuzz so the case"
-            echo "becomes part of the seed corpus and cannot come back."
-            find "${{ matrix.package }}/testdata/fuzz" -type f -print
-            echo
-            find "${{ matrix.package }}/testdata/fuzz" -type f -exec sh -c \
-              'echo "--- $1"; cat "$1"' _ {} \;
+          # `set -e` is deliberately absent: the exit status of `go test` is
+          # classified here rather than propagated, and the reason is the whole
+          # value of this workflow.
+          #
+          # `go test -fuzz` installs the -fuzztime duration as a context
+          # deadline on its coordinator (src/internal/fuzz/fuzz.go, the
+          # context.WithTimeout on opts.Timeout). On the way out the
+          # coordinator means to swallow that deadline, and does it by
+          # comparing the error it holds against fuzzCtx.Err() with `==` — a
+          # comparison between two different contexts' errors, on a shutdown
+          # path with several goroutines in it. When it does not hold, a run
+          # that found nothing ends:
+          #
+          #     --- FAIL: FuzzSplitTarget (120.09s)
+          #         context deadline exceeded
+          #
+          # Observed on 2026-08-27, run 33082895964, on go1.26.7: executions
+          # were still climbing at 26k/sec at the 2m0s mark, no input was
+          # written, the reproducer step found nothing to keep, and the four
+          # nightly runs after it were clean. The absence of the
+          # "Failing input written to" line is what settles it — src/testing/
+          # fuzz.go prints that for every error that carries a crash, so an
+          # error without it carries none.
+          #
+          # Left alone this is worse than a nuisance. This is the one gate that
+          # finds what nobody thought to test, it runs at 03:37 where nobody is
+          # watching, and a gate that goes red for a reason other than its own
+          # subject teaches people to skip it — including on the night it means
+          # something. The first one of these went unread for five days.
+          #
+          # So the shape is named, narrowly, and everything else still fails. A
+          # lost run is not made up by retrying: two minutes of fuzzing once a
+          # fortnight is worth nothing beside a signal that can be trusted.
+
+          out="${RUNNER_TEMP}/fuzz.out"
+          crashers="${PKG}/testdata/fuzz"
+
+          status=0
+          go test "${PKG}" \
+            -run '^$' \
+            -fuzz "^${TARGET}$" \
+            -fuzztime "${DURATION}s" > "${out}" 2>&1 || status=$?
+          cat "${out}"
+
+          # A finding is looked for first, so that a run which both found an
+          # input and tripped the deadline is reported as a finding.
+          #
+          # Go writes the input under testdata/fuzz and says where, so either
+          # half is enough. Keeping it is the point: the file turns a random
+          # discovery into a permanent regression test once it is committed.
+          #
+          # It goes into the job summary and an annotation as well as the log,
+          # because the log is the only copy and it expires in ninety days.
+          # Nothing here uploads an artifact: no third-party action is allowed
+          # in this organisation, and that is not a rule to work around.
+          if [ -d "${crashers}" ] || grep -q 'Failing input written to ' "${out}"; then
+            echo "::error::${TARGET} found a failing input. The reproducer is in this job's summary."
+            {
+              echo "## ${TARGET} found a failing input"
+              echo
+              echo "Commit each file below under \`${crashers}\` so the case joins the"
+              echo "seed corpus and cannot come back unnoticed."
+            } >> "${GITHUB_STEP_SUMMARY}"
+
+            if [ -d "${crashers}" ]; then
+              find "${crashers}" -type f -print0 | while IFS= read -r -d '' f; do
+                echo "--- ${f}"
+                cat "${f}"
+                {
+                  echo
+                  echo "### \`${f}\`"
+                  echo '```'
+                  cat "${f}"
+                  echo '```'
+                } >> "${GITHUB_STEP_SUMMARY}"
+              done
+            fi
+
+            exit 1
           fi
+
+          if [ "${status}" -eq 0 ]; then
+            echo "${TARGET}: ${DURATION}s, nothing found."
+            exit 0
+          fi
+
+          # Nothing was found and the run failed anyway. Exactly one shape is
+          # allowed through, and every part of it is required: one failing
+          # target, the coordinator's own deadline as the whole of the message,
+          # a duration that reached the budget, and none of the lines the
+          # toolchain prints when something real went wrong.
+          reported="$(sed -n "s/^--- FAIL: ${TARGET} (\([0-9]\{1,\}\)\.[0-9]\{1,\}s)$/\1/p" "${out}" | head -n 1)"
+          fails="$(grep -c '^--- FAIL: ' "${out}")"
+
+          if [ "${fails}" = "1" ] \
+            && [ -n "${reported}" ] \
+            && [ "${reported}" -ge "${DURATION}" ] \
+            && grep -qE '^ *context deadline exceeded$' "${out}" \
+            && ! grep -qE 'panic:|SIGSEGV|failure while testing seed corpus entry|hung or terminated unexpectedly|terminated by unexpected signal|exited unexpectedly due to an internal failure' "${out}"
+          then
+            # Not resting the pass on the absence of a file. The seeds run
+            # again with no deadline anywhere in the picture, so a target that
+            # is genuinely failing fails here, where nothing suppresses it.
+            if ! go test "${PKG}" -run "^${TARGET}$" -count=1; then
+              echo "::error::${TARGET}: the seed corpus fails as well, so this is not the deadline artefact."
+              exit 1
+            fi
+
+            echo "::warning::${TARGET}: -fuzztime expired and the coordinator reported its own deadline as a failure. No input was found and the seed corpus re-ran clean."
+            {
+              echo "### ${TARGET} — the coordinator's deadline, not a finding"
+              echo
+              echo "\`go test -fuzz\` ended after ${reported}s of a ${DURATION}s run with"
+              echo "\`context deadline exceeded\`. No failing input was written and the seed"
+              echo "corpus re-ran clean, so this run found nothing."
+              echo
+              echo "If this line appears most nights it has stopped being noise and is worth"
+              echo "chasing upstream. The reasoning is in \`.github/workflows/fuzz.yml\`."
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          echo "::error::${TARGET} failed in a way this step does not recognise. Read the log; do not assume it is the deadline artefact."
+          exit 1

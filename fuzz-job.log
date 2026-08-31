@@ -1,0 +1,106 @@
+﻿Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	∩╗┐2026-08-27T14:33:32.8994618Z Current runner version: '2.336.0'
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9020800Z ##[group]Runner Image Provisioner
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9022125Z Hosted Compute Agent
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9022826Z Version: 20260819.586
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9023561Z Commit: 3cc4a88dfa507ef76119ad1bb3eccc6378bb2b76
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9024334Z Build Date: 2026-08-18T23:20:18Z
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9025104Z Worker ID: {3a661890-f2a6-47f7-8116-a68d20c29be4}
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9025856Z Azure Region: westcentralus
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9026474Z ##[endgroup]
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9028049Z ##[group]Operating System
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9028711Z Ubuntu
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9029328Z 24.04.4
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9029941Z LTS
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9030524Z ##[endgroup]
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9031391Z ##[group]Runner Image
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9032034Z Image: ubuntu-24.04
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9032671Z Version: 20260823.283.1
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9034020Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260823.283/images/ubuntu/Ubuntu2404-Readme.md
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9035732Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260823.283
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9036754Z ##[endgroup]
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9037984Z ##[group]GITHUB_TOKEN Permissions
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9039913Z Contents: read
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9040610Z Metadata: read
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9041439Z ##[endgroup]
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9043576Z Secret source: Actions
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9044799Z Prepare workflow directory
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9432051Z Prepare all required actions
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:32.9700355Z Complete job name: Fuzz (./internal/scan, FuzzSplitTarget)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:33.0373565Z ##[group]Run git init -q
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:33.0374341Z ^[[36;1mgit init -q^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:33.0375342Z ^[[36;1mgit remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:33.0376381Z ^[[36;1mgit fetch -q --depth 1 origin "${GITHUB_SHA}"^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:33.0377146Z ^[[36;1mgit checkout -q FETCH_HEAD^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:33.0949255Z shell: /usr/bin/bash -e {0}
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:33.0950522Z ##[endgroup]
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:34.0497438Z ##[group]Run go test "./internal/scan" \
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:34.0498168Z ^[[36;1mgo test "./internal/scan" \^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:34.0498792Z ^[[36;1m  -run '^$' \^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:34.0499350Z ^[[36;1m  -fuzz '^FuzzSplitTarget$' \^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:34.0499991Z ^[[36;1m  -fuzztime "${DURATION}s"^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:34.0544251Z shell: /usr/bin/bash -e {0}
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:34.0544900Z env:
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:34.0545366Z   DURATION: 120
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:34.0545848Z ##[endgroup]
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:34.7907373Z go: downloading go1.26.7 (linux/amd64)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:56.1883625Z fuzz: elapsed: 0s, gathering baseline coverage: 0/46 completed
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:56.2179257Z fuzz: elapsed: 0s, gathering baseline coverage: 46/46 completed, now fuzzing with 4 workers
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:33:59.1882913Z fuzz: elapsed: 3s, execs: 83974 (27978/sec), new interesting: 82 (total: 128)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:02.1857337Z fuzz: elapsed: 6s, execs: 161887 (25983/sec), new interesting: 106 (total: 152)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:05.1874530Z fuzz: elapsed: 9s, execs: 258375 (32145/sec), new interesting: 126 (total: 172)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:08.1863221Z fuzz: elapsed: 12s, execs: 341052 (27570/sec), new interesting: 140 (total: 186)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:11.1872608Z fuzz: elapsed: 15s, execs: 417566 (25509/sec), new interesting: 144 (total: 190)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:14.1884021Z fuzz: elapsed: 18s, execs: 504867 (29092/sec), new interesting: 149 (total: 195)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:17.1863623Z fuzz: elapsed: 21s, execs: 586403 (27181/sec), new interesting: 154 (total: 200)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:20.1879365Z fuzz: elapsed: 24s, execs: 666236 (26615/sec), new interesting: 155 (total: 201)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:23.1867865Z fuzz: elapsed: 27s, execs: 751646 (28462/sec), new interesting: 158 (total: 204)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:26.1888069Z fuzz: elapsed: 30s, execs: 832360 (26899/sec), new interesting: 159 (total: 205)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:29.1882790Z fuzz: elapsed: 33s, execs: 912269 (26649/sec), new interesting: 160 (total: 206)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:32.1913094Z fuzz: elapsed: 36s, execs: 993950 (27221/sec), new interesting: 160 (total: 206)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:35.1864519Z fuzz: elapsed: 39s, execs: 1075104 (27053/sec), new interesting: 162 (total: 208)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:38.1858348Z fuzz: elapsed: 42s, execs: 1159862 (28258/sec), new interesting: 166 (total: 212)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:41.1872637Z fuzz: elapsed: 45s, execs: 1239781 (26639/sec), new interesting: 167 (total: 213)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:44.1857160Z fuzz: elapsed: 48s, execs: 1316016 (25413/sec), new interesting: 169 (total: 215)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:47.1866438Z fuzz: elapsed: 51s, execs: 1403942 (29299/sec), new interesting: 170 (total: 216)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:50.1872801Z fuzz: elapsed: 54s, execs: 1487941 (28006/sec), new interesting: 174 (total: 220)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:53.1864367Z fuzz: elapsed: 57s, execs: 1567284 (26443/sec), new interesting: 174 (total: 220)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:56.1872548Z fuzz: elapsed: 1m0s, execs: 1647810 (26843/sec), new interesting: 176 (total: 222)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:34:59.1882297Z fuzz: elapsed: 1m3s, execs: 1728574 (26924/sec), new interesting: 176 (total: 222)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:02.1860234Z fuzz: elapsed: 1m6s, execs: 1814382 (28604/sec), new interesting: 177 (total: 223)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:05.1888988Z fuzz: elapsed: 1m9s, execs: 1894686 (26766/sec), new interesting: 178 (total: 224)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:08.1872573Z fuzz: elapsed: 1m12s, execs: 1975757 (27026/sec), new interesting: 178 (total: 224)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:11.1866188Z fuzz: elapsed: 1m15s, execs: 2055690 (26636/sec), new interesting: 178 (total: 224)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:14.1864462Z fuzz: elapsed: 1m18s, execs: 2137018 (27111/sec), new interesting: 181 (total: 227)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:17.1862213Z fuzz: elapsed: 1m21s, execs: 2216661 (26552/sec), new interesting: 183 (total: 229)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:20.1861717Z fuzz: elapsed: 1m24s, execs: 2297297 (26877/sec), new interesting: 183 (total: 229)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:23.1866760Z fuzz: elapsed: 1m27s, execs: 2377002 (26563/sec), new interesting: 184 (total: 230)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:26.1866999Z fuzz: elapsed: 1m30s, execs: 2456543 (26515/sec), new interesting: 184 (total: 230)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:29.1882429Z fuzz: elapsed: 1m33s, execs: 2536666 (26712/sec), new interesting: 185 (total: 231)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:32.1883681Z fuzz: elapsed: 1m36s, execs: 2614416 (25913/sec), new interesting: 185 (total: 231)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:35.1862462Z fuzz: elapsed: 1m39s, execs: 2694110 (26568/sec), new interesting: 185 (total: 231)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:38.1860684Z fuzz: elapsed: 1m42s, execs: 2773068 (26320/sec), new interesting: 185 (total: 231)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:41.1857263Z fuzz: elapsed: 1m45s, execs: 2852879 (26607/sec), new interesting: 185 (total: 231)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:44.1880144Z fuzz: elapsed: 1m48s, execs: 2933375 (26824/sec), new interesting: 185 (total: 231)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:47.1912208Z fuzz: elapsed: 1m51s, execs: 3012290 (26289/sec), new interesting: 185 (total: 231)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:50.1892140Z fuzz: elapsed: 1m54s, execs: 3091903 (26554/sec), new interesting: 185 (total: 231)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:53.1865537Z fuzz: elapsed: 1m57s, execs: 3171621 (26573/sec), new interesting: 185 (total: 231)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.1892594Z fuzz: elapsed: 2m0s, execs: 3250989 (26461/sec), new interesting: 185 (total: 231)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.2796757Z fuzz: elapsed: 2m0s, execs: 3250989 (0/sec), new interesting: 185 (total: 231)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.2797582Z --- FAIL: FuzzSplitTarget (120.09s)
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.2797975Z     context deadline exceeded
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.2798314Z FAIL
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.2837299Z exit status 1
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.2837968Z FAIL	github.com/denyfirst/denyfirst/internal/scan	120.101s
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.3474776Z ##[error]Process completed with exit code 1.
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.3536620Z ##[group]Run if [ -d "./internal/scan/testdata/fuzz" ]; then
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.3537138Z ^[[36;1mif [ -d "./internal/scan/testdata/fuzz" ]; then^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.3537569Z ^[[36;1m  echo "Reproducers found. Commit these to testdata/fuzz so the case"^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.3538043Z ^[[36;1m  echo "becomes part of the seed corpus and cannot come back."^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.3538703Z ^[[36;1m  find "./internal/scan/testdata/fuzz" -type f -print^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.3539025Z ^[[36;1m  echo^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.3539321Z ^[[36;1m  find "./internal/scan/testdata/fuzz" -type f -exec sh -c \^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.3539683Z ^[[36;1m    'echo "--- $1"; cat "$1"' _ {} \;^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.3539953Z ^[[36;1mfi^[[0m
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.3582863Z shell: /usr/bin/bash -e {0}
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.3583155Z ##[endgroup]
+Fuzz (./internal/scan, FuzzSplitTarget)	UNKNOWN STEP	2026-08-27T14:35:56.3753975Z Cleaning up orphan processes
