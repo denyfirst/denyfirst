@@ -511,6 +511,9 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 		HostnameMatches:    hostnameMatches,
 	}
 	facts.KeyAlgorithm, facts.KeyBits = keyDetails(leaf)
+	if key, ok := leaf.PublicKey.(*rsa.PublicKey); ok {
+		facts.KeyFromBrokenGenerator = rocaFingerprint(key.N)
+	}
 
 	if facts.KeyAlgorithm == "" {
 		report.Notes = append(report.Notes, fmt.Sprintf(

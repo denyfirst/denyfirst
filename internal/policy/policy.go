@@ -41,7 +41,7 @@ import (
 // secrecy they have. A rule change is a version change, because a user who
 // scans an unchanged server twice and gets two grades has been given a reason
 // to distrust both.
-const Version = "denyfirst-v3"
+const Version = "denyfirst-v4"
 
 // ReviewBy is when these rules should next be read against their sources.
 //

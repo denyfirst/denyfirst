@@ -14,6 +14,52 @@ free to improve without breaking that.
 
 ---
 
+## `denyfirst-v3` → `denyfirst-v4`
+
+Unreleased. One rule added, and it is the most serious thing this report can
+say about a key.
+
+### A key made by a generator known to be broken
+
+| Rule | Verdict | When |
+|---|---|---|
+| `cert.roca` | Insecure | The RSA modulus carries the fingerprint of Infineon's RSALib, CVE-2017-15361 |
+
+RSALib built primes of the form `k·M + (65537^a mod M)`, with `M` the product
+of the first *n* primes, instead of choosing them at random. Both primes of a
+key were made that way, so the modulus satisfies `N ≡ 65537^(a+b) (mod M)` —
+and a key of that shape can be factored from the public key alone by
+Coppersmith's method, in weeks to months of computation, with no access to the
+server. Millions of smart cards, TPMs and national identity cards were
+affected in 2017; Estonia withdrew over 750,000 identity cards.
+
+**Nothing here factors anything.** Detection is a residue test: by the Chinese
+remainder theorem, `N mod p` must lie in the subgroup 65537 generates for every
+prime `p` dividing `M`, and checking thirty-eight of those takes microseconds.
+So the finding says what was established — that the key carries the fingerprint
+of a generator known to produce factorable keys — and not what it implies. The
+two are different claims, and only the first one was measured.
+
+The test is a necessary condition rather than a sufficient one: a modulus with
+no relation to RSALib would have to land inside the reachable set modulo all
+thirty-eight primes at once. The published corpora report no false positives,
+and the wording is chosen so that the report is still true if one exists.
+
+Nothing about a report changes for a key from any other generator. Practically
+every publicly trusted certificate carrying this shape was revoked in 2017, and
+authorities have been required to refuse such keys since; where it still bites
+is keys generated on a smart card or a TPM for a server somebody runs
+themselves, which is exactly what this project expects to be pointed at.
+
+### What did not change
+
+No existing rule changed meaning, no verdict moved, and a report from
+`denyfirst-v3` and one from `denyfirst-v4` are comparable for every server
+whose key was made by something that is not RSALib — which is nearly all of
+them.
+
+---
+
 ## `denyfirst-v2` → `denyfirst-v3`
 
 Released in v0.3.0, 2026-08. One change, and it is the largest single change

@@ -27,6 +27,16 @@ var (
 		"NIST SP 800-57 Part 1 Rev. 5 — Recommendation for Key Management",
 		"https://csrc.nist.gov/pubs/sp/800/57/pt1/r5/final",
 	}
+
+	roca2017 = Reference{
+		"ROCA — Nemec, Sýs, Švenda, Klinec and Matyáš, ACM CCS 2017",
+		"https://crocs.fi.muni.cz/public/papers/rsa_ccs17",
+	}
+
+	cve201715361 = Reference{
+		"CVE-2017-15361 — Infineon RSA key generation",
+		"https://nvd.nist.gov/vuln/detail/CVE-2017-15361",
+	}
 	shattered = Reference{
 		"SHAttered — the first practical SHA-1 collision",
 		"https://shattered.io/",
@@ -42,6 +52,12 @@ type LeafFacts struct {
 
 	// KeyAlgorithm is "RSA", "ECDSA", "Ed25519", or "" when unrecognised.
 	KeyAlgorithm string
+
+	// KeyFromBrokenGenerator is the RSA key carrying the RSALib fingerprint
+	// of CVE-2017-15361. It is a statement about how the key was made, not a
+	// claim that anybody factored it, and the rule below says so in those
+	// words.
+	KeyFromBrokenGenerator bool
 
 	// KeyBits is the RSA modulus size or the elliptic curve field size.
 	// Ed25519 has no size parameter and reports 0.
@@ -234,6 +250,18 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 	// only honest answer until somebody adds the case.
 	switch f.KeyAlgorithm {
 	case "RSA":
+		if f.KeyFromBrokenGenerator {
+			add("cert.roca", Insecure,
+				"Key made by a generator known to produce factorable keys",
+				"The modulus carries the fingerprint of Infineon's RSALib, which built primes from a "+
+					"small family instead of at random. A key of that shape can be factored from the "+
+					"public key alone by Coppersmith's method — weeks to months of computation, and "+
+					"nothing an attacker needs the server for. Millions of smart cards, TPMs and "+
+					"identity cards were affected in 2017 and the certificates among them were "+
+					"revoked. This is a fingerprint of how the key was generated; nothing here "+
+					"factored anything. Replace the key rather than reissuing the same one.",
+				roca2017, cve201715361, cabBR)
+		}
 		if f.KeyBits < 2048 {
 			add("cert.rsa-key-too-small", Insecure,
 				fmt.Sprintf("RSA key of %d bits", f.KeyBits),
