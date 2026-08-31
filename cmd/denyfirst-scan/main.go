@@ -38,7 +38,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/certinfo"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/scan"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
@@ -144,7 +143,7 @@ func run() int {
 		results = append(results, r)
 
 		if !*asJSON {
-			printReport(r)
+			printReport(os.Stdout, r)
 		}
 	}
 
@@ -210,11 +209,16 @@ func runScan(ctx context.Context, s *scan.Scanner, target string, timeout time.D
 	return result{Result: r}
 }
 
-func printReport(r result) {
-	fmt.Printf("\n%s\n%s\n", r.Target, strings.Repeat("=", len(r.Target)))
+// The writer is a parameter for the reason printVersions gives below, and
+// this is the function that made it worth doing: everything a person reading
+// a terminal ever sees passes through here, and until a test could read it,
+// three sentences were wrong at once and all three were found by a person
+// looking at a live report rather than by anything in this repository.
+func printReport(w io.Writer, r result) {
+	fmt.Fprintf(w, "\n%s\n%s\n", r.Target, strings.Repeat("=", len(r.Target)))
 
 	if r.Error != "" {
-		fmt.Printf("\n  scan failed: %s\n", r.Error)
+		fmt.Fprintf(w, "\n  scan failed: %s\n", r.Error)
 		return
 	}
 
@@ -222,20 +226,20 @@ func printReport(r result) {
 	if verdict == "" {
 		verdict = "ungraded (nothing could be measured)"
 	}
-	fmt.Printf("\n  Verdict   %s\n", verdict)
-	fmt.Printf("  Policy    %s\n", r.Policy)
+	fmt.Fprintf(w, "\n  Verdict   %s\n", verdict)
+	fmt.Fprintf(w, "  Policy    %s\n", r.Policy)
 	if r.TLS != nil && r.TLS.Address != "" {
-		fmt.Printf("  Address   %s\n", r.TLS.Address)
+		fmt.Fprintf(w, "  Address   %s\n", r.TLS.Address)
 	}
 
-	printVersions(os.Stdout, r.TLS)
-	printCiphers(os.Stdout, r.TLS)
-	printCertificate(r.Certificate)
-	printFindings(r)
-	printNotes(r)
+	printVersions(w, r.TLS)
+	printCiphers(w, r.TLS)
+	printCertificate(w, r)
+	printFindings(w, r)
+	printNotes(w, r)
 
 	if r.TLS != nil {
-		fmt.Printf("\n  Completed in %s\n", r.TLS.Duration.Round(time.Millisecond))
+		fmt.Fprintf(w, "\n  Completed in %s\n", r.TLS.Duration.Round(time.Millisecond))
 	}
 }
 
@@ -301,77 +305,91 @@ func printCiphers(w io.Writer, t *tlsprobe.Report) {
 	}
 }
 
-func printCertificate(c *certinfo.Report) {
+func printCertificate(w io.Writer, r result) {
+	c := r.Certificate
 	if c == nil || len(c.Chain) == 0 {
 		return
 	}
 	leaf := c.Chain[0]
 
-	fmt.Printf("\n  Certificate\n")
-	fmt.Printf("    Subject      %s\n", leaf.Subject)
-	fmt.Printf("    Issuer       %s\n", leaf.Issuer)
-	fmt.Printf("    Valid        %s to %s",
+	fmt.Fprintf(w, "\n  Certificate\n")
+	fmt.Fprintf(w, "    Subject      %s\n", leaf.Subject)
+	fmt.Fprintf(w, "    Issuer       %s\n", leaf.Issuer)
+	fmt.Fprintf(w, "    Valid        %s to %s",
 		leaf.NotBefore.UTC().Format(time.DateOnly),
 		leaf.NotAfter.UTC().Format(time.DateOnly))
 
 	if c.Grade.DaysRemaining >= 0 {
-		fmt.Printf("  (%d days remaining)\n", c.Grade.DaysRemaining)
+		fmt.Fprintf(w, "  (%d days remaining)\n", c.Grade.DaysRemaining)
 	} else {
-		fmt.Printf("  (expired %d days ago)\n", -c.Grade.DaysRemaining)
+		fmt.Fprintf(w, "  (expired %d days ago)\n", -c.Grade.DaysRemaining)
 	}
 
-	fmt.Printf("    Lifetime     %d days, limit at issuance %d\n",
+	fmt.Fprintf(w, "    Lifetime     %d days, limit at issuance %d\n",
 		c.Grade.ValidityDays, c.Grade.MaxValidityDays)
 
 	if leaf.KeyBits > 0 {
-		fmt.Printf("    Key          %s %d\n", leaf.KeyAlgorithm, leaf.KeyBits)
+		fmt.Fprintf(w, "    Key          %s %d\n", leaf.KeyAlgorithm, leaf.KeyBits)
 	} else {
-		fmt.Printf("    Key          %s\n", leaf.KeyAlgorithm)
+		fmt.Fprintf(w, "    Key          %s\n", leaf.KeyAlgorithm)
 	}
-	fmt.Printf("    Signature    %s\n", leaf.SignatureAlgorithm)
+	fmt.Fprintf(w, "    Signature    %s\n", leaf.SignatureAlgorithm)
 
 	if len(leaf.DNSNames) > 0 {
-		fmt.Printf("    Names        %s\n", strings.Join(leaf.DNSNames, ", "))
+		fmt.Fprintf(w, "    Names        %s\n", strings.Join(leaf.DNSNames, ", "))
 	}
 	if len(leaf.IPAddresses) > 0 {
-		fmt.Printf("    Addresses    %s\n", strings.Join(leaf.IPAddresses, ", "))
+		fmt.Fprintf(w, "    Addresses    %s\n", strings.Join(leaf.IPAddresses, ", "))
 	}
 
-	fmt.Printf("    Fingerprint  %s\n", leaf.FingerprintSHA256)
+	fmt.Fprintf(w, "    Fingerprint  %s\n", leaf.FingerprintSHA256)
 
 	if c.Trusted {
-		fmt.Printf("    Chain        %d certificate(s), trusted\n", len(c.Chain))
+		fmt.Fprintf(w, "    Chain        %d certificate(s), trusted\n", len(c.Chain))
 	} else {
-		fmt.Printf("    Chain        %d certificate(s), not trusted: %s\n", len(c.Chain), c.VerifyError)
+		fmt.Fprintf(w, "    Chain        %d certificate(s), not trusted: %s\n", len(c.Chain), c.VerifyError)
+	}
+
+	// The page has shown this since the row was added and this report never
+	// has, so the answer to "who may issue for this name" reached a reader
+	// with a browser and nobody at a terminal. It was not hidden in the notes
+	// either: it was absent.
+	//
+	// The sentence is the one the policy package wrote, not one built here.
+	// Two renderers composing the same claim from the same facts is how the
+	// two come to say different things, which this whole file is now tested
+	// against.
+	if r.Issuance != nil && r.Issuance.Line != "" {
+		fmt.Fprintf(w, "    Issuance     %s\n", wrap(r.Issuance.Line, 60, "                 "))
 	}
 }
 
-func printFindings(r result) {
+func printFindings(w io.Writer, r result) {
 	findings := r.Findings()
 	if len(findings) == 0 {
-		fmt.Printf("\n  No findings.\n")
+		fmt.Fprintf(w, "\n  No findings.\n")
 		return
 	}
 
-	fmt.Printf("\n  Findings\n")
+	fmt.Fprintf(w, "\n  Findings\n")
 	for _, f := range findings {
-		fmt.Printf("\n    [%s] %s  (%s)\n", f.Verdict, f.Title, f.RuleID)
-		fmt.Printf("      %s\n", wrap(f.Rationale, 72, "      "))
+		fmt.Fprintf(w, "\n    [%s] %s  (%s)\n", f.Verdict, f.Title, f.RuleID)
+		fmt.Fprintf(w, "      %s\n", wrap(f.Rationale, 72, "      "))
 		for _, ref := range f.References {
-			fmt.Printf("      · %s\n        %s\n", ref.Label, ref.URL)
+			fmt.Fprintf(w, "      · %s\n        %s\n", ref.Label, ref.URL)
 		}
 	}
 }
 
-func printNotes(r result) {
+func printNotes(w io.Writer, r result) {
 	notes := r.Notes()
 	if len(notes) == 0 {
 		return
 	}
 
-	fmt.Printf("\n  Notes\n")
+	fmt.Fprintf(w, "\n  Notes\n")
 	for _, n := range notes {
-		fmt.Printf("    · %s\n", wrap(n, 70, "      "))
+		fmt.Fprintf(w, "    · %s\n", wrap(n, 70, "      "))
 	}
 }
 

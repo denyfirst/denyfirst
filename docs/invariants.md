@@ -942,7 +942,8 @@ does not.
 `TestATruncatedCipherListIsMarkedOnTheTable`,
 `TestUnreadableTimestampsDoNotBecomeAMeasurement`,
 `TestTheLimitsOfThisClientAreStatedWhenNothingWasAccepted`,
-`TestTheClassesTheScriptAddsAreStyled`, `TestClientRefusalIsNotServerRefusal`
+`TestTheClassesTheScriptAddsAreStyled`, `TestClientRefusalIsNotServerRefusal`,
+`TestAVersionThatCouldNotBeMeasuredIsNotDrawnAsRefused`
 
 ### R13 — An exit status is a verdict, and `ungraded` is not zero
 
@@ -1042,6 +1043,49 @@ be the false completeness this invariant exists to prevent.
 `internal/tlsprobe/reachable_test.go`
 *Guarded by:* `TestEveryGradingRuleIsReachableOrNamed`,
 `TestEveryUnreachableRuleIsInTheKnownGaps`
+
+### R16 — One result, two renderers, one set of facts
+
+A scan produces one result and two things render it: `app.js` for a browser
+and `cmd/denyfirst-scan` for a terminal. They are different code in different
+languages, nothing compared them, and on 2026-08-31 they were answering
+different questions. The page carried an Issuance line — which authorities may
+issue a certificate for this name, the whole CAA analysis — and the terminal
+carried nothing. Not a shorter version of it, and not a note: it was absent,
+and had been since the row was added.
+
+The reason it survived is worth more than the defect. A test did guard the
+issuance row, and it read the source of `app.js` to check the row was there.
+It was there. Nothing asked the other renderer the same question, because
+nothing could: everything the terminal printed went to standard output, so no
+test could read a line of it. The first test that built a report and read it
+found this on its first run.
+
+So the report is now written to a writer, and the two faces are compared by
+the questions they answer rather than by the sentences they use. Wrapping and
+punctuation may differ; which facts appear may not. A difference that is
+deliberate has to be named with what it would take to close it, and a named
+difference that has been closed fails the test in the other direction — the
+same shape as R15, and for the same reason: a carried gap that is no longer
+real reads as though it still is.
+
+Two are named today, `Revocation` and `Transparency`, and the reason is the
+same for both: their sentences are composed in JavaScript. A terminal cannot
+print the same sentence, and composing a second one in Go from the same facts
+is precisely how two renderers come to disagree. Closing them means moving the
+sentence into the policy package so that both faces read one string, which is
+where every other sentence in this report already comes from.
+
+The same reading found a second thing. `Result.Notes` collected notes from the
+probe, the certificate, the alternate chains and the stapling, and not from
+issuance — so the sentences saying where a CAA answer came from, whether the
+resolver claimed it was validated, and why a restriction is not a guarantee
+reached a reader of the JSON and no one else. They are collected now.
+
+*Enforced in:* `cmd/denyfirst-scan.printReport`,
+`cmd/denyfirst-scan.printCertificate`, `internal/scan.Result.Notes`
+*Guarded by:* `TestBothFacesOfTheReportShowTheSameFacts`,
+`TestAReportSaysWhatWasMeasured`
 
 ### R9a — A CAA value is an authority and its parameters, not one string
 
