@@ -82,19 +82,3 @@ func TestTheClassesTheScriptAddsAreStyled(t *testing.T) {
 		}
 	}
 }
-
-// section returns the text of one function, so a test can assert about the
-// part of the script it means rather than about the whole file.
-func section(t *testing.T, source, opening string) string {
-	t.Helper()
-
-	start := strings.Index(source, opening)
-	if start < 0 {
-		t.Fatalf("app.js no longer contains %q", opening)
-	}
-	rest := source[start:]
-	if end := strings.Index(rest, "\n}\n"); end >= 0 {
-		return rest[:end]
-	}
-	return rest
-}
