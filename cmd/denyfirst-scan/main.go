@@ -359,8 +359,17 @@ func printCertificate(w io.Writer, r result) {
 	// Two renderers composing the same claim from the same facts is how the
 	// two come to say different things, which this whole file is now tested
 	// against.
+	// The same three lines the page shows, in the same order, from the same
+	// strings. Two renderers composing one claim from the same facts is how
+	// the two come to say different things, so neither builds a sentence here.
+	if r.RevocationLine != "" {
+		fmt.Fprintf(w, "    Revocation   %s\n", wrap(r.RevocationLine, 60, "                 "))
+	}
 	if r.Issuance != nil && r.Issuance.Line != "" {
 		fmt.Fprintf(w, "    Issuance     %s\n", wrap(r.Issuance.Line, 60, "                 "))
+	}
+	if r.TransparencyLine != "" {
+		fmt.Fprintf(w, "    Transparency %s\n", wrap(r.TransparencyLine, 60, "                 "))
 	}
 }
 

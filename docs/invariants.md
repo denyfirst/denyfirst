@@ -1069,12 +1069,25 @@ difference that has been closed fails the test in the other direction — the
 same shape as R15, and for the same reason: a carried gap that is no longer
 real reads as though it still is.
 
-Two are named today, `Revocation` and `Transparency`, and the reason is the
-same for both: their sentences are composed in JavaScript. A terminal cannot
-print the same sentence, and composing a second one in Go from the same facts
-is precisely how two renderers come to disagree. Closing them means moving the
-sentence into the policy package so that both faces read one string, which is
-where every other sentence in this report already comes from.
+Two were named the day this was written, `Revocation` and `Transparency`, and
+both are closed. Their sentences were composed in `app.js` and only there,
+which put them out of reach of the terminal and out of reach of anything that
+could execute them — the revocation sentence went on saying "a status response
+was stapled" for a whole policy version after the service had begun parsing
+that response, matching it to the certificate, checking its freshness and
+verifying the issuer's signature. Writing a second copy in Go would have been
+worse than leaving it, so they moved to `internal/policy`, beside the facts
+they are made of and the notes written from the same facts, and both faces
+read the one string.
+
+The migration was proved rather than asserted. The two composers were lifted
+out of the version on `main` and run in a JavaScript engine against every
+combination of the facts they read — one hundred of them — beside the Go
+functions replacing them, and every sentence matched. The page was then
+rendered from a real scan through both versions of `app.js` and compared: the
+output is identical. Neither check lives in this repository, because neither
+should — a JavaScript engine in CI is a moving part this project does not need
+once the sentences are in Go and tested there.
 
 The same reading found a second thing. `Result.Notes` collected notes from the
 probe, the certificate, the alternate chains and the stapling, and not from

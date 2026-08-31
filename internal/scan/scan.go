@@ -94,6 +94,16 @@ type Result struct {
 	// that reason, and the notes say where it came from.
 	Issuance *policy.Issuance `json:"issuance,omitempty"`
 
+	// RevocationLine and TransparencyLine are the two sentences the
+	// certificate section shows, built once here so that the page and the
+	// terminal read the same string rather than each composing its own.
+	//
+	// They were composed in app.js and nowhere else, which put them out of
+	// reach of the terminal report — it showed neither — and out of reach of
+	// anything that could execute them. R16.
+	RevocationLine   string `json:"revocationLine,omitempty"`
+	TransparencyLine string `json:"transparencyLine,omitempty"`
+
 	// Stapling grades the status response against what the certificate asked
 	// for. It is neither a transport property nor a certificate property: the
 	// request is written in the certificate and the answer arrives in the
@@ -293,6 +303,7 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 
 		stapling := policy.GradeStapling(facts)
 		out.Stapling = &stapling
+		out.RevocationLine = policy.RevocationLine(facts)
 		out.Verdict = policy.Worst(out.Verdict, stapling.Verdict)
 
 		// The second join, and the same shape as the first. Timestamps reach a
@@ -301,14 +312,15 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 		// handshake, and whether a response was stapled that might carry the
 		// rest. The sentence belongs with the certificate, which is what a
 		// reader is looking at when the question occurs to them.
-		certReport.Notes = append(certReport.Notes,
-			policy.DescribeTransparency(policy.TransparencyFacts{
-				Embedded:    certReport.Transparency.EmbeddedCount,
-				InHandshake: tlsReport.SCTCount,
-				FromLogs:    distinctLogs(certReport.Transparency.LogIDs, tlsReport.SCTLogIDs),
-				Stapled:     tlsReport.OCSPStapled,
-				Trusted:     certReport.Trusted,
-			})...)
+		transparency := policy.TransparencyFacts{
+			Embedded:    certReport.Transparency.EmbeddedCount,
+			InHandshake: tlsReport.SCTCount,
+			FromLogs:    distinctLogs(certReport.Transparency.LogIDs, tlsReport.SCTLogIDs),
+			Stapled:     tlsReport.OCSPStapled,
+			Trusted:     certReport.Trusted,
+		}
+		certReport.Notes = append(certReport.Notes, policy.DescribeTransparency(transparency)...)
+		out.TransparencyLine = policy.TransparencyLine(transparency)
 	}
 
 	// Asked last, and bounded by whatever is left of the caller's deadline.
