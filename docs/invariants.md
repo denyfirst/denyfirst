@@ -1006,6 +1006,43 @@ the ordinary case nothing here runs.
 `TestAWeakCertificateBehindAnOldVersionIsGraded`
 
 
+### R15 — A rule that cannot fire is named, not counted
+
+A rule set is read as a list of what a scanner checks. Some of these rules
+cannot fire here at all: the front end is Go's TLS client, which offers what it
+implements, and a rule matching a suite Go does not implement will never see
+one. It is still correct — it is simply not coverage, and the difference
+matters to anyone deciding whether this report is enough.
+
+The Known gaps said this of exactly one rule, `cipher.ffdhe`, because somebody
+noticed it. Measuring the rest found nine of thirteen cipher rules in the same
+position, and two of three version rules. A list naming one case out of nine
+reads as though the other eight do not exist, which is worse than naming none.
+
+So the set is measured rather than remembered. Everything this prober can offer
+— every version in `probedVersions`, every suite in `candidateSuites` — is
+graded, the rule ids that come back are the reachable set, and every rule
+outside it has to be named with a reason. A rule that is neither reachable nor
+named fails the test, and so does a rule named as unreachable that has started
+firing: Go gaining an FFDHE suite would close that gap, and a gap list still
+claiming it is the stale-list failure this document warns about elsewhere.
+
+The rule inventory is read out of the policy package's own source rather than
+kept beside it. Cipher rules come from a table and version rules from literals
+in a switch, so there is no list to ask for, and a list maintained by hand is
+one that goes quietly out of date — which is the thing being guarded against.
+
+Only versions and suites are decided here, and the limit is deliberate.
+Certificate rules depend on the certificate a server chooses to present, which
+nothing in this repository can enumerate; claiming to have measured that would
+be the false completeness this invariant exists to prevent.
+
+*Enforced in:* `internal/tlsprobe.probedVersions`,
+`internal/tlsprobe.candidateSuites`, the list in
+`internal/tlsprobe/reachable_test.go`
+*Guarded by:* `TestEveryGradingRuleIsReachableOrNamed`,
+`TestEveryUnreachableRuleIsInTheKnownGaps`
+
 ### R9a — A CAA value is an authority and its parameters, not one string
 
 RFC 8659 §4.2 puts parameters after the authority inside a single value:
@@ -1858,13 +1895,46 @@ Anything below is open today.
   outside there is nothing else it could say. Closing it would need a TLS
   client that can offer suites Go does not implement, which is the same
   requirement as the entry below.
-- **Finite-field DHE cannot be observed at all.** `cipher.ffdhe` grades it, and
-  this scanner will never present it a suite to grade: Go offers no FFDHE
-  cipher suites, measured as fifteen ECDHE and zero FFDHE. A TLS 1.2 server
-  configured for finite-field DHE alone is therefore measured as accepting
-  nothing, and the report does not distinguish that from a server that refused
-  everything for its own reasons. The rule is right and unreachable through
-  this front end, which is worth stating rather than counting as coverage.
+- **Eleven grading rules cannot fire through this front end.** Measured rather
+  than estimated: every version in `probedVersions` and every suite in
+  `candidateSuites` is graded, and the rules that never come back are these.
+  Nine of the thirteen cipher rules and two of the three version rules are in
+  this position, and until 2026-08-31 one of them was named here and the other
+  ten were not.
+
+  The cause is the same in almost every case. This scanner speaks through Go's
+  TLS client, so it can only offer what Go implements, and a rule that matches
+  a suite Go does not implement will never be shown one. `cipher.null`,
+  `cipher.no-encryption` (RFC 9150 integrity-only), `cipher.anonymous`,
+  `cipher.export`, `cipher.des` — single DES, not the 3DES rule beside it,
+  which is reachable — and `cipher.md5` are all of that kind.
+
+  `cipher.ffdhe` is the one worth reading twice, because it changes what a
+  report means: Go offers no finite-field DHE suite, so a TLS 1.2 server
+  configured for DHE alone is measured as accepting nothing, and the report
+  does not distinguish that from a server that refused everything for its own
+  reasons.
+
+  `version.ssl3` has the same shape and the same consequence. Go removed
+  SSL 3.0 in 1.14, so a server speaking only SSL 3.0 is reported as refusing
+  every version rather than as insecure. After POODLE such a server is close
+  to extinct, which is a reason it matters little and not a reason it is
+  untrue. `version.unknown` cannot fire because `probedVersions` is a fixed
+  list, and `cipher.unrecognised` cannot fire because an enumeration that only
+  offers suites this Go names cannot be answered with one it does not.
+
+  `cipher.not-current-practice` is different and is listed for honesty rather
+  than for the same reason. It is the catch-all that grades a suite matching no
+  specific rule, and it is reachable in principle; for all twenty-two suites
+  this prober can offer, a more specific rule matches first and stops the
+  search. It is shadowed rather than impossible.
+
+  None of this makes the rules wrong. They are correct and they are not
+  coverage, and the second half is what a reader deciding whether this report
+  is enough needs to be told. R15 keeps the list from drifting in either
+  direction — a rule that quietly stops firing, and a gap still claimed after
+  Go closes it.
+
 - **A lookalike alphabet is reported, not resolved.** R10 raises a note when a
   name draws on more than one of Latin, Cyrillic and Greek, which is as far as
   a report can honestly go: the characters are genuinely different and folding
