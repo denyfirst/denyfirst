@@ -1646,9 +1646,25 @@ works, and says why not to fix it by relaxing the machine's policy — the
 execution policy is not a security boundary, so making it permanent buys
 nothing and loses the accident it does prevent.
 
+The same reasoning reaches every command in it, not only the first. A
+procedure is a set of instructions, and an instruction that opens a menu is
+one somebody answers wrongly at two in the morning: `gh run watch` with no run
+named lists every recent run and waits, and on 2026-08-23 the CI run was
+chosen instead of the build, the draft release was taken to exist, and the
+next command answered `release not found`. Every run command in these pages
+now names the run it acts on.
+
+The page also carries what happens before a release, because that is where the
+release goes wrong. Four pull requests were left green and unmerged in one
+day, and one of them was the only reason v0.3.1 existed — so the tag was cut,
+signed, reproduced and deployed without the fix it was for. A commit is also
+now looked at twice, before staging and after, which is what would have kept
+two saved workflow logs out of `main` on 2026-08-31.
+
 *Enforced in:* `docs/releasing.md`, `scripts/release.ps1`'s help
 *Guarded by:* `TestTheReleaseProcedureIsWrittenDown`,
-`TestTheDocumentedInvocationIsTheOneThatWorks`
+`TestTheDocumentedInvocationIsTheOneThatWorks`,
+`TestEveryRunCommandNamesItsRun`
 
 ### S14 — A gate goes red for its own subject, and for nothing else
 

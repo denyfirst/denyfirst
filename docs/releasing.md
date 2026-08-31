@@ -14,6 +14,56 @@ them is inconvenient.
 
 ---
 
+## Landing a change
+
+Most days there is no release, only a change. These are here because each one
+has already gone wrong, and each costs less to do than the mistake cost to
+find.
+
+**Confirm the branch before applying a patch.** `git switch -c` fails if the
+branch already exists, and a failed switch leaves you where you were — which
+on 2026-08-23 was `main`, where the commit then landed.
+
+```powershell
+git switch -c topic/thing-2026-01-01 main
+git branch --show-current
+```
+
+**Read the index before staging, and again after.** `git add -A` takes
+everything in the directory, including whatever was left there while working
+out what was wrong. On 2026-08-31 it took two saved workflow logs into a
+commit that reached `main`. Nothing in those was sensitive; that was luck
+rather than a property, and the second look is what turns it into one.
+
+```powershell
+git status --short
+git add -A
+git status --short
+```
+
+**Write diagnostic output somewhere other than the repository.** `gh run view
+--log` writes into the current directory, and the current directory is usually
+this one. `*.log` is ignored now, which catches that shape and not the next
+file with a different extension.
+
+```powershell
+gh run view $id --log | Out-File -Encoding utf8 "$env:TEMP\run.log"
+```
+
+**Merge as soon as the checks are green.** Auto-merge is disabled here and
+that is the right setting: it lands a change without anybody looking at the
+result. The cost is that merging is a step somebody has to take, and on
+2026-08-23 four pull requests were left green and unmerged, each discovered
+only when the next patch failed to apply on top of it. One of them was the
+only reason v0.3.1 existed.
+
+```powershell
+gh pr checks --watch
+gh pr merge --merge
+```
+
+---
+
 ## Before the first time
 
 **A signing key**, separate from the key that pushes to GitHub, at
@@ -63,7 +113,7 @@ git checkout main
 git pull
 git tag -s v0.2.0-rc1 -m "Dry run of the release procedure. Not a release."
 git push origin v0.2.0-rc1
-gh run watch
+gh run watch (gh run list --workflow=build-release.yml --limit 1 --json databaseId --jq '.[0].databaseId')
 ```
 
 Then the maintainer's half, without publishing anything:
@@ -94,12 +144,24 @@ gh release delete v0.2.0-rc1 --yes
 ```powershell
 git checkout main
 git pull
+
+# Nothing may be waiting. A green pull request that was never merged is not in
+# this tag, and on 2026-08-23 that produced v0.3.1: released, signed,
+# reproduced and deployed without the one fix it existed to carry.
+gh pr list --state open
+
 git log --oneline -1              # the commit this will release
 
 git tag -s v0.2.0 -m "denyfirst v0.2.0"
 git push origin v0.2.0
-gh run watch
+gh run watch (gh run list --workflow=build-release.yml --limit 1 --json databaseId --jq '.[0].databaseId')
 ```
+
+`gh run watch` with no argument lists every recent run and waits for one to be
+chosen. On 2026-08-23 the CI run was picked instead of the build, the draft
+was assumed to exist, and the next command answered `release not found`. A
+procedure is a set of instructions; an instruction that opens a menu is one
+somebody answers wrongly at two in the morning.
 
 The workflow builds every artifact, runs `go vet`, `go test` and `govulncheck`
 against the tagged source, writes `SHA256SUMS` and `BUILD`, and leaves a
@@ -117,7 +179,8 @@ release built from source that does not pass its own tests is a release nobody
 gated.
 
 ```powershell
-gh run view --log | Select-String "Refuse to stage"
+$id = gh run list --workflow=build-release.yml --limit 1 --json databaseId --jq '.[0].databaseId'
+gh run view $id --log | Select-String "Refuse to stage"
 ```
 
 ### Sign
@@ -163,7 +226,7 @@ the tag and the default branch trust the same keys, rebuilds every artifact on
 a runner and compares. Watch it:
 
 ```powershell
-gh run watch
+gh run watch (gh run list --workflow=reproduce.yml --limit 1 --json databaseId --jq '.[0].databaseId')
 ```
 
 A red mark there is public, which is the point. It is also the only thing that
