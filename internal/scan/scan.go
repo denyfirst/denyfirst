@@ -463,6 +463,16 @@ func (r *Result) Notes() []string {
 	if r.Stapling != nil {
 		out = append(out, r.Stapling.Notes...)
 	}
+
+	// Issuance was written to say things and said them to nobody. Every other
+	// component's notes are collected here; these were not, so the sentences
+	// explaining where a CAA answer came from, whether the resolver claimed
+	// it was validated, and why a restriction is not a guarantee reached only
+	// a reader of the JSON. The line alone is on the face of the report and
+	// the reasoning behind it was not anywhere.
+	if r.Issuance != nil {
+		out = append(out, r.Issuance.Notes...)
+	}
 	return out
 }
 
