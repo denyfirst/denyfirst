@@ -57,3 +57,16 @@ Thumbs.db
 # how a list stops being read.
 stats.json
 stats.json*.tmp
+
+# ── Logs pulled down for diagnosis ───────────────────────────────────
+# `gh run view --log` writes into whatever directory it is run from, and that
+# is usually this one. On 2026-08-31 two of them were swept into a commit by
+# `git add -A` and reached main. Nothing in those two was sensitive — a public
+# workflow log of a public repository, already readable through the API — but
+# they are not part of this project, and the next log somebody pulls down
+# might come from somewhere less harmless.
+#
+# The record of an incident belongs in the invariant that came out of it and
+# in the comment beside the code it changed, where a reader will find it.
+# A raw CI log committed to the source tree is not that.
+*.log
