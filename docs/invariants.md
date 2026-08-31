@@ -1100,6 +1100,38 @@ reached a reader of the JSON and no one else. They are collected now.
 *Guarded by:* `TestBothFacesOfTheReportShowTheSameFacts`,
 `TestAReportSaysWhatWasMeasured`
 
+### R17 — A finding claims what was measured, not what it implies
+
+`cert.roca` is the sharpest case this project has. Detecting the fingerprint of
+Infineon's RSALib costs thirty-eight modular reductions and is close to
+certain; factoring a key of that shape costs weeks to months of computation and
+this service does not do it, will not do it, and does not need to in order to
+have something worth reporting. Between the two sits a temptation, because the
+implication is real: a key with that fingerprint can be factored by anybody
+willing to spend the time.
+
+The finding says the first thing. *This key carries the fingerprint of a
+generator known to produce factorable keys* is what was established; *this key
+has been factored* is what was not. The difference costs a reader nothing and
+it is the difference between a report that can be checked and one that has to
+be believed.
+
+It is also what keeps the finding true if the test is ever wrong. The residue
+test is a necessary condition rather than a sufficient one — a modulus with no
+relation to RSALib would have to land inside the reachable set modulo all
+thirty-eight primes at once, which the published corpora have never seen and
+which nothing rules out. A report claiming a factorisation would be false in
+that case. A report describing a fingerprint is not.
+
+The same discipline is already elsewhere and is worth naming once: R12 covers
+the case where a measurement failed and R3d the case where the path was not
+what it seemed. This is the third member of that family — the measurement
+succeeded, and the sentence stops where the measurement stopped.
+
+*Enforced in:* the rationale of `cert.roca` in `internal/policy/cert.go`
+*Guarded by:* `TestTheFingerprintReachesTheReport`, which requires the finding
+to name a fingerprint and refuses one that claims a factorisation
+
 ### R9a — A CAA value is an authority and its parameters, not one string
 
 RFC 8659 §4.2 puts parameters after the authority inside a single value:
