@@ -102,19 +102,17 @@ func TestTheDetectorRecognisesAKeyBuiltNow(t *testing.T) {
 }
 
 // rsalibPrime builds one prime the way the broken library did.
+//
+// M is the product of the first primorial primes, and the candidate is
+// k*M + (65537^a mod M). Note what that does to the search: c is coprime to
+// every prime in M, so no candidate is ever divisible by one of them and trial
+// division rejects nothing. The primes are found by Miller-Rabin alone, which
+// is slower per candidate and needs far fewer of them.
 func rsalibPrime(t *testing.T, bits, primorial int) *big.Int {
 	t.Helper()
 
-	primes := []int64{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
-		73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167,
-		173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 239, 241, 251, 257, 263, 269,
-		271, 277, 281, 283, 293, 307, 311, 313, 317, 331, 337, 347, 349, 353}
-	if primorial > len(primes) {
-		t.Fatalf("this test carries only %d primes", len(primes))
-	}
-
 	m := big.NewInt(1)
-	for _, p := range primes[:primorial] {
+	for _, p := range firstPrimes(primorial) {
 		m.Mul(m, big.NewInt(p))
 	}
 	room := bits - m.BitLen()
@@ -144,6 +142,30 @@ func rsalibPrime(t *testing.T, bits, primorial int) *big.Int {
 	}
 	t.Fatal("no prime of the RSALib form was found, which should not happen")
 	return nil
+}
+
+// firstPrimes returns the first n primes, sieved rather than written out. A
+// literal long enough to reach the primorial a 2048-bit key uses is a literal
+// nobody checks, which is the same objection this file makes to a table of
+// precomputed masks.
+func firstPrimes(n int) []int64 {
+	out := make([]int64, 0, n)
+	for candidate := int64(2); len(out) < n; candidate++ {
+		isPrime := true
+		for _, p := range out {
+			if p*p > candidate {
+				break
+			}
+			if candidate%p == 0 {
+				isPrime = false
+				break
+			}
+		}
+		if isPrime {
+			out = append(out, candidate)
+		}
+	}
+	return out
 }
 
 // The whole path, because a fingerprint nothing carries into the report is a
@@ -208,17 +230,30 @@ func TestTheFingerprintReachesTheReport(t *testing.T) {
 }
 
 // rsalibKey builds a usable RSA key from two primes of the broken form.
+//
+// Two 1024-bit primes, so the modulus is the size a real certificate carries.
+// The first attempt at this test used the 1024-bit case and Go refused to sign
+// with the result: "1023-bit keys are insecure". That is the same one-bit
+// phenomenon the size guard in roca.go is about — two primes of exactly b bits
+// multiply to 2b or 2b-1 — and it is worth meeting twice, because a test built
+// around a key the standard library will not sign is a test that stops working
+// the next time a minimum moves. The modulus is required to reach 2048 bits
+// here for the same reason.
 func rsalibKey(t *testing.T) *rsa.PrivateKey {
 	t.Helper()
 
-	for attempt := 0; attempt < 8; attempt++ {
-		p := rsalibPrime(t, 512, 71)
-		q := rsalibPrime(t, 512, 71)
+	for attempt := 0; attempt < 12; attempt++ {
+		p := rsalibPrime(t, 1024, 126)
+		q := rsalibPrime(t, 1024, 126)
 		if p.Cmp(q) == 0 {
 			continue
 		}
 
 		n := new(big.Int).Mul(p, q)
+		if n.BitLen() < 2048 {
+			continue
+		}
+
 		phi := new(big.Int).Mul(new(big.Int).Sub(p, big.NewInt(1)), new(big.Int).Sub(q, big.NewInt(1)))
 		e := big.NewInt(65537)
 		d := new(big.Int).ModInverse(e, phi)
