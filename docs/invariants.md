@@ -1650,6 +1650,65 @@ nothing and loses the accident it does prevent.
 *Guarded by:* `TestTheReleaseProcedureIsWrittenDown`,
 `TestTheDocumentedInvocationIsTheOneThatWorks`
 
+### S14 — A gate goes red for its own subject, and for nothing else
+
+The nightly fuzz run is the only check here that can find something nobody
+thought to look for. Every other check asserts a property somebody already knew
+to write down; this one searches. That makes its red mark the most valuable one
+in the repository, and makes it the check least able to survive being ignored.
+
+On 2026-08-27 it went red for a reason that had nothing to do with this code.
+`go test -fuzz` installs the `-fuzztime` budget as a context deadline on its
+coordinator, and on the way out the coordinator means to swallow that deadline:
+it compares the error it is holding against the workers' context error with
+`==`, which is a comparison between two different contexts' errors made on a
+shutdown path with several goroutines on it. When it does not hold, a run that
+found nothing ends by reporting `context deadline exceeded` as a test failure.
+
+Nothing was found, and that is established rather than assumed. Executions were
+still climbing at twenty-six thousand a second at the moment the budget
+expired, so no worker was stuck on an input. No file was written under
+`testdata/fuzz`. And `go` prints `Failing input written to` for every error
+that carries a crash, so an error printed without that line carries none.
+
+The mark then went unread for five days and was noticed by accident. That is
+the predictable outcome, and it is the reason this is an invariant rather than
+a one-off fix: a gate that can go red for a reason other than its own subject
+trains whoever watches it to skip it, and they will skip it on the night it
+means something. One target-run in the fifty-five on the last five nights is
+thin evidence for a rate, but it is not thin evidence that the problem exists.
+
+So the step classifies its result rather than propagating it. A written
+reproducer is looked for first, so a run that both found an input and tripped
+the deadline is still reported as a finding. Then exactly one shape is allowed
+through, and every part of it is required: one failing target, the
+coordinator's deadline as the whole of the message, a duration that reached the
+budget, none of the lines the toolchain prints when something real went wrong,
+and a re-run of the seed corpus — with no deadline anywhere in the picture —
+that comes back clean. Everything else fails, including anything the step does
+not recognise.
+
+The risk of classifying is that a real failure is filed as noise, and it is
+worth naming rather than waving away. Three things hold it down: the shape is
+narrow, the step fails closed on anything outside it, and the discriminator is
+the toolchain's own crash reporting rather than a guess about what a crash
+looks like.
+
+The same edit closes a second gap the incident exposed. A reproducer was only
+ever printed into the job log, and a job log expires after ninety days — so the
+one artefact that turns a random discovery into a permanent regression test was
+kept in the most perishable place in the system, and this one came within days
+of being lost. It now goes to the job summary and an annotation as well as the
+log. Nothing uploads an artifact, because no third-party action runs here (S1),
+and that constraint is not one to work around.
+
+*Enforced in:* `.github/workflows/fuzz.yml`, the classification in the fuzz
+step
+*Guarded by:* nothing a test can reach — the shape it recognises is produced by
+a race inside the toolchain's own shutdown path and cannot be provoked on
+demand. The step fails closed instead, which is the property a test would have
+been asserting.
+
 ## Known gaps
 
 Listed rather than hidden. An unnamed gap is a surprise; a named one is work.
