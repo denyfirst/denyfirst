@@ -12,43 +12,30 @@ import (
 // three receipts. Counting the embedded ones fixes the number; showing it is
 // what makes the fix visible to somebody who is not reading JSON.
 //
-// A shape check, because the page is assembled in the browser.
+// The sentence itself moved to internal/policy on 2026-08-31, with the tests
+// that describe it — singular and plural, the union rather than the sum, and
+// receipts that arrived and could not be read. What is left here is the half
+// this file can answer: that the page shows the line, and does not build a
+// second one of its own.
 func TestTransparencyReachesThePage(t *testing.T) {
-	script, err := assets.ReadFile("assets/app.js")
-	if err != nil {
-		t.Fatalf("reading the script: %v", err)
-	}
-	source := string(script)
+	source := script(t)
 
-	for _, required := range []string{
-		"transparencyText",
-		"embeddedCount",
-		"logIds",
+	if !strings.Contains(source, `pair("Transparency"`) {
+		t.Error("the certificate section has no Transparency row, so the count is measured and not shown")
+	}
+	if !strings.Contains(source, "transparencyLine") {
+		t.Error("the row does not read the line the report carries")
+	}
+
+	for _, gone := range []string{
+		"function transparencyText",
+		"transparency.embeddedCount",
+		"tls.sctCount",
 		"sctLogIds",
-		"sctCount",
-		`pair("Transparency"`,
 	} {
-		if !strings.Contains(source, required) {
-			t.Errorf("the script does not contain %q, so the count is measured and not shown", required)
-		}
-	}
-
-	// The caveat is not on this line, and that is deliberate.
-	//
-	// The count is something this service measured and measured accurately.
-	// That the receipts were not checked against the issuing log's key is
-	// something it did not do, and it belongs with the other things it did
-	// not do — in the note, which says so at length. On the line it read as
-	// though the count itself were uncertain.
-	if strings.Contains(source, `+ ", not verified"`) {
-		t.Error("the transparency line still hedges a count that was measured exactly")
-	}
-
-	// Singular and plural both handled. "1 logs" is where a reader stops
-	// trusting the rest of the page.
-	for _, required := range []string{`"1 timestamp"`, `"1 log"`} {
-		if !strings.Contains(source, required) {
-			t.Errorf("the script has no singular form %s", required)
+		if strings.Contains(source, gone) {
+			t.Errorf("the script still composes the transparency sentence from %q; "+
+				"the sentence belongs in internal/policy so that both faces read one string", gone)
 		}
 	}
 }

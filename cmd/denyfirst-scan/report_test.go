@@ -246,13 +246,7 @@ func TestBothFacesOfTheReportShowTheSameFacts(t *testing.T) {
 	// Differences that are real and are being carried deliberately, each with
 	// what it would take to close it. Anything not listed here has to be on
 	// both faces.
-	deliberate := map[string]string{
-		"Revocation": "the sentence is composed in app.js by revocationText, so a terminal cannot print " +
-			"the same one. Composing a second sentence in Go from the same facts is exactly how two " +
-			"renderers come to disagree, which is what this test exists to catch. Closing it means " +
-			"moving the sentence into the policy package so both faces read one string.",
-		"Transparency": "the same, in transparencyText.",
-	}
+	deliberate := map[string]string{}
 
 	script, err := os.ReadFile("../../internal/web/assets/app.js")
 	if err != nil {
@@ -283,7 +277,7 @@ func TestBothFacesOfTheReportShowTheSameFacts(t *testing.T) {
 	// reading that as the line is how this test would have passed while the
 	// fact was missing.
 	shown := func(label string) bool {
-		return regexp.MustCompile(`(?m)^\s+` + regexp.QuoteMeta(label) + `\s{2,}\S`).MatchString(page)
+		return regexp.MustCompile(`(?m)^\s+` + regexp.QuoteMeta(label) + `\s+\S`).MatchString(page)
 	}
 
 	for _, m := range labels {

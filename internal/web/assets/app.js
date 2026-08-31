@@ -289,105 +289,20 @@ function ciphers(tls) {
 // The four states a reader has to be able to tell apart. Returns undefined
 // when the report says nothing about revocation, so the row is left out
 // entirely rather than filled with a guess.
-function revocationText(revocation, tls, stapling) {
-  if (!revocation) return undefined;
-
-  const stapled = !!(tls && tls.ocspStapled);
-  const mustStaple = !!revocation.mustStaple;
-  const responders = Number(revocation.responderCount) || 0;
-
-  // Whether the response was read, not merely counted.
-  //
-  // This line said "a status response was stapled" for a whole policy
-  // version after that stopped being the whole story. The service now parses
-  // the response, matches it to this certificate, checks it has not expired
-  // and verifies the issuing authority's signature — and the certificate
-  // section, which is where a reader looks for exactly this, went on
-  // reporting the byte count.
-  //
-  // Negated rather than compared: a response absent the field is treated as
-  // unverified, so a producer that forgets gets the cautious sentence.
-  const verified = !!(stapling && stapling.validated);
-  const status = stapling && stapling.status;
-
-  if (mustStaple && !(stapled && verified)) {
-    return stapled
-      ? "the certificate requires a stapled response and the one sent could not be verified"
-      : "the certificate requires a stapled response and none was sent";
-  }
-  if (stapled && verified) {
-    const said = status && status !== "good"
-      ? ", and the authority says the status is " + status
-      : ", and verified against the issuing authority";
-    return mustStaple
-      ? "stapled and verified, and the certificate requires it" + (status && status !== "good" ? said : "")
-      : "a status response was stapled" + said;
-  }
-  if (stapled) {
-    return "a status response was stapled and it establishes nothing; the findings say why";
-  }
-  if (responders > 0) {
-    return "not stapled; the certificate names a responder a client would have to ask";
-  }
-  return "not stapled; the certificate names no responder, so there is none to send";
-}
-
-// Two numbers, because one cannot answer the question.
+// The revocation and transparency sentences used to be composed here, and only
+// here. That put them out of reach of the terminal report, which showed
+// neither, and out of reach of anything that could execute them: the
+// revocation sentence went on saying "a status response was stapled" for a
+// whole policy version after the service had begun parsing that response,
+// matching it to the certificate, checking its freshness and verifying the
+// issuer's signature.
 //
-// Browsers ask for receipts from several distinct logs, so that one log
-// misbehaving cannot satisfy the requirement alone. Three receipts from one
-// log and three from three are different situations and a single count cannot
-// tell them apart. Returns undefined when the report says nothing, so the row
-// is left out rather than filled with a guess.
-function transparencyText(transparency, tls) {
-  if (!transparency) return undefined;
+// They are built in internal/policy now, arrive as report.revocationLine and
+// report.transparencyLine, and are printed here unchanged. Do not compose a
+// sentence in this file from facts the report already carries a sentence for:
+// two renderers building one claim is how the two come to disagree. R16.
 
-  const embedded = Number(transparency.embeddedCount) || 0;
-  const handshake = Number(tls && tls.sctCount) || 0;
-  const total = embedded + handshake;
-
-  // The union, not the sum. A certificate can carry receipts and the
-  // handshake can carry more, and the usual arrangement is that both name the
-  // same logs. Adding two counts reports one log twice, which is how a
-  // certificate logged in two places comes to be described as logged in four.
-  const ids = new Set();
-  for (const id of transparency.logIds || []) ids.add(id);
-  for (const id of (tls && tls.sctLogIds) || []) ids.add(id);
-  const logs = ids.size;
-
-  if (total === 0) return "no timestamps in the certificate or the handshake";
-
-  const stamps = total === 1 ? "1 timestamp" : total + " timestamps";
-
-  // Receipts that arrived and could not be read.
-  //
-  // A timestamp too short to hold a log identifier, or announcing a version
-  // this does not know, is counted in the total and contributes no log. With
-  // every one of them unreadable the two numbers gave "3 timestamps from 0
-  // logs", which is not a fact about the certificate — it is this scanner
-  // saying it could not read what it was sent, in a sentence shaped like a
-  // measurement.
-  if (logs === 0) {
-    return stamps + ", none of which could be read well enough to say which log issued it";
-  }
-
-  const from = logs === 1 ? "1 log" : logs + " logs";
-  const where = handshake > 0 && embedded > 0
-    ? " (" + embedded + " embedded, " + handshake + " in the handshake)"
-    : "";
-
-  // The caveat about verification lives in the note, not here.
-  //
-  // A count of receipts is something this service measured, and measured
-  // accurately; that they were not checked against the issuing log's key is
-  // something it did not do. Putting the second on the same line as the first
-  // reads as though the count itself were uncertain, which it is not. The
-  // Issuance line above already sets the pattern: state what was found, and
-  // let the note say how it was learnt and what was not built.
-  return stamps + " from " + from + where;
-}
-
-function certificate(cert, tls, issuance, stapling) {
+function certificate(cert, tls, issuance, stapling, report) {
   if (!cert || !Array.isArray(cert.chain) || !cert.chain.length) {
     return document.createDocumentFragment();
   }
@@ -440,7 +355,7 @@ function certificate(cert, tls, issuance, stapling) {
   // no longer required to run OCSP, and several have stopped. The
   // distinction between a server that could staple and did not and one that
   // has nothing to staple is the whole content of this line.
-  pair("Revocation", revocationText(cert.revocation, tls, stapling));
+  pair("Revocation", report && report.revocationLine);
 
   // Issuance sits above transparency because the two are halves of one
   // question in the order they happen: who may obtain a certificate for this
@@ -452,7 +367,7 @@ function certificate(cert, tls, issuance, stapling) {
   // the most useful sentence in the report — one DNS record, nothing to break
   // by adding it — and a sentence nobody opens is a sentence nobody reads.
   pair("Issuance", issuance && issuance.line);
-  pair("Transparency", transparencyText(cert.transparency, tls));
+  pair("Transparency", report && report.transparencyLine);
   pair("SHA-256", leaf.fingerprintSha256);
 
   frag.appendChild(pairs);
@@ -528,7 +443,7 @@ function render(data) {
   frag.appendChild(findings(data.findings, verdict));
   frag.appendChild(versions(data.tls));
   frag.appendChild(ciphers(data.tls));
-  frag.appendChild(certificate(data.certificate, data.tls, data.issuance, data.stapling));
+  frag.appendChild(certificate(data.certificate, data.tls, data.issuance, data.stapling, data));
   frag.appendChild(notes(data.notes, verdict));
   show(frag);
 }

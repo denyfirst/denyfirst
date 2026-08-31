@@ -63,18 +63,6 @@ func TestATruncatedCipherListIsMarkedOnTheTable(t *testing.T) {
 	}
 }
 
-// "3 timestamps from 0 logs" is not a fact about a certificate. It is this
-// scanner saying it could not read what it was sent, in a sentence shaped
-// like a measurement.
-func TestUnreadableTimestampsDoNotBecomeAMeasurement(t *testing.T) {
-	source := script(t)
-
-	transparency := section(t, source, "function transparencyText(")
-	if !strings.Contains(transparency, "logs === 0") {
-		t.Error("transparencyText has no branch for timestamps whose log could not be read")
-	}
-}
-
 // Every class the script can put on a node has a rule behind it. A class with
 // no rule is a distinction the reader cannot see, which is the same as not
 // having made it.
