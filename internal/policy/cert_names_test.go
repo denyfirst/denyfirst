@@ -226,3 +226,65 @@ func TestTheNewFindingsSayWhatTheyFound(t *testing.T) {
 		}
 	}
 }
+
+// A server cannot make its own finding large.
+//
+// Every name a rule quotes is chosen by the server being examined, which on a
+// hostile target means it is chosen by the target. internal/certinfo bounds
+// what reaches the report for display and says why: passing it through
+// unbounded turns one small request into a reply measured in megabytes, paid
+// for by whoever asked for the scan rather than by the server that sent it.
+//
+// These rules decide on the whole list and quote part of it, and until
+// 2026-09-01 they quoted all of it. Measured then: a certificate carrying five
+// thousand malformed names produced one finding of 1,085,200 bytes.
+func TestAFindingCannotBeMadeHugeByTheServerItDescribes(t *testing.T) {
+	var many []string
+	for i := 0; i < 5000; i++ {
+		many = append(many, strings.Repeat("a", 200)+"*.example.com")
+	}
+
+	facts := ordinaryLeaf()
+	facts.DNSNames = many
+	facts.CommonName = strings.Repeat("b", 5000) + ".example.com"
+
+	const ceiling = 2048
+	for _, finding := range GradeLeaf(facts, certNow).Findings {
+		if len(finding.Rationale) > ceiling {
+			t.Errorf("%s is %d bytes, which a server chose. The bound is %d.",
+				finding.RuleID, len(finding.Rationale), ceiling)
+		}
+	}
+
+	// Bounded and still honest: the count that was not shown is said.
+	var wildcard string
+	for _, finding := range GradeLeaf(facts, certNow).Findings {
+		if finding.RuleID == "cert.wildcard-shape" {
+			wildcard = finding.Rationale
+		}
+	}
+	if wildcard == "" {
+		t.Fatal("the wildcard rule did not fire against five thousand malformed names")
+	}
+	if !strings.Contains(wildcard, "4995 more") {
+		t.Errorf("the finding quotes five names and does not say how many it left out:\n%s", wildcard)
+	}
+}
+
+// A name is bytes the server chose, and a terminal reads some of those bytes
+// as instructions.
+//
+// certinfo makes this argument for the subject one round earlier: a
+// certificate carrying an escape sequence can erase the verdict printed above
+// it. The same bytes reach a sentence here, and quoting is what stops them.
+func TestANameCannotCarryAnEscapeSequenceIntoAFinding(t *testing.T) {
+	facts := ordinaryLeaf()
+	facts.CommonName = "\x1b[2K\x1b[1Aelsewhere.example"
+	facts.DNSNames = []string{"\x1b[2Kw*.example.com", "example.com"}
+
+	for _, finding := range GradeLeaf(facts, certNow).Findings {
+		if strings.ContainsAny(finding.Rationale, "\x1b\x00\r\n\a\b") {
+			t.Errorf("%s carries a control byte the server chose:\n%q", finding.RuleID, finding.Rationale)
+		}
+	}
+}
