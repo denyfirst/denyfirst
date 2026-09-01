@@ -480,8 +480,12 @@ func TestTheCoverageLineSaysWhatWasReached(t *testing.T) {
 	if !strings.Contains(string(script), "if (data.coverage) {") {
 		t.Error("the page does not render the coverage line, or renders it behind another condition")
 	}
-	if !strings.Contains(string(script), `el("p", "summary-coverage", data.coverage)`) {
+	if !strings.Contains(string(script), `el("dd", "summary-coverage", data.coverage)`) {
 		t.Error("the coverage line is not built from the scan's own sentence")
+	}
+	// Labelled, so it is not read as a continuation of the sentence above it.
+	if !strings.Contains(string(script), `reached.appendChild(el("dt", null, "Coverage"))`) {
+		t.Error("the coverage line on the page carries no label, and the terminal's does")
 	}
 }
 

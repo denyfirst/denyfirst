@@ -746,6 +746,8 @@ h1 {
   Quiet by design. What replaced them here was a nine-line block that restated
   the tables below it, and the lesson of that is not to shout louder.
 */
+.summary-pairs { margin: 0.7rem 0 0; }
+
 .summary-worst,
 .summary-coverage {
   max-width: var(--measure);

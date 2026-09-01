@@ -86,7 +86,7 @@ func TestEachClauseWaitsForWhatItDescribes(t *testing.T) {
 		"trust store":  func(f *CoverageFacts) { f.ChainRead = false },
 		"stapled":      func(f *CoverageFacts) { f.RevocationRead = false },
 		"transparency": func(f *CoverageFacts) { f.TransparencyRead = false },
-		"issuance":     func(f *CoverageFacts) { f.IssuanceAnswered = false },
+		"CAA lookup":   func(f *CoverageFacts) { f.IssuanceAnswered = false },
 	}
 
 	whole := Coverage(full())

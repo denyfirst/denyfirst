@@ -159,6 +159,23 @@ gh pr list --state open
 git log --oneline -1              # the commit this will release
 
 git tag -s v0.2.0 -m "denyfirst v0.2.0"
+
+# The tag has to be new, and it has to be on the commit just read.
+#
+# On 2026-09-01 `git tag -s` answered `fatal: tag already exists` and the
+# release went on regardless: the tag had been cut before the last pull
+# request merged, so v0.6.0 was built, signed, reproduced and deployed from
+# the commit before the change it was for. An existing tag means either that
+# this version is already released or that something older than you think is
+# about to be published. Both are a stop.
+#
+# Quote the argument. Unquoted, PowerShell takes {commit} for a script block
+# and git is handed `v0.7.0^` — the tag's first parent, which on a merge
+# commit is the previous tip and looks exactly like the failure this check is
+# for.
+git rev-parse "v0.2.0^{commit}"
+git rev-parse main
+
 git push origin v0.2.0
 gh run watch (gh run list --workflow=build-release.yml --limit 1 --json databaseId --jq '.[0].databaseId')
 ```
@@ -286,7 +303,18 @@ laptop. The bytes that matter are the ones on the server, so the server checks
 them — with the same commands `docs/verify.md` gives a stranger, which is the
 point of publishing them.
 
+The whole block runs inside a subshell with `set -euo pipefail`, so the first
+failure stops it. Pasted as loose lines it does not: on 2026-09-01 the release
+had not been published yet, three `curl` calls answered 404, and the block
+carried on to copy the running binary over itself as a rollback of the version
+that was already running. Nothing was damaged and nothing was checked either,
+which is the shape of the accident worth preventing. A subshell rather than a
+bare `set -e`, so a failure ends the block and not the login session.
+
 ```sh
+(
+set -euo pipefail
+
 V=v0.4.0
 base=https://github.com/denyfirst/denyfirst/releases/download/${V}
 
@@ -330,10 +358,13 @@ sudo install -o root -g root -m 0755 \
 sudo cp -a /opt/denyfirst/denyfirstd /opt/denyfirst/denyfirstd.rollback-v0.3.2
 sudo mv /opt/denyfirst/denyfirstd.new /opt/denyfirst/denyfirstd
 sudo systemctl restart denyfirstd
+)
 ```
 
 The first line is read, not run for form's sake: the rollback below is named
-for the version it printed.
+for the version it printed. Better still, name it from the binary itself —
+`prev="$(/opt/denyfirst/denyfirstd -version | head -1 | awk '{print $2}')"` —
+because a version typed by hand is a version that can be typed wrongly.
 
 `install` sets owner and mode as it writes. `cp` followed by `chmod` leaves a
 window in which the file is in place with the wrong ownership, and that window
