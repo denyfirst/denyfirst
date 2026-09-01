@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
+	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/scan"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
 )
@@ -146,6 +147,32 @@ func report(t *testing.T, port string, resolver *dnsclient.Client) string {
 	var out strings.Builder
 	printReport(&out, result{Result: res})
 	return out.String()
+}
+
+// scanned is report's sibling: the same scan, handed back rather than
+// printed, for a test whose subject is the notes and not the prose.
+func scanned(t *testing.T, port string, resolver *dnsclient.Client) *scan.Result {
+	t.Helper()
+
+	scanner := &scan.Scanner{
+		Prober: &tlsprobe.Prober{
+			Dial:             toLoopback(port),
+			HandshakeTimeout: 3 * time.Second,
+			TotalTimeout:     30 * time.Second,
+		},
+		AllowAnyPort: true,
+		Resolver:     resolver,
+		Now:          func() time.Time { return reportNow },
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	res, err := scanner.Scan(ctx, "example.test:"+port)
+	if err != nil {
+		t.Fatalf("scanning: %v", err)
+	}
+	return res
 }
 
 // The report a person reads is built here and read here.
@@ -301,5 +328,81 @@ func TestBothFacesOfTheReportShowTheSameFacts(t *testing.T) {
 				"face and not the other is a report that says different things to different readers.",
 				label)
 		}
+	}
+}
+
+// Invariant R16, extended to the headings.
+//
+// The report has two faces and they are written in two languages. Until now
+// the rule was that they show the same facts; the notes add a second thing
+// they have to agree on, which is how those facts are grouped. A reader
+// holding the terminal output beside the page should not have to work out that
+// "Observed" here is the same section as "Observed" there, and a section that
+// existed on one face and not the other would be a fact shown to one reader
+// and hidden from the other.
+//
+// Read out of both sources rather than restated here, so that renaming a
+// section in one place and not the other fails instead of drifting.
+func TestBothFacesNameTheSameNoteSections(t *testing.T) {
+	script, err := os.ReadFile("../../internal/web/assets/app.js")
+	if err != nil {
+		t.Fatalf("reading the script: %v", err)
+	}
+
+	// The page: kind and title out of the NOTE_SECTIONS table, in order.
+	pairs := regexp.MustCompile(`kind:\s*"([a-z-]+)",\s*\n\s*title:\s*"([^"]+)"`).
+		FindAllStringSubmatch(string(script), -1)
+	if len(pairs) == 0 {
+		t.Fatal("the script declares no note sections; the page cannot be showing them")
+	}
+
+	if len(pairs) != len(noteSections) {
+		t.Fatalf("the page has %d note sections and the terminal has %d",
+			len(pairs), len(noteSections))
+	}
+	for i, got := range pairs {
+		want := noteSections[i]
+		if got[1] != string(want.kind) {
+			t.Errorf("section %d: the page groups %q, the terminal groups %q",
+				i, got[1], want.kind)
+		}
+		if got[2] != want.heading {
+			t.Errorf("section %d: the page calls it %q, the terminal calls it %q",
+				i, got[2], want.heading)
+		}
+	}
+}
+
+// A note reaches a report only with a kind on it.
+//
+// The kind decides the heading, and a note with none is filed under whichever
+// heading renders first — which a reader cannot tell apart from a deliberate
+// classification, and which is wrong. This runs a whole scan rather than
+// checking one producer, so a note added anywhere in the pipeline is covered
+// without anybody remembering to come back here.
+func TestEveryNoteInAReportCarriesAKind(t *testing.T) {
+	port := testServer(t, serverOpts{})
+	notes := scanned(t, port, noResolver()).Notes()
+
+	if len(notes) == 0 {
+		t.Fatal("a full scan produced no notes at all, so this proves nothing")
+	}
+
+	known := map[policy.NoteKind]bool{}
+	for _, section := range noteSections {
+		known[section.kind] = true
+	}
+
+	var counted int
+	for _, note := range notes {
+		if !known[note.Kind] {
+			t.Errorf("a note carries the kind %q, which no section renders, so it is shown nowhere:\n  %s",
+				note.Kind, note.Text)
+			continue
+		}
+		counted++
+	}
+	if counted != len(notes) {
+		t.Errorf("%d of %d notes would not be rendered", len(notes)-counted, len(notes))
 	}
 }

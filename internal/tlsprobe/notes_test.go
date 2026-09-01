@@ -78,7 +78,7 @@ func TestSupportedVersionsCarryTheCoverageNote(t *testing.T) {
 
 	var declared bool
 	for _, note := range report.Notes {
-		if strings.Contains(note, "Go's TLS stack") {
+		if strings.Contains(note.Text, "Go's TLS stack") {
 			declared = true
 		}
 	}

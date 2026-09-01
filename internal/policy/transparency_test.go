@@ -13,21 +13,21 @@ import (
 // through a channel nobody read. One is a certificate a browser will refuse.
 // Collapsing any pair of them loses the only information a reader wanted.
 func TestDescribeTransparencySeparatesTheFourSituations(t *testing.T) {
-	logged := strings.Join(DescribeTransparency(TransparencyFacts{
+	logged := strings.Join(Texts(DescribeTransparency(TransparencyFacts{
 		Embedded: 3, FromLogs: 3, Trusted: true,
-	}), " ")
+	})), " ")
 
-	private := strings.Join(DescribeTransparency(TransparencyFacts{
+	private := strings.Join(Texts(DescribeTransparency(TransparencyFacts{
 		Trusted: false,
-	}), " ")
+	})), " ")
 
-	maybeStapled := strings.Join(DescribeTransparency(TransparencyFacts{
+	maybeStapled := strings.Join(Texts(DescribeTransparency(TransparencyFacts{
 		Trusted: true, Stapled: true,
-	}), " ")
+	})), " ")
 
-	absent := strings.Join(DescribeTransparency(TransparencyFacts{
+	absent := strings.Join(Texts(DescribeTransparency(TransparencyFacts{
 		Trusted: true,
-	}), " ")
+	})), " ")
 
 	all := map[string]string{
 		"logged": logged, "private": private, "maybe stapled": maybeStapled, "absent": absent,
@@ -64,9 +64,9 @@ func TestDescribeTransparencySeparatesTheFourSituations(t *testing.T) {
 // reader the certificate is verifiably logged, which is a step further than
 // counting bytes in an extension gets anybody.
 func TestLoggedNoteDoesNotClaimTheReceiptsWereVerified(t *testing.T) {
-	note := strings.Join(DescribeTransparency(TransparencyFacts{
+	note := strings.Join(Texts(DescribeTransparency(TransparencyFacts{
 		Embedded: 2, FromLogs: 2, Trusted: true,
-	}), " ")
+	})), " ")
 
 	if !strings.Contains(note, "not verified") {
 		t.Errorf("the note does not say the receipts went unverified: %s", note)
@@ -77,9 +77,9 @@ func TestLoggedNoteDoesNotClaimTheReceiptsWereVerified(t *testing.T) {
 // question on its own. Browsers ask for receipts from distinct logs so that a
 // single misbehaving log cannot satisfy the requirement alone.
 func TestBothCountsAreReported(t *testing.T) {
-	note := strings.Join(DescribeTransparency(TransparencyFacts{
+	note := strings.Join(Texts(DescribeTransparency(TransparencyFacts{
 		Embedded: 3, FromLogs: 1, Trusted: true,
-	}), " ")
+	})), " ")
 
 	if !strings.Contains(note, "3 transparency timestamps") {
 		t.Errorf("the number of timestamps is missing: %s", note)
@@ -93,9 +93,9 @@ func TestBothCountsAreReported(t *testing.T) {
 // reader comparing this against another tool is not left wondering which
 // number they are looking at.
 func TestBothDeliveryRoutesAreNamedWhenBothCarried(t *testing.T) {
-	note := strings.Join(DescribeTransparency(TransparencyFacts{
+	note := strings.Join(Texts(DescribeTransparency(TransparencyFacts{
 		Embedded: 2, FromLogs: 2, InHandshake: 1, Trusted: true,
-	}), " ")
+	})), " ")
 
 	if !strings.Contains(note, "3 transparency timestamps") {
 		t.Errorf("the two routes are not added together: %s", note)
@@ -107,9 +107,9 @@ func TestBothDeliveryRoutesAreNamedWhenBothCarried(t *testing.T) {
 
 // A report that says "1 logs" is a report somebody stopped reading.
 func TestSingularCountsReadAsEnglish(t *testing.T) {
-	note := strings.Join(DescribeTransparency(TransparencyFacts{
+	note := strings.Join(Texts(DescribeTransparency(TransparencyFacts{
 		Embedded: 1, FromLogs: 1, Trusted: true,
-	}), " ")
+	})), " ")
 
 	for _, wrong := range []string{"1 logs", "1 transparency timestamps"} {
 		if strings.Contains(note, wrong) {

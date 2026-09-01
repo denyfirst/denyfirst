@@ -148,7 +148,7 @@ func PostQuantumLine(f PostQuantumFacts) string {
 // key exchange, and a verdict invented here would be this project grading
 // against its own opinion — the thing it says other tools do. What it can do
 // is state the measurement and the reason somebody would act on it.
-func DescribePostQuantum(f PostQuantumFacts) []string {
+func DescribePostQuantum(f PostQuantumFacts) []Note {
 	const why = "Traffic recorded today can be kept and decrypted by whoever first builds a quantum " +
 		"computer large enough to break the key exchange, which is why the attack is called harvest " +
 		"now, decrypt later. Forward secrecy does not prevent it: forward secrecy protects against a " +
@@ -157,24 +157,29 @@ func DescribePostQuantum(f PostQuantumFacts) []string {
 	switch {
 	case !f.Measured:
 		if f.Reason == "" {
-			return []string{"Whether the key exchange resists a future quantum computer was not established."}
+			return []Note{Unsettled("Whether the key exchange resists a future quantum computer was not established.")}
 		}
-		return []string{"Whether the key exchange resists a future quantum computer was not established: " +
-			f.Reason + ". " + why}
+		return []Note{Unsettled("Whether the key exchange resists a future quantum computer was not established: " +
+			f.Reason + ". " + why)}
 
 	case f.Offered:
-		return []string{fmt.Sprintf(
+		// Established, and deliberately not graded. Filed as a limit until
+		// 2026-09-01, under a heading that told the reader it had not been
+		// measured — of everything in that list this was the sentence the
+		// framing damaged most, because it is the strongest result a server
+		// can earn here.
+		return []Note{Observed(fmt.Sprintf(
 			"%s combines X25519 with ML-KEM-768, so recovering the session key means breaking both, and "+
 				"the second has no known quantum attack. %s A recording of this connection is not "+
 				"exposed to that. This is not graded — no document this rule set follows requires it — "+
-				"and it is the strongest thing a server can do about it today.", f.Group, why)}
+				"and it is the strongest thing a server can do about it today.", f.Group, why))}
 
 	default:
-		return []string{fmt.Sprintf(
+		return []Note{Observed(fmt.Sprintf(
 			"%s was offered and the server did not take it. %s Nothing is wrong with this connection "+
 				"today and no client fails because of this: a client that offers the hybrid falls back "+
 				"to X25519 and the handshake succeeds. It is not graded, because no document this rule "+
 				"set follows requires it yet, and it is reported because the traffic being recorded now "+
-				"is what the decision is about.", f.Group, why)}
+				"is what the decision is about.", f.Group, why))}
 	}
 }

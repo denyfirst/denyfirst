@@ -35,9 +35,15 @@ out what was wrong. On 2026-08-31 it took two saved workflow logs into a
 commit that reached `main`. Nothing in those was sensitive; that was luck
 rather than a property, and the second look is what turns it into one.
 
+Stage the paths the change touches, by name. `git add -A` was in this place
+until 2026-09-01, when it swept a downloaded patch file into the commit that
+applied it — the same shape as the logs, in the procedure written to prevent
+them. Reading the index afterwards showed the extra file and did not stop it,
+because nothing was asked to.
+
 ```powershell
 git status --short
-git add -A
+git add docs/releasing.md internal/policy/note.go
 git status --short
 ```
 

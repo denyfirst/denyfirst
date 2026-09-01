@@ -128,7 +128,7 @@ type StapleFinding struct {
 	// Notes explains what was established and, more importantly, what was
 	// not. A reader who is told a response was stapled and not told it went
 	// unverified will read the first as the second.
-	Notes []string `json:"notes,omitempty"`
+	Notes []Note `json:"notes,omitempty"`
 }
 
 // GradeStapling applies the rules above.
@@ -225,49 +225,67 @@ func GradeStapling(f StapleFacts) StapleFinding {
 	}
 
 	// ── Notes ────────────────────────────────────────────────────────
+
+	// Said on every branch, because it is true on every branch: nothing here
+	// asks a certificate authority anything. That question would tell the
+	// authority which certificate somebody is looking at, which is the one
+	// thing this service undertakes not to let happen. What can be read is a
+	// response the server itself stapled, and the sentences below say what
+	// that response did or did not establish.
+	//
+	// This half used to live in internal/certinfo, joined to a claim that
+	// revocation had not been checked — a claim that contradicted the
+	// verified case sitting directly beneath it. The standing policy is true
+	// always; the outcome is known only here.
+	out.standing(
+		"No certificate authority is asked anything by this scan: that question would tell the " +
+			"authority which certificate is being looked at. Revocation is read only from a response " +
+			"the server stapled into the handshake, so where none was stapled it has not been " +
+			"established here by any means. A chain reported as trusted reaches a root and is in " +
+			"date; it may still have been withdrawn.")
 	switch {
 	case f.Stapled && f.IssuerMissing:
-		out.Notes = append(out.Notes,
-			"A certificate status response was stapled and could not be checked, because the server did not "+
-				"send the certificate that issued this one. Every check a response needs is against the issuer: "+
-				"matching it to this certificate, and verifying its signature. This is not held against the "+
+		out.unsettled(
+			"A certificate status response was stapled and could not be checked, because the server did not " +
+				"send the certificate that issued this one. Every check a response needs is against the issuer: " +
+				"matching it to this certificate, and verifying its signature. This is not held against the " +
 				"response — the incomplete chain is reported separately — but nothing about revocation was established.")
 
 	case f.Stapled && f.Validated:
 		// This sentence used to say the response was not read, and it was
 		// the most important sentence in the file for exactly that reason.
 		// It is now the other half: what was checked, and what still is not.
-		out.Notes = append(out.Notes,
-			"The stapled response was read and verified: it describes this certificate by issuer and serial, "+
-				"it is current, and its signature checks out against the issuing authority. What is still not "+
-				"checked is the responder's own revocation status, which would need a second request over the "+
-				"network; RFC 6960 lets an issuer waive that, and responder certificates are short-lived for "+
+		out.observe(
+			"The stapled response was read and verified: it describes this certificate by issuer and serial, " +
+				"it is current, and its signature checks out against the issuing authority. What is still not " +
+				"checked is the responder's own revocation status, which would need a second request over the " +
+				"network; RFC 6960 lets an issuer waive that, and responder certificates are short-lived for " +
 				"the same reason.")
 
 	case f.Stapled:
-		out.Notes = append(out.Notes,
-			"A certificate status response was stapled and it established nothing. Reading it is what tells "+
-				"a stapling server apart from a server stapling whatever it has: the response has to describe "+
+		out.unsettled(
+			"A certificate status response was stapled and it established nothing. Reading it is what tells " +
+				"a stapling server apart from a server stapling whatever it has: the response has to describe " +
 				"this certificate, be current, and carry the issuing authority's signature.")
 
 	case f.HasResponder:
 		// Not a finding. See the reasoning at the top of this file; this is
 		// the branch to change if that reasoning ever stops holding.
-		out.Notes = append(out.Notes,
-			"No status response was stapled, and the certificate names a responder. A client that "+
-				"checks revocation therefore has to ask the certificate authority directly, which tells "+
-				"that authority which site is being visited. Stapling would answer the same question "+
-				"without disclosing the visit. This is not graded: the authority, not the server, "+
+		out.observe(
+			"No status response was stapled, and the certificate names a responder. A client that " +
+				"checks revocation therefore has to ask the certificate authority directly, which tells " +
+				"that authority which site is being visited. Stapling would answer the same question " +
+				"without disclosing the visit. This is not graded: the authority, not the server, " +
 				"decides whether a response exists to staple.")
 
 	case f.HasCRL:
 		// The common case for a certificate issued now, and the one every
 		// scanner that still grades this gets wrong.
-		out.Notes = append(out.Notes,
-			"No status response was stapled, and the certificate names no responder to fetch one from. "+
-				"The CA/Browser Forum no longer requires certificate authorities to run OCSP, and several "+
-				"have withdrawn it, so there is nothing here for the server to have sent. Revocation for "+
-				"this certificate is published as a list instead, which clients fetch on their own "+
+		out.observe(
+			"No status response was stapled, and the certificate names no responder to fetch one from. " +
+				"The CA/Browser Forum no longer requires certificate authorities to run OCSP, and several " +
+				"have withdrawn it, so there is nothing here for the server to have sent. Revocation for " +
+				"this certificate is published as a list instead, which clients fetch on their own " +
 				"schedule rather than per connection.")
 
 	default:
@@ -280,10 +298,10 @@ func GradeStapling(f StapleFacts) StapleFinding {
 		// self-signed certificate, and grading an internal certificate as
 		// faulty for lacking a public revocation channel would be wrong. The
 		// consequence is stated and the reader decides whether it applies.
-		out.Notes = append(out.Notes,
-			"No status response was stapled, and the certificate names neither an OCSP responder nor a "+
-				"CRL distribution point. There is no published way to learn whether it has been revoked: "+
-				"a client that wanted to check has nowhere to ask. Withdrawing this certificate before it "+
+		out.observe(
+			"No status response was stapled, and the certificate names neither an OCSP responder nor a " +
+				"CRL distribution point. There is no published way to learn whether it has been revoked: " +
+				"a client that wanted to check has nowhere to ask. Withdrawing this certificate before it " +
 				"expires would mean reaching every client another way.")
 	}
 
@@ -297,3 +315,15 @@ func GradeStapling(f StapleFacts) StapleFinding {
 
 	return out
 }
+
+// observe, unsettled and standing add a note of each kind.
+//
+// They exist so that writing a note means choosing what kind of claim it is,
+// at the point where that is known. A plain append would let a sentence reach
+// the report with no kind at all, and a note with no kind is filed under
+// whichever heading comes first — which is the defect these replaced.
+func (r *StapleFinding) observe(text string) { r.Notes = append(r.Notes, Observed(text)) }
+
+func (r *StapleFinding) unsettled(text string) { r.Notes = append(r.Notes, Unsettled(text)) }
+
+func (r *StapleFinding) standing(text string) { r.Notes = append(r.Notes, Standing(text)) }

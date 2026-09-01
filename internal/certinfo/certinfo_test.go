@@ -304,7 +304,7 @@ func TestNoHostnameIsNoted(t *testing.T) {
 
 	var noted bool
 	for _, n := range report.Notes {
-		if strings.Contains(strings.ToLower(n), "hostname") {
+		if strings.Contains(strings.ToLower(n.Text), "hostname") {
 			noted = true
 		}
 	}
@@ -389,18 +389,25 @@ func TestSummaryIsReadable(t *testing.T) {
 //
 // The imports it needs — crypto/x509, strings, testing — are already there.
 
-// Invariant R3: what could not be measured is stated.
+// This package says nothing about revocation, because it cannot know.
 //
-// "Trusted" means the chain reaches a root and the dates are in range. A
-// reader will take it to mean the certificate has not been revoked, and it
-// does not, so the report has to say so.
+// It used to. Every report carried "Revocation was not checked", written when
+// nothing here parsed a stapled response — and this test asserted the word was
+// present, which is why the sentence survived v0.3.0 teaching this project to
+// read a response and verify it against the issuer. From then on a stapling
+// server got both claims in one report: revocation not checked, directly above
+// the stapled response read and verified. Around a third of hosts staple.
 //
-// Revocation is not checked because checking it would defeat the point of the
-// service: asking a certificate authority whether a serial is still good
-// tells that authority which certificate somebody is looking at. Silence
-// about that would read as a clean answer, which is the failure this project
-// objects to in other tools.
-func TestRevocationIsDeclaredUnchecked(t *testing.T) {
+// This is the third time in this repository that a test held a stale sentence
+// in place by nailing its words. The rule those produced is the one applied
+// here: assert the property, and assert it in the package that can establish
+// it. Whether a response verified is settled in policy.GradeStapling, which
+// has every branch; this package knows only that a certificate exists.
+//
+// R3 is not weakened by the move. The claim is still made on every report —
+// see TestNoAuthorityIsAskedOnAnyStapleOutcome in internal/policy — and it is
+// now made where it can be made conditionally.
+func TestThisPackageClaimsNothingAboutRevocation(t *testing.T) {
 	root := newRoot(t)
 	leaf := newLeaf(t, root, leafOpts{})
 
@@ -409,13 +416,11 @@ func TestRevocationIsDeclaredUnchecked(t *testing.T) {
 		t.Fatalf("Analyse: %v", err)
 	}
 
-	var declared bool
 	for _, note := range report.Notes {
-		if strings.Contains(strings.ToLower(note), "revocation") {
-			declared = true
+		if strings.Contains(strings.ToLower(note.Text), "revocation") ||
+			strings.Contains(strings.ToLower(note.Text), "revoked") {
+			t.Errorf("this package cannot know whether revocation was established, and claims it anyway:\n  %s",
+				note.Text)
 		}
-	}
-	if !declared {
-		t.Errorf("no note says revocation was not checked; notes: %v", report.Notes)
 	}
 }

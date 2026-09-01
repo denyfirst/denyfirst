@@ -131,6 +131,40 @@ report says so rather than reading the silence as a refusal.
 exists.** Measured on a synthetic server: a full scan of a modern host went
 from twelve connections to thirteen, and a TLS 1.2 server stayed at twelve.
 
+### The report says which of three things a note is
+
+No rule changed here, and no verdict. What changed is how a report is read.
+
+Everything that is not a finding used to appear under one heading, *What this
+did not measure*. Three kinds of sentence lived there: what the scan
+established and does not grade, what it could not settle about the host in
+front of it, and what this program never claims about any host. A scan of a
+bank on 2026-09-01 put eleven sentences under that heading, of which three
+were limits of the scan. Among the rest was a post-quantum key exchange that
+had been measured and passed.
+
+Notes now carry a kind, and the report has three sections: **Observed**, **Not
+established for this host**, and **Limits of this method**.
+
+**This changes the API.** `notes` was an array of strings; it is now an array
+of `{"kind": "...", "text": "..."}`, and the same applies to the `notes` of
+each component. Anything reading the field will need the `.text`. It is a
+breaking change, made one day after the field first shipped in v0.4.0 and
+recorded here rather than left for a reader to discover.
+
+### One sentence was wrong, on about a third of hosts
+
+`Revocation was not checked` was appended to every report. It was written when
+nothing here parsed a stapled response, and v0.3.0 — which taught this project
+to read one and verify it against the issuer — did not remove it. So a server
+that staples was told both that revocation had not been checked and that the
+stapled response had been read and verified, one line above the other.
+
+The sentence is gone. What replaces it says only what is true on every branch:
+no certificate authority is asked anything by this scan, and revocation is read
+only from a response the server stapled. What that response did or did not
+establish is said where it is known.
+
 ### What did not change
 
 No existing rule changed meaning and no verdict moved. A report from

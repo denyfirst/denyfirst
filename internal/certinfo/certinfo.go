@@ -108,7 +108,7 @@ type Report struct {
 	Transparency Transparency `json:"transparency"`
 
 	// Notes records what could not be established, and what was cut.
-	Notes []string `json:"notes,omitempty"`
+	Notes []policy.Note `json:"notes,omitempty"`
 }
 
 // Transparency counts the signed certificate timestamps embedded in the leaf.
@@ -424,7 +424,7 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 	described := chain
 	if len(described) > maxChainLength {
 		described = described[:maxChainLength]
-		report.Notes = append(report.Notes, fmt.Sprintf(
+		report.unsettled(fmt.Sprintf(
 			"The server sent %d certificates. Only the first %d were used: the rest are neither "+
 				"described here nor offered to the verifier when it builds a path to a root, so a "+
 				"chain that needs one of them is reported as untrusted. The bound is this report's, "+
@@ -438,13 +438,13 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 		report.Chain = append(report.Chain, describe(c, &trim))
 	}
 	if trim.cut {
-		report.Notes = append(report.Notes,
-			"Some fields were longer than this report will carry and have been shortened. "+
+		report.unsettled(
+			"Some fields were longer than this report will carry and have been shortened. " +
 				"The fingerprint is taken over the whole certificate, so it still identifies what the server sent.")
 	}
 
 	if note := mixedScriptNote(leaf); note != "" {
-		report.Notes = append(report.Notes, note)
+		report.observe(note)
 	}
 
 	selfSigned := isSelfSigned(leaf)
@@ -494,7 +494,7 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 
 	hostnameMatches := true
 	if hostname == "" {
-		report.Notes = append(report.Notes,
+		report.unsettled(
 			"No hostname was supplied, so the certificate was not checked against a name.")
 	} else if err := leaf.VerifyHostname(hostname); err != nil {
 		hostnameMatches = false
@@ -521,8 +521,8 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 	if leaf.SerialNumber != nil && leaf.SerialNumber.Sign() > 0 {
 		facts.SerialBits = leaf.SerialNumber.BitLen()
 	} else {
-		report.Notes = append(report.Notes,
-			"The serial number is not a positive integer. RFC 5280 requires one, and a certificate "+
+		report.observe(
+			"The serial number is not a positive integer. RFC 5280 requires one, and a certificate " +
 				"without it is malformed however it was issued.")
 	}
 
@@ -544,7 +544,7 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 	// the document does not carry is how a rule set stops being checkable
 	// against the document it claims to follow.
 	if key, ok := leaf.PublicKey.(*rsa.PublicKey); ok && key.E > 0 && key.E < 65537 {
-		report.Notes = append(report.Notes, fmt.Sprintf(
+		report.observe(fmt.Sprintf(
 			"The RSA public exponent is %d. The CA/Browser Forum says it should be at least 65537, "+
 				"and small exponents have a long history of turning a flaw in somebody's signature "+
 				"verification into a forgery. It is permitted, and it is not current practice.", key.E))
@@ -561,11 +561,11 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 				"delivery network and is worth knowing about, because whoever holds the key holds " +
 				"every one of them."
 		}
-		report.Notes = append(report.Notes, note)
+		report.observe(note)
 	}
 
 	if facts.KeyAlgorithm == "" {
-		report.Notes = append(report.Notes, fmt.Sprintf(
+		report.unsettled(fmt.Sprintf(
 			"Public key algorithm %q is not recognised, so key strength was not graded.",
 			leaf.PublicKeyAlgorithm.String()))
 	}
@@ -580,8 +580,8 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 		// Stated rather than assumed either way. Reading it as absent would
 		// hide a certificate that may be demanding stapling; reading it as
 		// present would invent a requirement out of a parse failure.
-		report.Notes = append(report.Notes,
-			"The certificate carries a TLS Feature extension that could not be parsed, so whether it "+
+		report.unsettled(
+			"The certificate carries a TLS Feature extension that could not be parsed, so whether it " +
 				"requires a stapled status response could not be established.")
 	}
 
@@ -591,32 +591,31 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 		// Same reasoning as above. A count of zero and an unreadable list are
 		// different facts, and reporting the second as the first would say a
 		// certificate is absent from every log when nobody managed to look.
-		report.Notes = append(report.Notes,
-			"The certificate carries a transparency timestamp list that could not be parsed, so the "+
+		report.unsettled(
+			"The certificate carries a transparency timestamp list that could not be parsed, so the " +
 				"timestamps embedded in it could not be counted.")
 	}
 
 	report.Grade = policy.GradeLeaf(facts, now)
 	report.Verdict = report.Grade.Verdict
 
-	// Invariant R3: what could not be measured is stated.
+	// Revocation is said elsewhere, and until 2026-09-01 it was said here,
+	// unconditionally, in words that had stopped being true.
 	//
-	// "Trusted" here means the chain reaches a root and the dates are in
-	// range. It does not mean the certificate has not been revoked, and a
-	// reader will assume it does unless told otherwise.
+	// The sentence read "Revocation was not checked". It was written when
+	// nothing in this project parsed a stapled response. v0.3.0 made it read
+	// one and verify it against the issuer, and the sentence stayed — so a
+	// report on a server that staples carried both "Revocation was not
+	// checked" and "The stapled response was read and verified", one above
+	// the other. Around a third of the hosts measured here staple.
 	//
-	// Revocation is not checked, and the reason is the same one that shapes
-	// the rest of this project. Asking a certificate authority whether a
-	// serial is still good tells that authority which certificate somebody is
-	// looking at, and a stapled response would have to be validated against
-	// the issuer to be worth anything. Either way a third party learns what
-	// was scanned, which is the one thing this service undertakes not to let
-	// happen.
-	report.Notes = append(report.Notes,
-		"Revocation was not checked. Asking a certificate authority whether this "+
-			"certificate is still valid would tell it which certificate you are "+
-			"looking at, which this service does not do. A chain reported as trusted "+
-			"reaches a root and is in date; it may still have been revoked.")
+	// The claim also does not belong to this package. Whether a response
+	// verified is settled in policy.GradeStapling, which has every branch and
+	// a sentence for each; this package knows only that a certificate exists.
+	// A sentence written where the answer is not known is a sentence that
+	// cannot be made conditional, which is how this one became false and
+	// stayed false through a release. The standing half — that no authority
+	// is ever asked — is said there too, on every branch.
 
 	if !facts.ChainComplete {
 		if report.Trusted {
@@ -628,15 +627,15 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 			// was simply false. Which one applies is a fact about the machine
 			// that ran the scan; what the operator needs is the same either
 			// way.
-			report.Notes = append(report.Notes,
-				"The certificate that issued the leaf was not sent, and verification succeeded anyway. "+
-					"Either that issuer is itself in this machine's trust store, or the platform verifier "+
-					"fetched it over the network; which of the two happened is a property of the machine "+
-					"that ran this scan rather than of the server. A client that neither holds the issuer "+
-					"nor fetches one — most command-line tools, mobile applications, and API consumers — "+
+			report.unsettled(
+				"The certificate that issued the leaf was not sent, and verification succeeded anyway. " +
+					"Either that issuer is itself in this machine's trust store, or the platform verifier " +
+					"fetched it over the network; which of the two happened is a property of the machine " +
+					"that ran this scan rather than of the server. A client that neither holds the issuer " +
+					"nor fetches one — most command-line tools, mobile applications, and API consumers — " +
 					"will fail against this server.")
 		} else {
-			report.Notes = append(report.Notes,
+			report.observe(
 				"The server did not send the certificate that issued the leaf.")
 		}
 	}
@@ -1028,3 +1027,19 @@ func parseSCTList(list []byte) (count int, logIDs []string, malformed bool) {
 
 	return count, logIDs, false
 }
+
+// observe and unsettled add a note of each kind this package can make.
+//
+// They exist so that writing a note means choosing what kind of claim it is,
+// at the point where that is known. A plain append would let a sentence reach
+// the report with no kind at all, and a note with no kind is filed under
+// whichever heading comes first — which is the defect these replaced.
+//
+// There is no standing helper here, and that is the shape of the package
+// rather than an omission. A standing note is one that holds for every scan,
+// and the only one this package ever made was the claim about revocation —
+// which it could not settle and should not have been making. It is now in
+// policy.GradeStapling, where the outcome is known. See R3a.
+func (r *Report) observe(text string) { r.Notes = append(r.Notes, policy.Observed(text)) }
+
+func (r *Report) unsettled(text string) { r.Notes = append(r.Notes, policy.Unsettled(text)) }

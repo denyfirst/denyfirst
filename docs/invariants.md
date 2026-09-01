@@ -521,22 +521,54 @@ Go's TLS stack offers roughly twenty-seven of the three hundred suites in the
 IANA registry, and gives no way to choose among TLS 1.3 suites. A report that
 omits this reads as exhaustive.
 
+A limit of this scan and a limit of this program are different claims, and
+until 2026-09-01 they were printed under one heading with everything the scan
+had established. R18 is what separates them; this invariant is what requires
+them to be said at all.
+
 *Enforced in:* `internal/tlsprobe`, the `Notes` field
 *Guarded by:* `TestSupportedVersionsCarryTheCoverageNote`,
-`TestDescribeTransparencySeparatesTheFourSituations`
+`TestDescribeTransparencySeparatesTheFourSituations`,
+`TestEveryNoteInAReportCarriesAKind`
 
-### R3a — Revocation is not checked, and the report says so
+### R3a — No authority is asked, and the claim about revocation is made where the answer is known
 
 A chain reported as trusted reaches a root and is in date. It may still have
-been revoked.
+been withdrawn.
 
-Checking would defeat the point of the service: asking a certificate
-authority whether a serial is still good tells that authority which
-certificate somebody is looking at, and querying a transparency log does the
-same. No connection is ever opened to a responder.
+No connection is ever opened to a responder. Asking a certificate authority
+whether a serial is still good tells that authority which certificate somebody
+is looking at, and querying a transparency log does the same. That much has
+never changed and is true on every branch.
 
-*Enforced in:* `internal/certinfo.Analyse`, in the notes
-*Guarded by:* `TestRevocationIsDeclaredUnchecked`
+What changed is everything after it. Until 2026-09-01 this invariant read
+*revocation is not checked, and the report says so*, and `internal/certinfo`
+appended that sentence to every report it produced. It was written when
+nothing here parsed a stapled response. **R3b, directly below, records that
+v0.3.0 made this project read one and verify it against the issuer** — so from
+that release the two invariants on this page contradicted each other, and so
+did the report: a stapling server was told *Revocation was not checked*
+directly above *The stapled response was read and verified*. Around a third of
+the hosts measured here staple. The contradiction survived a release, a policy
+version and a public deployment.
+
+Two things kept it alive, and both are worth naming. The sentence lived in a
+package that cannot know the answer — whether a response verified is settled
+in `policy.GradeStapling`, and a sentence written where the answer is unknown
+is a sentence that cannot be made conditional. And a test asserted the words,
+so the change that made them false left the test green. That is the third time
+in this repository a test has held a stale sentence in place by nailing its
+prose, and the rule it produced is applied here: assert the property, in the
+package that can establish it.
+
+The claim now sits in `policy.GradeStapling`, which has every outcome and a
+sentence for each, with one standing note across all of them saying no
+authority is asked. `internal/certinfo` says nothing about revocation at all,
+and a test enforces that it does not.
+
+*Enforced in:* `policy.GradeStapling`, in the notes
+*Guarded by:* `TestNoAuthorityIsAskedOnAnyStapleOutcome`,
+`TestThisPackageClaimsNothingAboutRevocation`
 
 ### R3b — A stapled response is read, and what reading it cannot settle is said
 
@@ -1143,6 +1175,52 @@ succeeded, and the sentence stops where the measurement stopped.
 *Enforced in:* the rationale of `cert.roca` in `internal/policy/cert.go`
 *Guarded by:* `TestTheFingerprintReachesTheReport`, which requires the finding
 to name a fingerprint and refuses one that claims a factorisation
+
+### R18 — A note carries the kind of claim it makes
+
+A report says three different things that are not verdicts, and for as long as
+this project has existed it said all three under one heading.
+
+The heading was *What this did not measure*. Under it went every sentence that
+was not a finding: what the scan established and chose not to grade, what it
+could not settle about this host, and what this program never claims about any
+host. A scan of kapitalbank.az on 2026-09-01 produced eleven of them. Three
+were limits of that scan. The rest were a post-quantum key exchange that had
+been measured and had passed, a stapled revocation response that had been read
+and verified, a CAA restriction that had been found, five transparency
+receipts that had been counted, and the standing properties of the instrument.
+
+Nothing in that list was false. The heading was, for eight of the eleven, and
+a reader takes the heading — so a report that establishes a great deal read as
+a report that had established almost nothing. Being wrong about the frame is
+not a smaller fault than being wrong about the fact; it is the same fault at
+the point where the reader actually meets it.
+
+Every note now carries one of three kinds, and the kind is chosen where the
+sentence is written, by the code that knows which it is:
+
+| Kind | What it claims | Heading |
+|---|---|---|
+| `observed` | Established by this scan, deliberately not graded | Observed |
+| `unsettled` | This scan could not settle it, and the reason lies with this host | Not established for this host |
+| `standing` | True of every scan this program runs | Limits of this method |
+
+Classifying afterwards by reading the finished prose was the alternative and is
+rejected for the reason R12 gives: it puts the sentence and its label in two
+places, and two places drift. There is no way to append a note without naming
+its kind — the packages expose `observe`, `unsettled` and `standing`, and
+nothing writes to the list directly.
+
+Both faces of the report take the sections, their order and their words from
+one declaration each, and a test reads both sources and compares them. A
+section renamed on the page and not in the terminal fails; a section on one
+face and not the other fails.
+
+*Enforced in:* `internal/policy/note.go`; `noteSections` in
+`cmd/denyfirst-scan`; `NOTE_SECTIONS` in `internal/web/assets/app.js`
+*Guarded by:* `TestEveryNoteInAReportCarriesAKind`,
+`TestBothFacesNameTheSameNoteSections`,
+`TestLimitsOpenOnlyWhenTheyAreTheWholeReport`
 
 ### R9a — A CAA value is an authority and its parameters, not one string
 

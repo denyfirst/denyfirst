@@ -192,7 +192,7 @@ type Report struct {
 
 	// Notes records what the probe could not establish. It is part of the
 	// result, not a debug aid: an unexplained gap reads as an absence.
-	Notes []string `json:"notes,omitempty"`
+	Notes []policy.Note `json:"notes,omitempty"`
 }
 
 // VersionResult describes one protocol version.
@@ -386,7 +386,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 			// this is the same fact arriving by the other route, and the
 			// reader who has to subtract one field from another to notice it
 			// is the reader who does not notice it.
-			report.Notes = append(report.Notes, fmt.Sprintf(
+			report.unsettled(fmt.Sprintf(
 				"%d of the %d transparency timestamps in the handshake could not be read, so the logs "+
 					"behind them are not counted. The total still includes them.",
 				unreadable, report.SCTCount))
@@ -405,7 +405,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 		if !v.Supported || v.CipherListComplete {
 			continue
 		}
-		report.Notes = append(report.Notes, fmt.Sprintf(
+		report.unsettled(fmt.Sprintf(
 			"The cipher suite list for %s is incomplete. Enumeration needs one handshake per suite "+
 				"the server accepts, and this host stopped answering before the list ran out, so what "+
 				"is shown is what was reached rather than everything accepted. Suites are found "+
@@ -414,12 +414,12 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	}
 
 	if len(report.Certificates) == 0 {
-		report.Notes = append(report.Notes,
+		report.unsettled(
 			"No handshake completed, so no certificate chain was retrieved.")
 	}
 
 	for _, alt := range report.AlternateChains {
-		report.Notes = append(report.Notes, fmt.Sprintf(
+		report.observe(fmt.Sprintf(
 			"%s is served a different certificate from the one described above. Both were graded and the "+
 				"worse of the two set the verdict; the details shown are the newest handshake's.", alt.Version))
 	}
@@ -451,16 +451,16 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 		if !known {
 			// Attempted and failed, which is not the same as not attempted,
 			// and the field alone cannot tell a reader which happened.
-			report.Notes = append(report.Notes,
+			report.unsettled(
 				"Cipher preference could not be determined: the two handshakes it needs did not both complete.")
 		} else if !results[idx].CipherListComplete {
 			// Answered from a list that was cut short, so the pair compared
 			// may not include the suite the server would really have chosen.
-			report.Notes = append(report.Notes,
+			report.unsettled(
 				"Cipher preference was determined from an incomplete suite list, so it describes the suites that were reached rather than everything the server accepts.")
 		}
 	} else {
-		report.Notes = append(report.Notes,
+		report.unsettled(
 			"Cipher preference could not be determined: it requires a pre-1.3 version offering at least two suites.")
 	}
 
@@ -469,16 +469,16 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	// why one version shows a single suite. Dropping either leaves the reader
 	// to assume the list is exhaustive.
 	if suiteCoverageApplies(results) {
-		report.Notes = append(report.Notes,
-			"Only cipher suites implemented by Go's TLS stack were offered. Suites outside it, and SSLv2 or SSLv3, are not covered. "+
-				"A server that speaks a version but shares no suite with this client answers a handshake the same way as one that refuses the version, "+
+		report.standing(
+			"Only cipher suites implemented by Go's TLS stack were offered. Suites outside it, and SSLv2 or SSLv3, are not covered. " +
+				"A server that speaks a version but shares no suite with this client answers a handshake the same way as one that refuses the version, " +
 				"so a refusal here is not proof the version is switched off.")
 	}
 
 	if slices.ContainsFunc(results, func(v VersionResult) bool {
 		return v.Supported && v.Version == tls.VersionTLS13
 	}) {
-		report.Notes = append(report.Notes,
+		report.standing(
 			"For TLS 1.3 only the negotiated suite is listed. Go gives a client no way to choose among TLS 1.3 suites, so the rest could not be enumerated.")
 	}
 
@@ -1043,3 +1043,15 @@ func handshakeLogIDs(scts [][]byte) (ids []string, unreadable int) {
 	}
 	return ids, unreadable
 }
+
+// observe, unsettled and standing add a note of each kind.
+//
+// They exist so that writing a note means choosing what kind of claim it is,
+// at the point where that is known. A plain append would let a sentence reach
+// the report with no kind at all, and a note with no kind is filed under
+// whichever heading comes first — which is the defect these replaced.
+func (r *Report) observe(text string) { r.Notes = append(r.Notes, policy.Observed(text)) }
+
+func (r *Report) unsettled(text string) { r.Notes = append(r.Notes, policy.Unsettled(text)) }
+
+func (r *Report) standing(text string) { r.Notes = append(r.Notes, policy.Standing(text)) }

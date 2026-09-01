@@ -134,7 +134,7 @@ func TestDescribeIssuanceSeparatesEveryState(t *testing.T) {
 func TestNotCheckedIsNotAnAccusation(t *testing.T) {
 	got := DescribeIssuance(IssuanceFacts{})
 
-	joined := strings.Join(got.Notes, " ")
+	joined := strings.Join(Texts(got.Notes), " ")
 	if !strings.Contains(joined, "not a finding about the name") {
 		t.Errorf("the note does not say a missing lookup is not a fault: %s", joined)
 	}
@@ -159,8 +159,8 @@ func TestProvenanceIsAlwaysStated(t *testing.T) {
 		Authorities: []string{"letsencrypt.org"}, FoundAt: "x.test", SearchedTo: "x.test",
 	})
 
-	v := strings.Join(validated.Notes, " ")
-	p := strings.Join(plain.Notes, " ")
+	v := strings.Join(Texts(validated.Notes), " ")
+	p := strings.Join(Texts(plain.Notes), " ")
 
 	if !strings.Contains(v, "DNSSEC-validated") {
 		t.Error("a validated answer does not say so")
@@ -188,7 +188,7 @@ func TestEveryCheckedStateMentionsTransparency(t *testing.T) {
 	}
 
 	for _, facts := range states {
-		joined := strings.Join(DescribeIssuance(facts).Notes, " ")
+		joined := strings.Join(Texts(DescribeIssuance(facts).Notes), " ")
 		if !strings.Contains(joined, "transparency") {
 			t.Errorf("a checked state does not mention what records issuance when a restriction fails: %s", joined)
 		}
@@ -197,9 +197,9 @@ func TestEveryCheckedStateMentionsTransparency(t *testing.T) {
 
 // The finding a name with no CAA most needs to read.
 func TestNoRecordSaysWhatFollowsFromIt(t *testing.T) {
-	joined := strings.Join(DescribeIssuance(IssuanceFacts{
+	joined := strings.Join(Texts(DescribeIssuance(IssuanceFacts{
 		Checked: true, Exists: true, SearchedTo: "az", SearchComplete: true,
-	}).Notes, " ")
+	}).Notes), " ")
 
 	for _, required := range []string{
 		"Any publicly trusted certificate authority may therefore issue",
@@ -226,7 +226,7 @@ func TestAnUnfinishedWalkDoesNotClaimNobodyIsRestricted(t *testing.T) {
 		SearchedTo: "d.example.com", SearchComplete: false,
 	})
 
-	joined := strings.Join(short.Notes, " ") + " " + short.Line
+	joined := strings.Join(Texts(short.Notes), " ") + " " + short.Line
 	for _, forbidden := range []string{
 		"Any publicly trusted certificate authority may therefore issue",
 		"no CAA at this name or above it",

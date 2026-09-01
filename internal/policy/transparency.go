@@ -54,50 +54,56 @@ type TransparencyFacts struct {
 // DescribeTransparency returns the sentences a report should carry.
 //
 // Notes rather than findings. Nothing here is graded; see the reasoning above.
-func DescribeTransparency(f TransparencyFacts) []string {
+func DescribeTransparency(f TransparencyFacts) []Note {
 	total := f.Embedded + f.InHandshake
 
 	if total > 0 {
 		note := fmt.Sprintf(
 			"%s, from %s. The certificate is therefore recorded where anybody, including its "+
 				"domain's owner, can find it — which is how an authority that issued a certificate "+
-				"it should not have gets caught. The receipts were counted and not verified: "+
-				"checking one needs the log's public key, and this service carries no copy of that list.",
+				"it should not have gets caught.",
 			plural(total, "transparency timestamp"), plural(f.FromLogs, "log"))
 
 		if f.InHandshake > 0 && f.Embedded > 0 {
 			note += fmt.Sprintf(" %d arrived embedded in the certificate and %d in the handshake.",
 				f.Embedded, f.InHandshake)
 		}
-		return []string{note}
+
+		// Two sentences, two claims. How many receipts arrived is a fact
+		// about this certificate; that none of them was verified is true of
+		// every scan this program runs, and joining them made the second read
+		// as though it were a limit of this one.
+		return []Note{Observed(note), Standing(receiptsNotVerified)}
 	}
 
 	if !f.Trusted {
 		// Not a fault. A private authority answers to whoever runs it.
-		return []string{
+		return []Note{Observed(
 			"No transparency timestamps were found, and this chain does not reach a root in the " +
 				"trust store. A certificate outside the public authorities is under no obligation to " +
-				"appear in a transparency log.",
-		}
+				"appear in a transparency log.")}
 	}
 
 	if f.Stapled {
 		// The one case where silence would be a false accusation.
-		return []string{
+		return []Note{Unsettled(
 			"No transparency timestamps were found in the certificate or the handshake. They may " +
 				"still be present: a status response was stapled, timestamps can travel inside one, " +
 				"and this service does not read it. What can be said is that none arrived by the two " +
-				"routes that were examined.",
-		}
+				"routes that were examined.")}
 	}
 
-	return []string{
+	return []Note{Observed(
 		"No transparency timestamps were found in the certificate or the handshake, and no status " +
 			"response was stapled that might have carried them. A publicly trusted certificate is " +
 			"expected to be logged, and browsers refuse one that is not, so a client may well decline " +
-			"this connection where this report does not.",
-	}
+			"this connection where this report does not.")}
 }
+
+// Counting a receipt is not checking one, and the difference holds for every
+// certificate this program looks at rather than for any particular one.
+const receiptsNotVerified = "Transparency receipts are counted and not verified: checking one needs " +
+	"the log's public key, and this service carries no copy of that list."
 
 // plural writes a count with its noun, so a report does not say "1 logs".
 func plural(n int, noun string) string {
