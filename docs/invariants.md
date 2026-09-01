@@ -1893,9 +1893,18 @@ adding to it fails a test, and naming a rule identifier that does not exist
 fails another — the same rule as the invariant citations here, for the same
 reason: a page naming things nobody can find is a page nobody can check.
 
-*Enforced in:* `docs/policy-changes.md`
+The record also has to say **which release** moved the rule set, because that
+is the first thing a reader comparing two reports needs: which upgrade to
+distrust. A section is written before the release that carries it exists, so
+it says "Unreleased" until somebody returns to it, and on 2026-09-01 nobody
+had — `denyfirst-v4` was still marked unreleased five releases and three weeks
+after v0.4.0 shipped it. So a rule set that is no longer the one in force must
+name its release, and the procedure stops on the word before a tag is cut.
+
+*Enforced in:* `docs/policy-changes.md`, `docs/releasing.md`
 *Guarded by:* `TestTheChangeLogCoversTheCurrentPolicy`,
-`TestTheChangeLogNamesRulesThatExist`
+`TestTheChangeLogNamesRulesThatExist`,
+`TestEveryRuleSetThatShippedNamesItsRelease`
 
 ### S12 — A tag cannot be moved or deleted
 

@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -70,6 +71,79 @@ func TestTheChangeLogNamesRulesThatExist(t *testing.T) {
 			if !known[id] {
 				t.Errorf("docs/policy-changes.md names %q and no rule has that identifier", id)
 			}
+		}
+	}
+}
+
+// A rule set that has shipped says which release shipped it.
+//
+// The page exists so that an operator whose server was graded differently
+// this month can tell a configuration that got worse from a rule that got
+// stricter, and the first thing that asks is *when*: which upgrade moved the
+// rule set, so they know which reports to distrust.
+//
+// A section reading "Unreleased" answers that wrongly rather than not at all.
+// On 2026-09-01 the `denyfirst-v3` → `denyfirst-v4` section still said it.
+// v4 had been the rule set in production since v0.4.0 — five releases and
+// three weeks earlier — because the line was written before that release and
+// nobody re-reads a page whose newest section is correct. It is the same
+// defect as an invariant citing a test that has been renamed: not a lie
+// anybody told, just one nobody went back for.
+//
+// The section for the rule set in force may say either. It is written before
+// the tag it names exists, which is the whole reason the stale line survived.
+// Every older section has to name a release.
+func TestEveryRuleSetThatShippedNamesItsRelease(t *testing.T) {
+	body, err := os.ReadFile("../../docs/policy-changes.md")
+	if err != nil {
+		t.Fatalf("reading docs/policy-changes.md: %v", err)
+	}
+	page := string(body)
+
+	current := 0
+	if _, err := fmt.Sscanf(Version, "denyfirst-v%d", &current); err != nil || current < 1 {
+		t.Fatalf("policy version %q is not denyfirst-vN, so this test cannot tell "+
+			"a shipped rule set from the one in force", Version)
+	}
+
+	heading := regexp.MustCompile("(?m)^## `denyfirst-v[0-9]+` → `denyfirst-v([0-9]+)`")
+	found := heading.FindAllStringSubmatchIndex(page, -1)
+
+	// Which rule set each section introduces, and the prose under it.
+	section := map[int]string{}
+	for i, m := range found {
+		introduced := 0
+		if _, err := fmt.Sscanf(page[m[2]:m[3]], "%d", &introduced); err != nil {
+			continue
+		}
+		// A section runs to the next heading, or to the end of the page.
+		end := len(page)
+		if i+1 < len(found) {
+			end = found[i+1][0]
+		}
+		section[introduced] = page[m[1]:end]
+	}
+
+	// A check that parses nothing passes everything. Every rule set from the
+	// second to the one in force has a section, or the headings have drifted
+	// out of the shape this test reads and it has stopped checking.
+	for v := 2; v <= current; v++ {
+		if _, ok := section[v]; !ok {
+			t.Fatalf("docs/policy-changes.md has no section introducing denyfirst-v%d, so either a "+
+				"rule set moved without a record or the headings no longer match what this test reads", v)
+		}
+	}
+
+	for v := 2; v < current; v++ {
+		text := section[v]
+		if strings.Contains(text, "Unreleased") {
+			t.Errorf("docs/policy-changes.md still calls denyfirst-v%d unreleased. It is not the rule "+
+				"set in force (%s is), so it shipped, and a reader asking which upgrade moved their "+
+				"verdicts is told it never happened.", v, Version)
+		}
+		if !strings.Contains(text, "Released in v") {
+			t.Errorf("the denyfirst-v%d section names no release. Which upgrade moved the rule set is "+
+				"the first thing a reader comparing two reports needs.", v)
 		}
 	}
 }

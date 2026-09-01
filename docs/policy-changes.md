@@ -16,9 +16,9 @@ free to improve without breaking that.
 
 ## `denyfirst-v4` → `denyfirst-v5`
 
-Unreleased. Four rules, all of them read off a certificate this scan already
-had, so nothing new is asked of the server: the same handshakes, the same
-bytes, the same load at the other end.
+Released in v0.8.0, 2026-09. Four rules, all of them read off a certificate
+this scan already had, so nothing new is asked of the server: the same
+handshakes, the same bytes, the same load at the other end.
 
 All four grade something the report was **already displaying and grading with
 nothing**. A reader saw `CA: true` beside a leaf certificate and found no
@@ -80,9 +80,10 @@ did not grade.
 
 ## `denyfirst-v3` → `denyfirst-v4`
 
-Unreleased. Five rules added and three notes. Every one of them is read off a
-certificate this scan already had, so nothing new is asked of the server: the
-same handshakes, the same bytes, the same load at the other end.
+Released in v0.4.0, 2026-08. Five rules added and three notes. Every one of
+them is read off a certificate this scan already had, so nothing new is asked
+of the server: the same handshakes, the same bytes, the same load at the other
+end.
 
 ### A key made by a generator known to be broken
 
