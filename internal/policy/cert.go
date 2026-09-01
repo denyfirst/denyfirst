@@ -105,6 +105,31 @@ type LeafFacts struct {
 	// HostnameMatches reports whether the requested name appears in the
 	// certificate.
 	HostnameMatches bool
+
+	// What the certificate says it is allowed to be and to do.
+	//
+	// All three were displayed in the report and graded by nothing. A reader
+	// saw "CA: true" beside a leaf and no finding next to it.
+
+	// IsCA is the basic constraints extension saying this certificate may
+	// sign others. On a leaf it is the largest thing a certificate can claim.
+	IsCA bool
+
+	// BasicConstraintsValid is false when the extension was absent or could
+	// not be parsed, so IsCA means "not stated" rather than "false".
+	BasicConstraintsValid bool
+
+	// HasKeyUsage, KeyCertSign and DigitalSignature come from the key usage
+	// extension. Absent is not the same as excluding, exactly as with the
+	// extended key usage above.
+	HasKeyUsage      bool
+	KeyCertSign      bool
+	DigitalSignature bool
+
+	// UnhandledCriticalExtensions names the critical extensions this
+	// implementation does not understand. RFC 5280 requires a client to
+	// reject such a certificate, so the list is not a curiosity.
+	UnhandledCriticalExtensions []string
 }
 
 // What a finding may repeat back from the certificate it describes.
@@ -334,6 +359,77 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 			"Key algorithm not recognised",
 			fmt.Sprintf("The public key is %s, which this rule set does not know how to size, so its strength was not graded. Nothing here says it is weak; nothing here can say it is sound either.", named),
 			nist80057, cabBR)
+	}
+
+	// A leaf that may sign other certificates.
+	//
+	// Displayed since this project began and graded by nothing: the report
+	// printed "CA: true" beside a leaf and put no finding next to it.
+	//
+	// RFC 5280 does not forbid it, and Go's verifier accepts such a
+	// certificate for a hostname, so nothing else on the page catches it. The
+	// CA/Browser Forum does forbid it — a subscriber certificate must carry
+	// cA:FALSE — and the reason is the size of what the key can do. A stolen
+	// leaf key normally impersonates the names in that leaf. A stolen leaf
+	// key that may sign issues certificates for any name at all, and every
+	// client that trusts the chain accepts them.
+	if f.BasicConstraintsValid && f.IsCA {
+		add("cert.leaf-is-ca", Insecure,
+			"This certificate may issue other certificates",
+			"Basic constraints say cA:TRUE on the certificate served for this host, so whoever "+
+				"holds its private key can sign certificates for any name, not only for the names "+
+				"here. The Baseline Requirements require cA:FALSE on a subscriber certificate.",
+			rfc5280, cabBR)
+	}
+
+	// A key usage that permits signing certificates, which is the same power
+	// as above arriving by the other extension.
+	//
+	// Separate from the rule above because the two can disagree, and a
+	// certificate where they disagree is malformed in a way worth naming:
+	// RFC 5280 says keyCertSign is meaningful only where basic constraints
+	// say cA:TRUE.
+	if f.HasKeyUsage && f.KeyCertSign && !f.IsCA {
+		add("cert.key-usage-cert-sign", Insecure,
+			"The key usage permits signing certificates",
+			"The key usage extension includes keyCertSign while basic constraints do not say "+
+				"cA:TRUE. RFC 5280 permits keyCertSign only on a certificate authority, so this "+
+				"certificate claims a power its own constraints deny it and clients disagree about "+
+				"which of the two to believe.",
+			rfc5280)
+	}
+
+	// A key usage that does not permit what TLS needs.
+	//
+	// Every TLS 1.3 handshake and every ECDHE handshake at TLS 1.2 has the
+	// server sign with its key, so a certificate whose key usage omits
+	// digitalSignature cannot be used for either. Absent is not excluding:
+	// with no extension at all the key may be used for anything.
+	if f.HasKeyUsage && !f.DigitalSignature {
+		add("cert.no-digital-signature", Weak,
+			"The key usage does not permit signing",
+			"The key usage extension lists what this key may do and does not list "+
+				"digitalSignature. Every TLS 1.3 handshake and every ECDHE handshake at TLS 1.2 "+
+				"requires the server to sign with this key, so a client enforcing the extension "+
+				"cannot use either with this certificate.",
+			rfc5280)
+	}
+
+	// A critical extension nobody here understands.
+	//
+	// RFC 5280 is explicit: a client that meets a critical extension it does
+	// not recognise must reject the certificate. Go's verifier does, so such
+	// a certificate already produces cert.chain-untrusted — with no reason
+	// attached. This names the reason, which is the difference between an
+	// operator who can fix it and one who cannot.
+	if len(f.UnhandledCriticalExtensions) > 0 {
+		add("cert.critical-extension-unrecognised", Weak,
+			"A critical extension this checker does not recognise",
+			"The certificate marks "+named(f.UnhandledCriticalExtensions)+" critical, and RFC 5280 "+
+				"requires a client that does not recognise a critical extension to reject the "+
+				"certificate. What this scan cannot tell you is whether the clients you care about "+
+				"recognise it; what it can tell you is that this one does not.",
+			rfc5280)
 	}
 
 	// ── What the certificate is for ──────────────────────────────────

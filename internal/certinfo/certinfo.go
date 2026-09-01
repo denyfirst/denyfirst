@@ -551,6 +551,26 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 	facts.CommonName = leaf.Subject.CommonName
 	facts.DNSNames = leaf.DNSNames
 
+	// What the certificate says it may be and may do.
+	//
+	// All three were already described in the report and graded by nothing.
+	// BasicConstraintsValid is carried through rather than collapsed into
+	// IsCA: an absent extension means the question was not answered, and a
+	// rule that reads "not a CA" from silence is reading a measurement that
+	// did not happen (R12).
+	facts.IsCA = leaf.IsCA
+	facts.BasicConstraintsValid = leaf.BasicConstraintsValid
+	facts.HasKeyUsage = leaf.KeyUsage != 0
+	facts.KeyCertSign = leaf.KeyUsage&x509.KeyUsageCertSign != 0
+	facts.DigitalSignature = leaf.KeyUsage&x509.KeyUsageDigitalSignature != 0
+
+	// Rendered as dotted object identifiers, which is what a reader needs to
+	// look one up. Bounded like every other list a server chooses the
+	// contents of.
+	for _, oid := range leaf.UnhandledCriticalExtensions {
+		facts.UnhandledCriticalExtensions = append(facts.UnhandledCriticalExtensions, oid.String())
+	}
+
 	// Absent is not the same as excluding. A certificate with no extended key
 	// usage extension may be used for anything, which is permitted; one that
 	// lists purposes has listed all of them.

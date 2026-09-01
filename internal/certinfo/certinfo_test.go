@@ -69,6 +69,12 @@ type leafOpts struct {
 	// unknownEKU carries extended key usages Go has no constant for, which
 	// is where a certificate's unnamed capabilities end up.
 	unknownEKU []asn1.ObjectIdentifier
+
+	// isCA and keyUsage describe what the certificate says it may be and
+	// what it says its key may do. Zero means the ordinary case: not an
+	// authority, permitted to sign.
+	isCA     bool
+	keyUsage x509.KeyUsage
 }
 
 func newLeaf(t *testing.T, root issuer, o leafOpts) *x509.Certificate {
@@ -95,6 +101,10 @@ func newLeaf(t *testing.T, root issuer, o leafOpts) *x509.Certificate {
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		UnknownExtKeyUsage:    o.unknownEKU,
 		BasicConstraintsValid: true,
+		IsCA:                  o.isCA,
+	}
+	if o.keyUsage != 0 {
+		tmpl.KeyUsage = o.keyUsage
 	}
 
 	var (
@@ -498,6 +508,74 @@ func TestTheReportSaysWhetherTheNameAndTheDatesHold(t *testing.T) {
 		}
 		if report.HostnameMatches != c.matches {
 			t.Errorf("%s: HostnameMatches=%v, want %v", c.name, report.HostnameMatches, c.matches)
+		}
+	}
+}
+
+// The facts about what a certificate may be reach the report.
+//
+// Between the certificate and the rule sit two steps that can each fail
+// silently: reading the extension here, and carrying it into LeafFacts. A
+// test over the rule alone passes with either of them broken, which is how a
+// grading change ships doing nothing.
+//
+// This is the same shape as the ROCA test: build a certificate that should be
+// accused, run the whole of Analyse, and read the findings that come out.
+func TestWhatACertificateMayBeReachesTheReport(t *testing.T) {
+	root := newRoot(t)
+
+	cases := []struct {
+		name string
+		leaf leafOpts
+		rule string
+	}{
+		{
+			name: "a leaf that may issue other certificates",
+			leaf: leafOpts{isCA: true},
+			rule: "cert.leaf-is-ca",
+		},
+		{
+			name: "a key usage that permits signing certificates",
+			leaf: leafOpts{keyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign},
+			rule: "cert.key-usage-cert-sign",
+		},
+		{
+			name: "a key usage that does not permit signing",
+			leaf: leafOpts{keyUsage: x509.KeyUsageKeyEncipherment},
+			rule: "cert.no-digital-signature",
+		},
+	}
+
+	for _, c := range cases {
+		leaf := newLeaf(t, root, c.leaf)
+
+		report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+		if err != nil {
+			t.Fatalf("%s: Analyse: %v", c.name, err)
+		}
+
+		var found bool
+		for _, finding := range report.Grade.Findings {
+			if finding.RuleID == c.rule {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s: %s did not reach the report", c.name, c.rule)
+		}
+	}
+
+	// And the ordinary certificate every other test in this file uses is
+	// accused of none of them, or the wiring is reading the wrong bit.
+	report, err := Analyse([]*x509.Certificate{newLeaf(t, root, leafOpts{}), root.cert},
+		"example.test", refNow)
+	if err != nil {
+		t.Fatalf("Analyse: %v", err)
+	}
+	for _, finding := range report.Grade.Findings {
+		switch finding.RuleID {
+		case "cert.leaf-is-ca", "cert.key-usage-cert-sign", "cert.no-digital-signature":
+			t.Errorf("an ordinary certificate is accused by %s", finding.RuleID)
 		}
 	}
 }

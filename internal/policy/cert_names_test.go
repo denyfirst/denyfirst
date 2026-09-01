@@ -28,6 +28,14 @@ func ordinaryLeaf() LeafFacts {
 		DNSNames:           []string{"example.com", "www.example.com"},
 		HasExtKeyUsage:     true,
 		ServerAuth:         true,
+
+		// What an ordinary subscriber certificate says it may be and do: not
+		// an authority, and permitted to sign, which every TLS 1.3 and every
+		// ECDHE handshake needs.
+		BasicConstraintsValid: true,
+		IsCA:                  false,
+		HasKeyUsage:           true,
+		DigitalSignature:      true,
 	}
 }
 
@@ -45,6 +53,8 @@ func fires(f LeafFacts, ruleID string) bool {
 func TestAnOrdinaryCertificateRaisesNoneOfTheNewRules(t *testing.T) {
 	for _, rule := range []string{
 		"cert.no-server-auth", "cert.wildcard-shape", "cert.cn-not-in-san", "cert.serial-entropy",
+		"cert.leaf-is-ca", "cert.key-usage-cert-sign", "cert.no-digital-signature",
+		"cert.critical-extension-unrecognised",
 	} {
 		if fires(ordinaryLeaf(), rule) {
 			t.Errorf("%s fires against an ordinary certificate", rule)

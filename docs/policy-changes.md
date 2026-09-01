@@ -14,6 +14,70 @@ free to improve without breaking that.
 
 ---
 
+## `denyfirst-v4` → `denyfirst-v5`
+
+Unreleased. Four rules, all of them read off a certificate this scan already
+had, so nothing new is asked of the server: the same handshakes, the same
+bytes, the same load at the other end.
+
+All four grade something the report was **already displaying and grading with
+nothing**. A reader saw `CA: true` beside a leaf certificate and found no
+finding next to it.
+
+### What a certificate says it may be
+
+| Rule | Verdict | When |
+|---|---|---|
+| `cert.leaf-is-ca` | Insecure | Basic constraints say `cA:TRUE` on the certificate served for this host |
+| `cert.key-usage-cert-sign` | Insecure | The key usage includes `keyCertSign` and basic constraints do not say `cA:TRUE` |
+
+**`cert.leaf-is-ca`.** RFC 5280 does not forbid it and Go's verifier accepts
+such a certificate for a hostname, so nothing else on a report catches it. The
+Baseline Requirements do forbid it — a subscriber certificate must carry
+`cA:FALSE` — and the reason is the size of what the key can do. A stolen leaf
+key normally impersonates the names in that leaf. A stolen leaf key that may
+sign issues certificates **for any name at all**, and every client that trusts
+the chain accepts them.
+
+Absent is not false. With no basic constraints extension the question was not
+answered, and reading *not a CA* out of silence would be drawing a measurement
+that did not happen.
+
+**`cert.key-usage-cert-sign`.** The same power arriving by the other
+extension. RFC 5280 permits `keyCertSign` only where basic constraints say
+`cA:TRUE`, so a certificate carrying one without the other claims a power its
+own constraints deny it, and clients disagree about which half to believe. Not
+raised where `cA:TRUE` is also present: that is the rule above, and charging
+one mistake twice reports it as two.
+
+### What a certificate says its key may do
+
+| Rule | Verdict | When |
+|---|---|---|
+| `cert.no-digital-signature` | Weak | The key usage lists purposes and `digitalSignature` is not among them |
+| `cert.critical-extension-unrecognised` | Weak | The certificate marks an extension critical that this checker does not recognise |
+
+**`cert.no-digital-signature`.** Every TLS 1.3 handshake and every ECDHE
+handshake at TLS 1.2 has the server sign with its key, so a client enforcing
+the extension can use neither. An absent extension means *any purpose* and is
+not this case, exactly as with the extended key usage in v4.
+
+**`cert.critical-extension-unrecognised`.** RFC 5280 requires a client that
+meets a critical extension it does not recognise to reject the certificate.
+Go's verifier does, so such a certificate already produced
+`cert.chain-untrusted` — **with no reason attached**. The finding names the
+extension by object identifier and says only what was established: that this
+checker does not recognise it. Whether the clients an operator cares about
+recognise it is not something a scan from here can see.
+
+### What did not change
+
+No existing rule changed meaning. Every verdict that moves under `v5` moves
+because of something the certificate says about itself that `v4` displayed and
+did not grade.
+
+---
+
 ## `denyfirst-v3` → `denyfirst-v4`
 
 Unreleased. Five rules added and three notes. Every one of them is read off a
