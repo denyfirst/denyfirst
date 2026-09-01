@@ -522,3 +522,19 @@ func TestAWeakOrInsecureVerdictSaysWhatItMeans(t *testing.T) {
 // collapse turns every run of whitespace into one space, so a comparison is
 // about the words rather than about where the renderer broke the line.
 func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// A count of one reads as one.
+//
+// The line was `fmt.Fprintf(w, "· %d apply to every scan…", len(standing))`,
+// which prints "1 apply" on any report carrying a single standing limit. Two
+// of the four are conditional — a host that speaks only TLS 1.2 and returns
+// no transparency receipts leaves exactly one — so this was a sentence a
+// reader could actually be shown, not a case that cannot arise.
+func TestTheLimitCountReadsAsEnglishAtOne(t *testing.T) {
+	if got := limitsLine(1); !strings.HasPrefix(got, "1 applies") {
+		t.Errorf("one limit is printed as %q", got)
+	}
+	if got := limitsLine(4); !strings.HasPrefix(got, "4 apply") {
+		t.Errorf("four limits are printed as %q", got)
+	}
+}
