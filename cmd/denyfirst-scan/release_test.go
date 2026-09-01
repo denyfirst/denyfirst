@@ -41,6 +41,7 @@ func TestTheReleaseProcedureIsWrittenDown(t *testing.T) {
 		{"--json databaseId", "a run has to be named, or gh opens a picker and the wrong run is watched"},
 		{"git status --short", "reading the index before staging and again after is what keeps unrelated files out of a commit"},
 		{"gh pr merge --merge", "auto-merge is off here, so merging is a step somebody has to take and four pull requests were left green and unmerged in one day"},
+		{"name the tag about to be cut", "a rule set's section is written before the tag exists, so it reads Unreleased until somebody comes back for it — denyfirst-v4 said so on the page five releases after v0.4.0 shipped it"},
 	} {
 		if !strings.Contains(page, required.text) {
 			t.Errorf("docs/releasing.md no longer covers %q — %s", required.text, required.why)

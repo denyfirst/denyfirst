@@ -158,6 +158,14 @@ gh pr list --state open
 
 git log --oneline -1              # the commit this will release
 
+# If the rule set moved in this release, the newest section of
+# docs/policy-changes.md has to name the tag about to be cut. That section is
+# written before the tag exists, so it says "Unreleased" until somebody comes
+# back for it — and on 2026-09-01 nobody had: `denyfirst-v4` was still marked
+# unreleased on the page five releases after v0.4.0 shipped it. Any output
+# here is a stop while the rule set is the one being released.
+Select-String -Path docs\policy-changes.md -Pattern 'Unreleased'
+
 git tag -s v0.2.0 -m "denyfirst v0.2.0"
 
 # The tag has to be new, and it has to be on the commit just read.
