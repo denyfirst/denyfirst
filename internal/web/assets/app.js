@@ -188,6 +188,23 @@ function summary(data) {
   if (!data.verdict) stamp.textContent = "not graded";
   wrap.appendChild(stamp);
 
+  // What a weak or insecure verdict means, beside the verdict.
+  //
+  // The report's likeliest misreading: a red stamp sits next to a trusted
+  // chain, a verified staple, transparency, CAA and an accepted post-quantum
+  // group, and nothing on the page says why one option outweighs all of that.
+  // The sentence is built in internal/policy so that both faces say it in the
+  // same words. R16.
+  if (verdict === "weak" || verdict === "insecure") {
+    left.appendChild(el("p", "summary-worst", WORST_CASE));
+  }
+
+  // How much of the picture this scan reached, which is what the verdict
+  // rests on and what no table says.
+  if (data.coverage) {
+    left.appendChild(el("p", "summary-coverage", data.coverage));
+  }
+
   return wrap;
 }
 
@@ -353,18 +370,36 @@ function ciphers(tls, report) {
     frag.appendChild(table);
   }
 
-  if (tls.preferenceKnown) {
-    frag.appendChild(el("p", "group-label", tls.serverPreference
-      ? "The server imposes its own cipher order."
-      : "The server follows the client's order, which lets an outdated client choose a weaker suite."));
+  // Labelled rather than left as prose.
+  //
+  // These sat under the table with nothing in front of them, and the key
+  // exchange — the one measurement that costs the scanned server an extra
+  // handshake — was read on a second visit rather than the first. The
+  // certificate rows are found because they carry a label; these now do too.
+  //
+  // They stay with the suites and not with the certificate. A key exchange is
+  // a property of the transport: the certificate's key is RSA 4096 and the
+  // exchange is X25519MLKEM768, and filing one under the other teaches a
+  // reader they are the same thing.
+  const facts = el("dl", "pairs");
+  let said = false;
+
+  function fact(label, value) {
+    if (!value) return;
+    facts.appendChild(el("dt", null, label));
+    facts.appendChild(el("dd", null, value));
+    said = true;
   }
 
-  // A property of the transport rather than of the certificate, so it sits
-  // with the suites. The sentence is built in internal/policy and printed
-  // here unchanged, for the reason given above revocationLine. R16.
-  if (report && report.keyExchangeLine) {
-    frag.appendChild(el("p", "group-label", "Key exchange: " + report.keyExchangeLine));
+  if (tls.preferenceKnown) {
+    fact("Cipher order", tls.serverPreference
+      ? "the server imposes its own"
+      : "the client's, which lets an outdated client choose a weaker suite");
   }
+  if (report && report.keyExchangeLine) {
+    fact("Key exchange", report.keyExchangeLine);
+  }
+  if (said) frag.appendChild(facts);
 
   return frag;
 }
@@ -476,6 +511,15 @@ function certificate(cert, tls, issuance, stapling, report) {
   opening them by default said otherwise. Nothing is hidden either way —
   the count sits in the summary line whether the block is open or shut.
 */
+// What a weak or insecure verdict means.
+//
+// Written here and in internal/policy, and compared by a test that reads both
+// — the same arrangement as the section titles below. A sentence about how
+// grading works, said in two different words on two faces of one report,
+// would be worse than not saying it at all.
+const WORST_CASE = "Worst case: an attacker chooses which option to negotiate, " +
+  "so the weakest one a server accepts is the one that decides.";
+
 // The three sections, their order and their words. The terminal report reads
 // the same three from noteSections in cmd/denyfirst-scan, and the two are
 // compared by a test: a reader holding one output beside the other should not
@@ -494,8 +538,9 @@ const NOTE_SECTIONS = [
     // What folds is the reasoning behind them, which is the same on every
     // report and is what made this block five paragraphs long.
     //
-    // The count stays in the summary, so folding is not hiding. What holds,
-    // above, carries the affirmative voice that this block used to have to.
+    // The count stays in the summary, so folding is not hiding. The
+    // coverage line under the verdict says how much of the picture the scan
+    // reached, which is the thing a reader would otherwise open this for.
     open: false,
     // Not "findings". The report uses that word for a rule that was broken
     // and says, three lines above this, that there were none — so "5 findings
@@ -531,9 +576,9 @@ const METHOD_PAGE = "/method";
 // trusted the heading concluded the scanner had established almost nothing,
 // which is the opposite of what the report contained.
 //
-// Observed opens by default, because it holds results. The other two are
-// closed: a limit is there for the reader who wants it, and a standing limit
-// says nothing about the host at all.
+// Both sections fold. Every fact in them is already on the face of the
+// report, so what folds is the reasoning; the counts stay in the summaries,
+// and an ungraded verdict opens them because then there is nothing else.
 function notes(list, verdict) {
   const frag = document.createDocumentFragment();
   if (!list || !list.length) return frag;
@@ -581,31 +626,6 @@ function notes(list, verdict) {
   return frag;
 }
 
-// assurances renders what holds, after what fell short.
-//
-// Open, and not a details block. These are results, and a report whose only
-// prose described absences read as a list of a server's shortcomings even
-// where the verdict was strong.
-//
-// After the findings, because a reader's first need is the verdict and its
-// reason. On an insecure server this block ran to seven reassuring sentences
-// and stood above the one finding that produced the verdict. Where there are
-// no findings it is the first prose on the page anyway.
-function assurances(list) {
-  const frag = document.createDocumentFragment();
-  if (!list || !list.length) return frag;
-
-  const box = el("section", "holds");
-  box.appendChild(el("h2", "holds-title", "What holds"));
-
-  const ul = el("ul", "holds-list");
-  for (const item of list) ul.appendChild(el("li", null, item.text));
-  box.appendChild(ul);
-
-  frag.appendChild(box);
-  return frag;
-}
-
 function failure(message, detail) {
   const box = el("div", "failure");
   box.appendChild(el("p", null, message));
@@ -631,7 +651,6 @@ function render(data) {
   const frag = document.createDocumentFragment();
   frag.appendChild(summary(data));
   frag.appendChild(findings(data.findings, verdict));
-  frag.appendChild(assurances(data.assurances));
   frag.appendChild(versions(data.tls));
   frag.appendChild(ciphers(data.tls, data));
   frag.appendChild(certificate(data.certificate, data.tls, data.issuance, data.stapling, data));

@@ -33,11 +33,22 @@ func TestLimitsOpenOnlyWhenTheyAreTheWholeReport(t *testing.T) {
 	}
 	source := string(script)
 
-	if !strings.Contains(source, `verdict === "ungraded"`) {
+	// Read inside the renderer rather than across the file. The summary now
+	// tests the verdict too, to decide whether to print what a weak or
+	// insecure one means, and a check over the whole source read that as this
+	// block opening for insecure again.
+	body := source
+	if i := strings.Index(body, "function notes(list, verdict)"); i >= 0 {
+		body = body[i:]
+	} else {
+		t.Fatal("the script has no notes renderer")
+	}
+
+	if !strings.Contains(body, `verdict === "ungraded"`) {
 		t.Error("the limits block does not open for an ungraded report, where they are the whole story")
 	}
 
-	if strings.Contains(source, `verdict === "insecure"`) {
+	if strings.Contains(body, `verdict === "insecure"`) {
 		t.Error("the limits block still opens for an insecure verdict, which has a page of findings beside it")
 	}
 
@@ -183,5 +194,34 @@ func TestTheStandingLimitsAreNamedAndLinked(t *testing.T) {
 		if !strings.Contains(string(page), `id="`+limit.ID+`"`) {
 			t.Errorf("/method has no anchor for %q, so a report cannot point at it", limit.ID)
 		}
+	}
+}
+
+// One sentence about how grading works, in the same words on both faces.
+//
+// A weak or insecure verdict needs it: kapitalbank.az is graded insecure with
+// a trusted chain, a verified staple, transparency, CAA and an accepted
+// post-quantum group beside the stamp, and nothing else on the page says why
+// one option outweighs the rest.
+//
+// Written twice, in Go for the terminal and in the script for the page, and
+// compared here — the same arrangement as the section titles. A sentence
+// explaining a verdict that itself differs between two renderings of one
+// report would be worse than not saying it.
+func TestBothFacesSayWhatAVerdictMeansInTheSameWords(t *testing.T) {
+	script, err := assets.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("reading the script: %v", err)
+	}
+
+	// The page builds it from two concatenated string literals, as the file
+	// wraps at eighty columns; compare on the words rather than the source.
+	source := strings.Join(strings.Fields(string(script)), " ")
+	want := strings.Join(strings.Fields(policy.WorstCase), " ")
+
+	// Rebuild the concatenation the way the script writes it.
+	joined := strings.ReplaceAll(source, `" + "`, "")
+	if !strings.Contains(joined, want) {
+		t.Errorf("the page does not carry policy.WorstCase:\n  %s", policy.WorstCase)
 	}
 }

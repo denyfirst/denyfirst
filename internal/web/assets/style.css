@@ -737,61 +737,22 @@ h1 {
 .notes-method-link { color: var(--ink-soft); }
 
 /*
-  What holds.
+  The two sentences under the verdict.
 
-  Above the findings and open, because these are results. A report whose only
-  prose described absences read as a list of a server's shortcomings even
-  where the verdict was strong, and the fix is not to soften the absences but
-  to state the other half.
+  Both belong to the summary rather than to a block of their own: one says
+  what a verdict means and the other says how much of the picture it rests on,
+  and a reader meets them in the two seconds they spend on the stamp.
 
-  Deliberately quieter than a finding: no colour, no badge. An affirmation
-  that shouts competes with the thing a reader came for.
+  Quiet by design. What replaced them here was a nine-line block that restated
+  the tables below it, and the lesson of that is not to shout louder.
 */
-/*
-  The same grammar as a finding, in the other direction.
-
-  A finding carries a coloured left edge that says how bad it is: red for
-  insecure, amber for weak. This carries the green, which is the colour the
-  verdict stamp and every passing grade already use, so a reader who has
-  learned one has learned the other. Three pixels, matching .finding, because
-  a different width would read as a different kind of thing.
-
-  Deliberately lighter than a finding in every other respect: no titles, no
-  rules cited, no body text. It is a checklist, and a checklist that competes
-  with the findings above it or with the tables below is one that stops a
-  reader before the evidence.
-*/
-.holds {
-  margin: 2rem 0 0;
-  padding: 0.9rem 1.1rem;
-  border-left: 3px solid var(--strong);
-}
-
-.holds-title {
-  margin: 0 0 0.6rem;
-  font-family: var(--mono);
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.15em;
+.summary-worst,
+.summary-coverage {
+  max-width: var(--measure);
+  margin: 0.7rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
   color: var(--ink-faint);
 }
 
-.holds-list {
-  margin: 0;
-  padding-left: 1.1rem;
-  max-width: var(--measure);
-}
-
-.holds-list li {
-  margin: 0.3rem 0;
-  color: var(--ink-soft);
-}
-
-/*
-  The marker is green and the text is not.
-
-  Colouring a whole line green would make the block louder than the findings
-  above it, which is the wrong order: the reason for a verdict is read first.
-  A green marker is enough to say what kind of list this is.
-*/
-.holds-list li::marker { color: var(--strong); }
+.summary-worst { color: var(--ink-soft); }

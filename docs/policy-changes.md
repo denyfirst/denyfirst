@@ -163,41 +163,62 @@ They are sorted now, in the facts as well as in the sentence, so a report on
 an unchanged server does not move between scans. A diff full of changes that
 did not happen is one where the change that did happen is lost.
 
-### Reports say what holds
+### A report says how much of it was reached
 
-A report used to describe only rules unbroken and absences observed. On a
-`strong` result the strongest sentence available was *Nothing here fell short
-of the rules*, and four of the five observations beside it named something the
-server does not do.
+A report described only rules unbroken and absences observed. On a `strong`
+result the strongest sentence available was *Nothing here fell short of the
+rules*, and four of five observations beside it named something the server
+does not do.
 
-Reports now open with **What holds**: TLS 1.3 accepted and preferred, no
-handshake at TLS 1.0 or 1.1, every suite graded strong, the server imposing
-its own cipher order, a complete and trusted chain, revocation checked from a
-verified staple, transparency timestamps, the hybrid post-quantum group
-accepted, issuance restricted by CAA. Each line appears only when that
-particular thing was measured.
+v0.6.x answered that with a block of nine affirmative sentences. Read on the
+live site, seven of the nine restated a table or a certificate row that was
+already on the page — one of them word for word. The block is gone. What
+replaces it is one line beside the verdict:
 
-No handshake is added and no verdict is invented: every line is a fact the
-scan already used to reach its verdict. Consumers get the same list as
-`assurances` in the JSON, each entry carrying a stable `id`.
+```
+Coverage  Every cipher suite this server accepts was enumerated, the chain was
+          checked against the trust store, revocation was read from a stapled
+          response, transparency receipts were counted, and issuance policy
+          was answered.
+```
 
-The claim about suites is withheld unless the enumeration ran to the end,
-because *every suite this server accepts* claims an absence in the same way
-`strong` does. The claim about the chain waits for the name to match and the
-dates to hold: a chain can reach a root while the certificate is expired or
-issued to somebody else, and on those reports the sentence was true and read
-as the opposite.
+It says what the scan reached and never what it missed — gaps belong to **Not
+established for this host**, once. It carries no marks and no colour: green
+ticks beside an insecure verdict read as approval, and a red mark against a
+name with no CAA record would be a grade this rule set deliberately does not
+give.
 
-The block is printed after the findings, so the reason for a verdict is read
-before what holds beside it. Each line is a phrase: written as sentences they
-restated the tables below them, and the explanations that were cut are on
-**/method**, where they are written once instead of on every report.
+A clause appears only when that thing was read, so a scan that reached nothing
+says nothing.
 
-**Observed** and **Not established for this host** are folded by default, with
-their counts in the summary. Every fact they describe is already on the face
-of the report; what folds is the reasoning.
+### A verdict says what it means
 
-### The limits of the method are on one page
+Beside a weak or insecure stamp:
+
+> Worst case: an attacker chooses which option to negotiate, so the weakest
+> one a server accepts is the one that decides.
+
+A server can be graded insecure with a trusted chain, a verified staple,
+transparency, CAA and an accepted post-quantum group, and until now nothing on
+the report said why one option outweighed the rest.
+
+### Cipher order and key exchange are labelled
+
+Both sat under the cipher table as prose with nothing in front of them, and
+the key exchange — the one measurement that costs the scanned server an extra
+handshake — was being read on a second visit rather than a first. They are
+rows now, in the same grammar as the certificate block, and they stay with the
+suites: a key exchange is a property of the transport, and filing it under the
+certificate teaches a reader that `RSA 4096` and `X25519MLKEM768` are the same
+kind of thing.
+
+### API
+
+`assurances` is removed, one release after it was added, and replaced by
+`coverage`: a single string, empty when a scan reached nothing.
+`certificate.hostnameMatches` and `certificate.inDate` stay.
+
+### The limits of the method are on one page### The limits of the method are on one page
 
 Four of the sentences a report carried were true of every scan and said
 nothing about the host: which cipher suites this client is able to offer, why

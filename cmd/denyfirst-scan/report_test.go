@@ -444,111 +444,77 @@ func TestTheReportPointsAtTheLimitsItDoesNotPrint(t *testing.T) {
 	}
 }
 
-// What holds reaches both faces, and says the same things on each.
+// The coverage line says what the scan reached, on both faces.
 //
-// Invariant R16. The affirmative summary is the newest thing a reader meets
-// and the easiest to add to one renderer and forget in the other, which would
-// leave two readers of one scan with different impressions of the same server.
-func TestWhatHoldsIsOnBothFacesOfTheReport(t *testing.T) {
+// It replaced a block of nine sentences called "What holds". Seven of them
+// restated a table or a certificate row that was already on the page: TLS 1.3
+// accepted and preferred is in the version table, two transparency timestamps
+// from two logs is a certificate row word for word, and the sentence about
+// cipher order was printed under the cipher table already.
+//
+// What no table says is how much of the picture was reached, and that is what
+// a verdict rests on: the cipher table shows four rows whether four was all
+// of them or whether the host stopped answering after four.
+func TestTheCoverageLineSaysWhatWasReached(t *testing.T) {
 	port := testServer(t, serverOpts{})
 	res := scanned(t, port, noResolver())
 	text := report(t, port, noResolver())
 
-	if len(res.Assurances) == 0 {
-		t.Fatal("a completed scan established nothing worth stating, so this proves nothing")
+	if res.Coverage == "" {
+		t.Fatal("a completed scan reached nothing worth saying it reached")
 	}
-
-	if !strings.Contains(text, "  What holds\n") {
-		t.Errorf("the terminal report has no What holds block:\n%s", text)
+	if !strings.Contains(collapse(text), collapse(res.Coverage)) {
+		t.Errorf("the terminal report does not carry the coverage line:\n  %s", res.Coverage)
 	}
-	// Compared with whitespace collapsed. The terminal wraps at seventy
-	// columns and indents the continuation, so a sentence longer than that
-	// arrives with newlines and spaces inside it — which is the wrapping
-	// working, not the sentence missing. Two of the assurances are long
-	// enough for it and this test failed on exactly those two before it was
-	// told.
-	flat := collapse(text)
-	for _, a := range res.Assurances {
-		if !strings.Contains(flat, collapse(a.Text)) {
-			t.Errorf("the terminal report does not carry the assurance %q:\n  %s", a.ID, a.Text)
-		}
+	if !strings.Contains(text, "  Coverage  ") {
+		t.Error("the coverage line has no label, so it reads as prose after the address")
 	}
 
 	script, err := os.ReadFile("../../internal/web/assets/app.js")
 	if err != nil {
 		t.Fatalf("reading the script: %v", err)
 	}
-	for _, required := range []string{
-		"function assurances(list)",
-		"data.assurances",
-		`"What holds"`,
-		"item.text",
-	} {
-		if !strings.Contains(string(script), required) {
-			t.Errorf("the page does not render what holds: missing %q", required)
-		}
+	// The guard as written, not merely the identifier. A first version of
+	// this looked for "data.coverage" anywhere in the file, and wrapping the
+	// render in `false &&` left it passing.
+	if !strings.Contains(string(script), "if (data.coverage) {") {
+		t.Error("the page does not render the coverage line, or renders it behind another condition")
+	}
+	if !strings.Contains(string(script), `el("p", "summary-coverage", data.coverage)`) {
+		t.Error("the coverage line is not built from the scan's own sentence")
 	}
 }
 
-// An assurance is never produced by a rule failing to fire.
+// A scan that reached nothing says nothing.
 //
-// The whole risk of an affirmative summary is that it gets read off the
-// findings rather than off the measurements, at which point "no rule fired"
-// becomes a reassurance — and no rule fires on a scan that reached nothing.
-// This runs a scan against a port with no server on it.
-func TestAScanThatReachedNothingHoldsNothing(t *testing.T) {
-	// A listener that accepts and never speaks TLS, so every handshake fails
-	// and nothing about the connection is established.
+// This is the failure a summary of coverage invites: a line that lists the
+// dimensions it looked at rather than the ones it read would be identical on
+// a scan that read none of them.
+func TestAScanThatReachedNothingClaimsNoCoverage(t *testing.T) {
 	port := silentServer(t)
-	res := scanned(t, port, noResolver())
 
-	for _, a := range res.Assurances {
-		if a.ID != "no-obsolete" {
-			t.Errorf("a scan that negotiated nothing claims %q holds:\n  %s", a.ID, a.Text)
-		}
+	if got := scanned(t, port, noResolver()).Coverage; got != "" {
+		t.Errorf("a scan where no handshake completed claims coverage:\n  %s", got)
+	}
+}
+
+// What a weak or insecure verdict means, said where the verdict is.
+//
+// The report's likeliest misreading: kapitalbank.az is graded insecure and
+// almost everything about it is right — TLS 1.3 preferred, a trusted chain, a
+// verified staple, transparency, CAA, the post-quantum hybrid accepted. A
+// reader meets a red stamp beside all of that with nothing to say why one
+// option outweighs the rest.
+func TestAWeakOrInsecureVerdictSaysWhatItMeans(t *testing.T) {
+	// The test server is self-signed and offers CBC, so it grades insecure.
+	port := testServer(t, serverOpts{})
+	text := report(t, port, noResolver())
+
+	if !strings.Contains(collapse(text), collapse(policy.WorstCase)) {
+		t.Errorf("an insecure report does not say what the verdict means:\n%s", text)
 	}
 }
 
 // collapse turns every run of whitespace into one space, so a comparison is
 // about the words rather than about where the renderer broke the line.
 func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }
-
-// The reason for the verdict comes before what holds.
-//
-// Measured on 2026-09-01: kapitalbank.az is graded insecure, and with the
-// affirmative block above the findings a reader met seven reassuring
-// sentences — post-quantum accepted, revocation verified, issuance restricted
-// — before the one finding that produced the verdict. That is the mirror
-// image of the defect this block was added to fix, and it arrives by the same
-// route: prose read in the order it is printed.
-//
-// The ordering is self-adjusting. Where nothing fell short there are no
-// findings to print, so what holds is the first prose on the report anyway.
-func TestWhatFellShortIsReadBeforeWhatHolds(t *testing.T) {
-	// A server with something wrong: this one is self-signed and offers CBC.
-	port := testServer(t, serverOpts{})
-	text := report(t, port, noResolver())
-
-	findings := strings.Index(text, "\n  Findings\n")
-	holds := strings.Index(text, "\n  What holds\n")
-	if findings < 0 || holds < 0 {
-		t.Fatalf("the report is missing one of the two blocks: findings=%d holds=%d", findings, holds)
-	}
-	if holds < findings {
-		t.Error("what holds is printed above the findings, so a reader meets the reassurance first")
-	}
-
-	script, err := os.ReadFile("../../internal/web/assets/app.js")
-	if err != nil {
-		t.Fatalf("reading the script: %v", err)
-	}
-	source := string(script)
-	pageFindings := strings.Index(source, "frag.appendChild(findings(")
-	pageHolds := strings.Index(source, "frag.appendChild(assurances(")
-	if pageFindings < 0 || pageHolds < 0 {
-		t.Fatal("the page does not append both blocks")
-	}
-	if pageHolds < pageFindings {
-		t.Error("the page puts what holds above the findings, and the terminal does not")
-	}
-}

@@ -1176,105 +1176,71 @@ succeeded, and the sentence stops where the measurement stopped.
 *Guarded by:* `TestTheFingerprintReachesTheReport`, which requires the finding
 to name a fingerprint and refuses one that claims a factorisation
 
-### R19 — What holds is stated, and only from what was measured
+### R19 — A report says how much of the picture it reached, and never more than once
 
 A report described two things: rules that had not been broken, and absences
 that had been observed. The strongest sentence it could produce was *Nothing
 here fell short of the rules*, which is two negatives, and the prose beside it
-listed what a server does not do — no stapled response, no CAA record, a
-post-quantum group declined. Read against a live scan on 2026-09-01, four of
-the five observations on a `strong` report named a shortcoming.
+listed what a server does not do. On a `strong` result read live, four of five
+observations named a shortcoming.
 
-Nothing there was false. But a reader's eye lands on prose rather than on
-tables, and a report that only ever describes absences reads as a list of
-failures however good the configuration is. The fix is not to soften the
-absences. It is to say the other half, which the scan had already established
-and had already used to reach its verdict.
+The first answer was a block called **What holds**: nine sentences stating
+what the scan had established in the affirmative. It was right about the
+problem and wrong about the shape, and reading it on the live site is what
+showed why. **Seven of the nine restated something already on the page.** TLS
+1.3 accepted and preferred is in the version table. Two transparency
+timestamps from two logs is a certificate row, word for word. *The server
+imposes its own cipher order* was already printed under the cipher table. A
+block that is three-quarters restatement does not earn a screen, and the
+reader who learns to scroll past it has also learned to skip the part that was
+not a repeat.
 
-Every assurance is a measurement. That is the whole of the invariant, and the
-failure it prevents is precise: an affirmative summary built from the findings
-would turn *no rule fired* into a reassurance — which is what an empty scan
-looks like, and what a scan looks like when the rule that would have fired is
-one nobody has written yet. `internal/scan.assuranceFacts` therefore reads
-`Certificate.Trusted`, the version walk and the suite grades, and not the
-finding list.
+What no table says is **how much of the picture the scan reached**, and that
+is what a verdict rests on. The cipher table shows four rows whether four was
+all of them or whether the host stopped answering after four, and those two
+reports mean opposite things: `strong` is the verdict that claims an absence,
+and an absence can only be claimed from a complete look.
 
-There is one exception and it is narrow. Whether the server sent a complete
-chain is measured by `cert.chain-incomplete`, because a chain can verify and
-still be incomplete — the platform verifier fetches a missing issuer on macOS
-and Windows, and a local trust store may already hold it. Identifiers are
-stable by policy, which is what makes reading one safe where matching a
-sentence would not be.
+So one line says what was reached, and it obeys three rules.
 
-Two things an assurance never does. It does not state a conclusion drawn from
-the current rule set — "every suite was graded strong" and not "this server
-has forward secrecy", because rule sets move and the first stays true. And it
-repeats no threshold: whether 4096 bits is enough and whether thirty days is
-soon are numbers the rules own, and a second copy is a second thing to keep in
-step.
+**It says only what was reached.** Never what was missed — that belongs once
+to the unsettled notes, and a gap named in two places is a gap two sentences
+can disagree about.
 
-`strong` is the verdict that claims an absence, and so is *every suite this
-server accepts*. It is withheld unless the enumeration ran to the end. The
-host decides when to stop answering, so without that gate a server could buy
-itself a line of praise by going quiet after two handshakes — the shape of the
-2026-08-22 defect where a truncated list produced a strong verdict.
+**It is read from the measurements, never from the findings.** Read off the
+findings, *no rule fired* becomes a reassurance, which is what an empty scan
+looks like and what a scan looks like when the rule that would have fired is
+one nobody has written. A scan that reached nothing says nothing.
 
-Two additions came from reading thirteen live reports on the day this was
-written, which is how every rendering defect in this repository has been
-found.
+**It carries no marks and no colour.** A row of green ticks beside an insecure
+verdict reads as approval — kapitalbank.az is graded insecure and every
+dimension of it was reached — and a red mark against a name with no CAA record
+would be a grade this rule set deliberately does not give (R9). Colour would
+put a second opinion on the page beside the first, and two opinions can
+disagree.
 
-**A chain sentence is a claim about identity, and "reaches a root" is a
-quarter of it.** `expired.badssl.com`, whose certificate was valid for three
-days in 2015, and `wrong.host.badssl.com`, whose certificate covers another
-name, both carried *the chain is complete and reaches a root in this
-machine's trust store* under **What holds**, above a verdict of insecure.
-Both sentences were true: trust is re-asked at a moment the certificate was
-valid, deliberately, because Go checks dates before it looks for an issuer.
-What they were read as was not true, and the reader had no way to tell. The
-claim now waits for the name to match and the dates to hold, and says so.
+Beside it, a weak or insecure verdict says what it means. That is the report's
+likeliest misreading: a red stamp sits next to a trusted chain, a verified
+staple, transparency, CAA and an accepted post-quantum group, and nothing else
+on the page says why one option outweighs all of that. `policy.WorstCase` is
+one sentence, written once and read by both faces.
 
-**What holds is printed after the findings.** `kapitalbank.az` is insecure,
-and with the block above them a reader met seven reassuring sentences before
-the reason for the verdict — the mirror image of the defect the block was
-added to fix, arriving by the same route. The ordering is self-adjusting:
-where nothing fell short there are no findings to print, so what holds is the
-first prose on the report anyway.
+The tests over `Coverage` run every combination of what a scan can reach —
+thirty-two of them — because the first version of them ran one live scan,
+that scan had no transparency and no CAA, and it therefore never saw two of
+the five clauses it claimed to check. A sabotage that put the word *no* into
+one of those clauses went straight past it.
 
-**An assurance is a phrase.** Read on the live site, every line of the block
-restated something already on the report: the version table, the suite grades,
-the certificate rows, and — word for word — the sentence printed under the
-cipher table. Nine out of nine. A summary that repeats the page in longer form
-is not a summary but a screen of prose between a reader and the evidence, and
-the explanations in it were the same on every report, which is what `/method`
-is for.
-
-One claim is not a restatement, and it is why the block exists at all: the
-suite table shows four rows, and only this knows whether four was all of them.
-A truncated list looks identical.
-
-**And the two note sections fold.** Every fact an observation describes is
-already on the face of the report — the key exchange line, the revocation row,
-the issuance row, the certificate's names and timestamps — so what folds is
-the reasoning behind them and never a measurement. The counts stay in the
-summaries, so folding is not hiding, and what holds now carries the
-affirmative voice that kept the long block open.
-
-*Enforced in:* `internal/policy/assurance.go`,
-`internal/scan.assuranceFacts`, the print and append order in
-`cmd/denyfirst-scan` and `internal/web/assets/app.js`
-*Guarded by:* `TestAScanThatMeasuredNothingAssuresNothing`,
-`TestAChainThatFailsIdentityHoldsNothing`,
-`TestTheReportSaysWhetherTheNameAndTheDatesHold`,
-`TestWhatFellShortIsReadBeforeWhatHolds`,
-`TestAnAssuranceIsAPhraseAndNotAParagraph`,
-`TestLimitsOpenOnlyWhenTheyAreTheWholeReport`,
-`TestATruncatedSuiteListAssuresNothingAboutSuites`,
-`TestEachAssuranceWaitsForItsOwnMeasurement`,
-`TestAnAssuranceStatesAMeasurementRatherThanAJudgement`,
-`TestAnAssuranceIsNotReadOffTheFindings`,
-`TestAnIncompleteChainIsNotAssuredComplete`,
-`TestAScanThatReachedNothingHoldsNothing`,
-`TestWhatHoldsIsOnBothFacesOfTheReport`
+*Enforced in:* `internal/policy/coverage.go`,
+`internal/scan.coverageFacts`
+*Guarded by:* `TestCoverageNamesNothingItDidNotReach`,
+`TestCoverageIsEmptyWhenNothingWasReached`,
+`TestEachClauseWaitsForWhatItDescribes`,
+`TestCoverageIsOneSentence`,
+`TestTheCoverageLineSaysWhatWasReached`,
+`TestAScanThatReachedNothingClaimsNoCoverage`,
+`TestAWeakOrInsecureVerdictSaysWhatItMeans`,
+`TestBothFacesSayWhatAVerdictMeansInTheSameWords`
 
 ### R18 — A note carries the kind of claim it makes
 
