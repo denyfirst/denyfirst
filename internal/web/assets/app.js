@@ -106,6 +106,21 @@ function verdictOf(data) {
 // carries no executable meaning anywhere, so the format itself is the
 // protection rather than something bolted onto it.
 
+// Not the clipboard, and that is a decision rather than an omission.
+//
+// A clipboard button reads as the same offer and is not. The system clipboard
+// is shared with every process on the machine, Windows keeps a history of it
+// that any of them can read, and a cloud clipboard sends it off the machine
+// entirely. A file goes to one place the reader chose and no further.
+//
+// What is sensitive in a report is not its contents — everything in it is
+// public and was sent by the server to anyone who connected. It is that
+// somebody asked about that host. This service undertakes to keep no record
+// of what was scanned, by whom or when, and handing that fact to a channel
+// every application can read would undo the promise on the reader's side of
+// it. Offering both would not be a convenience; it would be the weaker of the
+// two, offered without saying so.
+
 // The object URL for the report on screen, and only ever one.
 //
 // An object URL keeps its blob alive for as long as the document does, so the
