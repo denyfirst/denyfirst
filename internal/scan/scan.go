@@ -485,7 +485,34 @@ func (r *Result) Notes() []string {
 	if r.Issuance != nil {
 		out = append(out, r.Issuance.Notes...)
 	}
-	return out
+
+	// The same sentence twice tells a reader nothing the first one did not.
+	//
+	// A server that presents a different chain at an older version is
+	// described twice: certinfo runs over the chain and over each alternate,
+	// and both produce the notes that belong to a certificate. Read against
+	// cloudflare.com on 2026-09-01, the report said "This certificate covers
+	// 5 names" and "Revocation was not checked" once each for the newest
+	// handshake and again for the one served at TLS 1.1, with nothing to say
+	// which was which.
+	//
+	// Dropping the repeat rather than labelling it, because a label would be
+	// a second sentence about the same fact and the note that names the
+	// alternate chain — with its subject, its signature algorithm and its
+	// fingerprint — is already there and already distinct. Anything that
+	// differs between the two chains reads differently and survives.
+	//
+	// Order is the order of first appearance, so the reading does not move.
+	seen := make(map[string]bool, len(out))
+	unique := out[:0]
+	for _, note := range out {
+		if seen[note] {
+			continue
+		}
+		seen[note] = true
+		unique = append(unique, note)
+	}
+	return unique
 }
 
 // SplitTarget normalises a target into a host and a port.
