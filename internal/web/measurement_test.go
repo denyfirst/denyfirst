@@ -1,6 +1,7 @@
 package web
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -73,11 +74,27 @@ func TestTheClassesTheScriptAddsAreStyled(t *testing.T) {
 	}
 	source := script(t)
 
-	for _, class := range []string{"row-note", "group-note"} {
-		if !strings.Contains(source, `"`+class+`"`) {
-			t.Errorf("app.js no longer uses %q", class)
+	// Read out of the script rather than listed here.
+	//
+	// It was a list of two, and a list is a list that goes stale: the class
+	// added on 2026-09-01 would not have been on it, and the rule behind it
+	// would have been nobody's job to notice. Only classes written as
+	// literals are found, which is what this can honestly claim — a class
+	// built by joining strings is not visible to a reader of the source
+	// either.
+	pattern := regexp.MustCompile(`el\("[a-z]+", "([a-z0-9 -]+)"`)
+	seen := map[string]bool{}
+	for _, m := range pattern.FindAllStringSubmatch(source, -1) {
+		for _, class := range strings.Fields(m[1]) {
+			seen[class] = true
 		}
-		if !strings.Contains(string(css), "."+class) {
+	}
+	if len(seen) < 10 {
+		t.Fatalf("only %d classes were found in app.js, which is too few to be right", len(seen))
+	}
+
+	for class := range seen {
+		if !regexp.MustCompile(`\.` + regexp.QuoteMeta(class) + `\b`).MatchString(string(css)) {
 			t.Errorf("app.js writes class %q and the stylesheet has no rule for it", class)
 		}
 	}
