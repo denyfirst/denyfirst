@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -26,6 +27,11 @@ var (
 	nist80057 = Reference{
 		"NIST SP 800-57 Part 1 Rev. 5 — Recommendation for Key Management",
 		"https://csrc.nist.gov/pubs/sp/800/57/pt1/r5/final",
+	}
+
+	rfc9525 = Reference{
+		"RFC 9525 — Service Identity in TLS",
+		"https://www.rfc-editor.org/rfc/rfc9525",
 	}
 
 	roca2017 = Reference{
@@ -69,6 +75,21 @@ type LeafFacts struct {
 	// HasSAN is false for certificates that carry only a Common Name. Every
 	// major browser has rejected those since 2017.
 	HasSAN bool
+
+	// SerialBits is the bit length of the serial number.
+	SerialBits int
+
+	// CommonName is the subject common name, and DNSNames the names in the
+	// subject alternative name extension. Both are needed to say whether the
+	// first is among the second.
+	CommonName string
+	DNSNames   []string
+
+	// HasExtKeyUsage and ServerAuth describe the extended key usage
+	// extension: whether the certificate carries one at all, and whether it
+	// permits TLS server authentication. Absent is not the same as excluding.
+	HasExtKeyUsage bool
+	ServerAuth     bool
 
 	SelfSigned bool
 
@@ -293,6 +314,85 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 			nist80057, cabBR)
 	}
 
+	// ── What the certificate is for ──────────────────────────────────
+	//
+	// An extended key usage extension that lists purposes and omits server
+	// authentication is a certificate for something else. RFC 5280 makes the
+	// listed purposes exhaustive, so a client following it refuses the
+	// connection; absent extension means any purpose and is not this case.
+	if f.HasExtKeyUsage && !f.ServerAuth {
+		add("cert.no-server-auth", Insecure,
+			"Not a certificate for TLS servers",
+			"The extended key usage extension lists what this certificate may be used for and does "+
+				"not list server authentication. RFC 5280 makes that list exhaustive, so a client "+
+				"following it refuses the connection whatever else is correct here.",
+			rfc5280, cabBR)
+	}
+
+	// ── The names ────────────────────────────────────────────────────
+	//
+	// A wildcard has to be the whole of the leftmost label. `*.example.com`
+	// is a wildcard; `w*.example.com`, `a.*.example.com` and `*` are not, and
+	// clients following RFC 9525 match none of them — so a name in one of
+	// those shapes covers nothing while looking as though it covers something.
+	if bad := malformedWildcards(f.DNSNames); len(bad) > 0 {
+		add("cert.wildcard-shape", Weak,
+			"A wildcard name that no client will match",
+			fmt.Sprintf("%s. A wildcard has to be the entire leftmost label — `*.example.com` and "+
+				"nothing else — so a client following RFC 9525 matches no host against these. The "+
+				"certificate covers less than it appears to.", list(quoteAll(bad))),
+			rfc9525, cabBR)
+	}
+
+	// The common name is not an identity and has not been one for years, but
+	// it is still read by people. A hostname there that is absent from the
+	// subject alternative name is matched by nothing and tells a reader the
+	// certificate covers a host it does not.
+	if f.CommonName != "" && looksLikeHostname(f.CommonName) && !covers(f.DNSNames, f.CommonName) {
+		add("cert.cn-not-in-san", Weak,
+			"The common name is not among the names",
+			fmt.Sprintf("The subject common name is %q and it is not in the subject alternative name "+
+				"extension. Clients have matched names only from that extension since RFC 2818 was "+
+				"replaced, so this name is matched by nothing, and the CA/Browser Forum requires a "+
+				"common name to repeat a value from the extension rather than add one.",
+				f.CommonName),
+			rfc9525, cabBR)
+	}
+
+	// ── The serial ───────────────────────────────────────────────────
+	//
+	// Only for a chain that reaches the trust store: the requirement is the
+	// CA/Browser Forum's, and a private authority answers to whoever runs it.
+	//
+	// The threshold is not 64, and the arithmetic is the reason. A serial
+	// carrying 64 bits of output from a random source is uniform over
+	// [0, 2^64), so its value has fewer than 64 bits half the time and fewer
+	// than 63 a quarter of the time: a check demanding 64 would accuse half
+	// of every compliant certificate ever issued. What can be said from one
+	// certificate is that a serial this small cannot hold that output at all
+	// — the chance a compliant one lands below 2^32 is one in four thousand
+	// million.
+	//
+	// So this catches counters and sequences, which is the failure it can
+	// honestly catch, and stays silent about the rest.
+	// SerialBits is zero both when the serial is zero and when nobody read
+	// it, and those are different states. The existing tests in this package
+	// build facts by hand and leave it unset, and the first version of this
+	// rule accused every one of them — a measurement that did not happen
+	// drawn as one that did, which is R12 in the smallest possible form. So
+	// the rule requires a measurement before it says anything, and a serial
+	// that really is not positive is a malformed certificate reported as a
+	// note beside the others.
+	if f.ChainTrusted && f.SerialBits > 0 && f.SerialBits < 32 {
+		add("cert.serial-entropy", Weak,
+			"Serial number too small to be random",
+			fmt.Sprintf("The serial number is %d bits. The CA/Browser Forum has required at least 64 "+
+				"bits from a random source since 2016, because a predictable serial lets an attacker "+
+				"who can influence the certificate's contents mount a hash collision against its "+
+				"signature. A serial this small is a counter, not that output.", f.SerialBits),
+			cabBR, rfc5280)
+	}
+
 	// ── Lifetime ─────────────────────────────────────────────────────
 	if out.ValidityDays > out.MaxValidityDays {
 		add("cert.validity-too-long", Weak,
@@ -310,5 +410,64 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 		out.Verdict = v
 	}
 
+	return out
+}
+
+// malformedWildcards returns the names whose wildcard is not a whole label.
+//
+// RFC 9525 permits one form: a leftmost label that is exactly "*", with at
+// least one label after it. Everything else here was accepted by clients at
+// some point in the past and is accepted by none now.
+func malformedWildcards(names []string) []string {
+	var bad []string
+	for _, name := range names {
+		if !strings.Contains(name, "*") {
+			continue
+		}
+		labels := strings.Split(name, ".")
+		switch {
+		case len(labels) < 3:
+			// "*" and "*.com" alike. The second is refused by every client
+			// for a different reason as well, and neither is matchable here.
+			bad = append(bad, name)
+		case labels[0] != "*":
+			bad = append(bad, name)
+		case strings.Contains(name[1:], "*"):
+			bad = append(bad, name)
+		}
+	}
+	return bad
+}
+
+// looksLikeHostname reports whether a common name is trying to be a name.
+//
+// Most are not: an authority's own certificate carries something like "R11",
+// and older leaf certificates carry an organisation. Reading either of those
+// as a hostname absent from the extension would be an accusation about a
+// field that was never claiming to be one.
+func looksLikeHostname(cn string) bool {
+	return strings.Contains(cn, ".") &&
+		!strings.ContainsAny(cn, " \t,=+\"") &&
+		!strings.HasPrefix(cn, ".") &&
+		!strings.HasSuffix(cn, ".")
+}
+
+// covers reports whether the names include one, comparing as DNS does.
+func covers(names []string, want string) bool {
+	for _, name := range names {
+		if strings.EqualFold(name, want) {
+			return true
+		}
+	}
+	return false
+}
+
+// quoteAll is for naming several things in one sentence without running them
+// together with the prose around them.
+func quoteAll(values []string) []string {
+	out := make([]string, len(values))
+	for i, v := range values {
+		out[i] = strconv.Quote(v)
+	}
 	return out
 }
