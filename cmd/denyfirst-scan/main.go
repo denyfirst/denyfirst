@@ -237,9 +237,15 @@ func printReport(w io.Writer, r result) {
 		verdict = "ungraded (nothing could be measured)"
 	}
 	fmt.Fprintf(w, "\n  Verdict   %s\n", verdict)
+	if r.Verdict == policy.Weak || r.Verdict == policy.Insecure {
+		fmt.Fprintf(w, "            %s\n", wrap(policy.WorstCase, 66, "            "))
+	}
 	fmt.Fprintf(w, "  Policy    %s\n", r.Policy)
 	if r.TLS != nil && r.TLS.Address != "" {
 		fmt.Fprintf(w, "  Address   %s\n", r.TLS.Address)
+	}
+	if r.Coverage != "" {
+		fmt.Fprintf(w, "  Coverage  %s\n", wrap(r.Coverage, 66, "            "))
 	}
 
 	printVersions(w, r.TLS)
@@ -254,7 +260,6 @@ func printReport(w io.Writer, r result) {
 
 	printCertificate(w, r)
 	printFindings(w, r)
-	printAssurances(w, r)
 	printNotes(w, r)
 
 	if r.TLS != nil {
@@ -314,12 +319,25 @@ func printCiphers(w io.Writer, t *tlsprobe.Report) {
 		}
 	}
 
+	// Labelled rather than left as prose.
+	//
+	// These two sentences sat under the table with nothing in front of them,
+	// and the key exchange — the one measurement here that costs the scanned
+	// server an extra handshake — was read on the second visit rather than
+	// the first. The certificate block's rows are found because they have a
+	// label; these now have one too.
+	//
+	// They stay with the suites and not with the certificate. A key exchange
+	// is a property of the transport: the certificate's key is RSA 4096 and
+	// the exchange is X25519MLKEM768, and filing one under the other teaches
+	// a reader that they are the same thing.
 	if t.PreferenceKnown {
 		if t.ServerPreference {
-			fmt.Fprint(w, "\n  The server imposes its own cipher order.\n")
+			fmt.Fprint(w, "\n  Cipher order  the server imposes its own\n")
 		} else {
-			fmt.Fprint(w, "\n  The server follows the client's cipher order, which lets an outdated\n"+
-				"  client steer the connection towards a weaker suite.\n")
+			fmt.Fprintf(w, "\n  Cipher order  %s\n", wrap(
+				"the client's, which lets an outdated client steer the connection "+
+					"towards a weaker suite", 60, "                "))
 		}
 	}
 }
@@ -431,30 +449,6 @@ var noteSections = []struct {
 // they were some. They are named here and printed in full by -limits, which
 // needs no network and no page.
 const methodPage = "https://denyfirst.dev/method"
-
-// printAssurances says what holds, after what fell short.
-//
-// Before this, a report on a well configured server described only rules
-// unbroken and absences observed — the strongest thing it could say was
-// "Nothing here fell short of the rules", which is two negatives. Every line
-// below was measured and was already used to reach the verdict.
-//
-// It sits after the findings and not before them, which is the second half of
-// the same argument. Measured on 2026-09-01: kapitalbank.az is insecure, and
-// with this block first a reader met seven reassuring sentences before the
-// reason for the verdict. The ordering is self-adjusting — where there are no
-// findings this is the first prose on the report, which is exactly where it
-// should be, and where there are findings the reason comes first.
-func printAssurances(w io.Writer, r result) {
-	if len(r.Assurances) == 0 {
-		return
-	}
-
-	fmt.Fprintf(w, "\n  What holds\n")
-	for _, a := range r.Assurances {
-		fmt.Fprintf(w, "    · %s\n", wrap(a.Text, 70, "      "))
-	}
-}
 
 func printNotes(w io.Writer, r result) {
 	notes := r.Notes()

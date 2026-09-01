@@ -9,7 +9,6 @@ package scan
 
 import (
 	"context"
-	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -118,13 +117,13 @@ type Result struct {
 	// could have sent has no answer.
 	Stapling *policy.StapleFinding `json:"stapling,omitempty"`
 
-	// Assurances is what holds, stated in the affirmative.
+	// Coverage says how much of the picture this scan reached, in one line.
 	//
-	// A report used to describe only rules unbroken and absences observed, so
-	// a well configured server read as a list of its shortcomings. Every one
-	// of these is a fact this scan already established and already used to
-	// reach its verdict; none costs a handshake and none is a new verdict.
-	Assurances []policy.Assurance `json:"assurances,omitempty"`
+	// It replaced a block of nine sentences called "What holds", seven of
+	// which restated a table or a certificate row that was already on the
+	// page. What no table says is whether the look was complete, and that is
+	// what a verdict rests on.
+	Coverage string `json:"coverage,omitempty"`
 }
 
 // Scanner runs one scan. The zero value is usable, dials through safedial,
@@ -365,31 +364,23 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 	out.Issuance = s.checkIssuance(ctx, host)
 
 	// Last, because it reads from everything above it.
-	out.Assurances = policy.Assurances(assuranceFacts(out))
+	out.Coverage = policy.Coverage(coverageFacts(out))
 
 	return out, nil
 }
 
-// assuranceFacts gathers what held, from the measurements rather than from
-// the findings.
+// coverageFacts gathers what the scan reached, from the measurements.
 //
-// Reading it off the findings would invert the claim: an assurance would then
-// mean "no rule fired", which is true of a scan that measured nothing at all.
-// Every field below is something that was established.
-func assuranceFacts(r *Result) policy.AssuranceFacts {
-	var f policy.AssuranceFacts
+// Every field answers "was this read", never "was it any good": an outcome
+// read from here would put a second opinion on the page beside the verdict,
+// and two opinions can disagree.
+func coverageFacts(r *Result) policy.CoverageFacts {
+	var f policy.CoverageFacts
 
 	if r.TLS != nil {
-		f.PreferenceKnown = r.TLS.PreferenceKnown
-		f.ServerPreference = r.TLS.ServerPreference
-		f.PostQuantumOffered = r.TLS.PostQuantum.Measured && r.TLS.PostQuantum.Offered
-		f.PostQuantumGroup = r.TLS.PostQuantum.Group
-
-		// Complete until one accepted version says otherwise, and strong
-		// until one suite says otherwise. Both start true and are only ever
-		// weakened, so a version nobody thought about cannot make them true.
+		// Complete until one accepted version says otherwise, and only
+		// meaningful if a version was accepted at all.
 		f.CipherListComplete = true
-		f.AllSuitesStrong = true
 
 		var accepted int
 		for _, v := range r.TLS.Versions {
@@ -397,78 +388,36 @@ func assuranceFacts(r *Result) policy.AssuranceFacts {
 				continue
 			}
 			accepted++
-
-			if v.Version == tls.VersionTLS13 {
-				f.TLS13Accepted = true
-			}
-			if v.Version == tls.VersionTLS10 || v.Version == tls.VersionTLS11 {
-				f.ObsoleteAccepted = true
-			}
 			if !v.CipherListComplete {
 				f.CipherListComplete = false
 			}
-			for _, c := range v.Ciphers {
-				f.SuitesGraded++
-				if c.Verdict != policy.Strong {
-					f.AllSuitesStrong = false
-				}
-			}
+			f.SuitesGraded += len(v.Ciphers)
 		}
 		if accepted == 0 {
-			// Nothing was negotiated, so nothing about the negotiation holds.
 			f.CipherListComplete = false
-			f.AllSuitesStrong = false
-		}
-
-		// Preferred means the newest version this server picks when offered
-		// everything, which is the first accepted one in this walk.
-		for _, v := range r.TLS.Versions {
-			if v.Supported {
-				f.TLS13Preferred = v.Version == tls.VersionTLS13
-				break
-			}
 		}
 	}
 
-	if r.Certificate != nil {
-		f.ChainTrusted = r.Certificate.Trusted
-		f.ChainLength = len(r.Certificate.Chain)
-		f.ChainComplete = !hasFinding(r.Certificate.Grade.Findings, "cert.chain-incomplete")
-		f.NameMatches = r.Certificate.HostnameMatches
-		f.CertificateInDate = r.Certificate.InDate
+	if r.Certificate != nil && len(r.Certificate.Chain) > 0 {
+		f.ChainRead = true
+		f.TransparencyRead = r.Certificate.Transparency.EmbeddedCount > 0 ||
+			(r.TLS != nil && r.TLS.SCTCount > 0)
 	}
 
+	// Read means verified. Bytes that established nothing were not a
+	// revocation check, which is what policy.GradeStapling says at length.
 	if r.Stapling != nil {
-		f.RevocationVerified = r.Stapling.Validated && r.Stapling.Status == "good"
+		f.RevocationRead = r.Stapling.Validated
 	}
 
-	if r.Certificate != nil && r.TLS != nil {
-		// The same union the transparency line is built from: the two sources
-		// can name the same log, and adding two counts would report one log
-		// twice.
-		f.TransparencyCount = r.Certificate.Transparency.EmbeddedCount + r.TLS.SCTCount
-		f.TransparencyLogs = distinctLogs(r.Certificate.Transparency.LogIDs, r.TLS.SCTLogIDs)
-	}
-
+	// Answered includes an answer of "no record anywhere", which is an
+	// answer. Not answered is a lookup that was never made or never
+	// finished, and the unsettled note says which.
 	if r.Issuance != nil {
-		f.IssuanceRestricted = len(r.Issuance.Facts.Authorities) > 0 || len(r.Issuance.Facts.Wildcards) > 0
-		f.IssuanceFoundAt = r.Issuance.Facts.FoundAt
+		f.IssuanceAnswered = r.Issuance.Facts.Checked && r.Issuance.Facts.SearchComplete
 	}
 
 	return f
-}
-
-// hasFinding is the one place a rule identifier is matched, and the
-// identifiers are stable by policy: docs/policy-changes.md says a finding can
-// be tracked by its identifier rather than by matching prose, which is what
-// makes this safe where matching a sentence would not be.
-func hasFinding(findings []policy.Finding, id string) bool {
-	for _, f := range findings {
-		if f.RuleID == id {
-			return true
-		}
-	}
-	return false
 }
 
 // issuerOf finds the certificate in the chain that signed the leaf.
