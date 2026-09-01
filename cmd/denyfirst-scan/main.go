@@ -398,15 +398,34 @@ func printFindings(w io.Writer, r result) {
 	}
 }
 
+// noteSections is the order the three kinds are read in, and the words used
+// for them. Both faces of the report take the order from here, because a
+// reader comparing the two should not have to work out that they match.
+//
+// The order is deliberate: what was found, then what this host prevented, then
+// what this program never claims. It used to be one heading — "What this did
+// not measure" — over all three, which told a reader that a scan establishing
+// a great deal had established nothing.
+var noteSections = []struct {
+	kind    policy.NoteKind
+	heading string
+}{
+	{policy.KindObserved, "Observed"},
+	{policy.KindUnsettled, "Not established for this host"},
+	{policy.KindStanding, "Limits of this method"},
+}
+
 func printNotes(w io.Writer, r result) {
 	notes := r.Notes()
-	if len(notes) == 0 {
-		return
-	}
-
-	fmt.Fprintf(w, "\n  Notes\n")
-	for _, n := range notes {
-		fmt.Fprintf(w, "    · %s\n", wrap(n, 70, "      "))
+	for _, section := range noteSections {
+		chosen := policy.NotesOfKind(notes, section.kind)
+		if len(chosen) == 0 {
+			continue
+		}
+		fmt.Fprintf(w, "\n  %s\n", section.heading)
+		for _, n := range chosen {
+			fmt.Fprintf(w, "    · %s\n", wrap(n.Text, 70, "      "))
+		}
 	}
 }
 

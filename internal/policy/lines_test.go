@@ -217,13 +217,31 @@ func TestThePostQuantumNoteExplainsWithoutGrading(t *testing.T) {
 		"no client fails because of this",
 		"not graded",
 	} {
-		if !strings.Contains(note, want) {
+		if !strings.Contains(note.Text, want) {
 			t.Errorf("the note does not say %q:\n%s", want, note)
 		}
 	}
 
 	accepted := DescribePostQuantum(PostQuantumFacts{Measured: true, Offered: true, Group: "X25519MLKEM768"})[0]
-	if strings.Contains(accepted, "did not take it") {
-		t.Errorf("the accepting case carries the declining sentence:\n%s", accepted)
+	if strings.Contains(accepted.Text, "did not take it") {
+		t.Errorf("the accepting case carries the declining sentence:\n%s", accepted.Text)
+	}
+
+	// The kinds, which decide the heading each of these appears under.
+	//
+	// A server that accepted the hybrid has earned the strongest result
+	// available here. Until 2026-09-01 that sentence was rendered under "What
+	// this did not measure", which told the reader the opposite of what had
+	// happened. Declining is equally a measurement; only an unanswered
+	// question is not.
+	if accepted.Kind != KindObserved {
+		t.Errorf("accepting the hybrid is a result, filed as %q", accepted.Kind)
+	}
+	if note.Kind != KindObserved {
+		t.Errorf("declining the hybrid is a measurement, filed as %q", note.Kind)
+	}
+	unmeasured := DescribePostQuantum(PostQuantumFacts{Reason: "no TLS 1.3 handshake completed"})[0]
+	if unmeasured.Kind != KindUnsettled {
+		t.Errorf("a question that was never asked is filed as %q", unmeasured.Kind)
 	}
 }

@@ -108,7 +108,7 @@ type Issuance struct {
 
 	// Notes carries the detail: where the answer came from, how far the walk
 	// went, and what the answer does and does not establish.
-	Notes []string `json:"notes,omitempty"`
+	Notes []Note `json:"notes,omitempty"`
 }
 
 // DescribeIssuance turns a resolver's answer into what a reader should see.
@@ -117,12 +117,11 @@ func DescribeIssuance(f IssuanceFacts) Issuance {
 		return Issuance{
 			Facts: f,
 			Line:  "not checked",
-			Notes: []string{
+			Notes: []Note{Unsettled(
 				"Whether any authority is restricted from issuing certificates for this name was not " +
 					"checked. That takes a DNS lookup, and none was made: either no resolver was " +
 					"configured or the time this scan had was spent elsewhere. It is not a finding " +
-					"about the name.",
-			},
+					"about the name.")},
 		}
 	}
 
@@ -130,22 +129,25 @@ func DescribeIssuance(f IssuanceFacts) Issuance {
 		return Issuance{
 			Facts: f,
 			Line:  "the name does not resolve",
-			Notes: []string{
+			Notes: []Note{Observed(
 				"The resolver said this name does not exist, so there is nothing for an authority to " +
-					"issue a certificate for and nothing to restrict.",
-			},
+					"issue a certificate for and nothing to restrict.")},
 		}
 	}
 
-	provenance := "This came from the resolver this machine is configured to use, over a path nothing " +
+	// Where the answer came from, and what about it was taken on trust. This
+	// qualifies the line above it rather than adding to it, so it is not an
+	// observation: the resolver's word is what stands in for a check here.
+	provenanceText := "This came from the resolver this machine is configured to use, over a path nothing " +
 		"here authenticates. "
 	if f.Validated {
-		provenance += "The resolver reported the answer as DNSSEC-validated, which is its claim rather " +
+		provenanceText += "The resolver reported the answer as DNSSEC-validated, which is its claim rather " +
 			"than a check this service performed."
 	} else {
-		provenance += "The answer was not marked as DNSSEC-validated, which means either that the zone " +
+		provenanceText += "The answer was not marked as DNSSEC-validated, which means either that the zone " +
 			"is not signed — most are not — or that it was not verified. Those look the same from here."
 	}
+	provenance := Unsettled(provenanceText)
 
 	// The pairing with certificate transparency, which sits on the next line
 	// of the report. Stated on every branch, because a reader who has just
@@ -164,11 +166,11 @@ func DescribeIssuance(f IssuanceFacts) Issuance {
 		return Issuance{
 			Facts: f,
 			Line:  fmt.Sprintf("CAA present at %s, and none of it restricts issuance", f.FoundAt),
-			Notes: []string{
-				fmt.Sprintf("A CAA record set exists at %s and carries no issue property, so it names "+
+			Notes: []Note{
+				Observed(fmt.Sprintf("A CAA record set exists at %s and carries no issue property, so it names "+
 					"nobody and restricts nobody: any publicly trusted authority may still issue for "+
 					"this name. Whoever published it knows what CAA is, which makes this more likely "+
-					"to be a step not finished than a decision. %s", f.FoundAt, pairing),
+					"to be a step not finished than a decision. %s", f.FoundAt, pairing)),
 				provenance,
 			},
 		}
@@ -181,12 +183,12 @@ func DescribeIssuance(f IssuanceFacts) Issuance {
 		return Issuance{
 			Facts: f,
 			Line:  fmt.Sprintf("no CAA found, but the search stopped at %s before reaching the top", f.SearchedTo),
-			Notes: []string{
-				"No CAA record was found between this name and " + f.SearchedTo + ", and the search " +
+			Notes: []Note{
+				Unsettled("No CAA record was found between this name and " + f.SearchedTo + ", and the search " +
 					"stopped there rather than continuing towards the root. CAA is inherited, so a " +
 					"policy published on a shorter name would govern this one and would not have been " +
 					"seen. Whether any authority is restricted from issuing for this name is therefore " +
-					"not established either way. " + pairing,
+					"not established either way. " + pairing),
 				provenance,
 			},
 		}
@@ -195,12 +197,12 @@ func DescribeIssuance(f IssuanceFacts) Issuance {
 		return Issuance{
 			Facts: f,
 			Line:  fmt.Sprintf("no CAA at this name or above it, searched to %s", f.SearchedTo),
-			Notes: []string{
-				"No CAA record was found for this name or for any parent up to " + f.SearchedTo + ". " +
+			Notes: []Note{
+				Observed("No CAA record was found for this name or for any parent up to " + f.SearchedTo + ". " +
 					"Any publicly trusted certificate authority may therefore issue for it, and there " +
 					"are around a hundred of them, so the weakest sets the standard. Publishing one " +
 					"record naming the authorities actually used tells the rest to refuse; checking it " +
-					"has been mandatory for authorities since 2017. " + pairing,
+					"has been mandatory for authorities since 2017. " + pairing),
 				provenance,
 			},
 		}
@@ -209,9 +211,9 @@ func DescribeIssuance(f IssuanceFacts) Issuance {
 	return Issuance{
 		Facts: f,
 		Line:  describeAuthorities(f),
-		Notes: []string{
-			fmt.Sprintf("Issuance for this name is restricted by the CAA record set at %s. %s",
-				f.FoundAt, pairing),
+		Notes: []Note{
+			Observed(fmt.Sprintf("Issuance for this name is restricted by the CAA record set at %s. %s",
+				f.FoundAt, pairing)),
 			provenance,
 		},
 	}

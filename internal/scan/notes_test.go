@@ -20,25 +20,37 @@ import (
 // subject, its signature algorithm and its fingerprint, so the repeats added
 // nothing and cost a reader the assumption that two sentences meant two
 // facts.
+// obs builds observed notes. The kind is irrelevant to what these two tests
+// check — that a repeated sentence is said once and a differing one is kept —
+// so one kind is used throughout and the dedup is exercised on the sentence,
+// which is what it compares.
+func obs(texts ...string) []policy.Note {
+	out := make([]policy.Note, 0, len(texts))
+	for _, t := range texts {
+		out = append(out, policy.Observed(t))
+	}
+	return out
+}
+
 func TestARepeatedNoteIsSaidOnce(t *testing.T) {
 	r := &Result{
-		TLS:         &tlsprobe.Report{Notes: []string{"a version note"}},
-		Certificate: &certinfo.Report{Notes: []string{"covers 5 names", "revocation was not checked"}},
+		TLS:         &tlsprobe.Report{Notes: obs("a version note")},
+		Certificate: &certinfo.Report{Notes: obs("covers 5 names", "revocation was not checked")},
 		AlternateCertificates: []*certinfo.Report{{
-			Notes: []string{"covers 5 names", "revocation was not checked", "the alternate is CN=x"},
+			Notes: obs("covers 5 names", "revocation was not checked", "the alternate is CN=x"),
 		}},
-		Stapling: &policy.StapleFinding{Notes: []string{"a stapling note", "a version note"}},
-		Issuance: &policy.Issuance{Notes: []string{"an issuance note"}},
+		Stapling: &policy.StapleFinding{Notes: obs("a stapling note", "a version note")},
+		Issuance: &policy.Issuance{Notes: obs("an issuance note")},
 	}
 
-	want := []string{
+	want := obs(
 		"a version note",
 		"covers 5 names",
 		"revocation was not checked",
 		"the alternate is CN=x",
 		"a stapling note",
 		"an issuance note",
-	}
+	)
 	if got := r.Notes(); !slices.Equal(got, want) {
 		t.Errorf("notes are wrong\n got: %q\nwant: %q", got, want)
 	}
@@ -49,13 +61,13 @@ func TestARepeatedNoteIsSaidOnce(t *testing.T) {
 // subject.
 func TestNotesThatDifferAreBothKept(t *testing.T) {
 	r := &Result{
-		Certificate: &certinfo.Report{Notes: []string{"covers 5 names"}},
+		Certificate: &certinfo.Report{Notes: obs("covers 5 names")},
 		AlternateCertificates: []*certinfo.Report{{
-			Notes: []string{"covers 2 names"},
+			Notes: obs("covers 2 names"),
 		}},
 	}
 
-	want := []string{"covers 5 names", "covers 2 names"}
+	want := obs("covers 5 names", "covers 2 names")
 	if got := r.Notes(); !slices.Equal(got, want) {
 		t.Errorf("a differing note was lost\n got: %q\nwant: %q", got, want)
 	}

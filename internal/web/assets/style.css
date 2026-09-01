@@ -487,11 +487,21 @@ h1 {
   the one affordance every reader already knows, and a redrawn one would be a
   smaller triangle that means the same thing.
 */
-.not-measured {
+.notes-section {
   margin: 2.6rem 0 0;
   padding-top: 0.5rem;
   border-top: 1px solid var(--rule);
 }
+
+/*
+  Three sections, one block.
+
+  They are siblings and each carries the rule above it, so the first is
+  separated from the report and the rest are separated from each other by the
+  same line at a smaller distance. Without this the three read as three
+  unrelated boxes, which is the layout this replaced.
+*/
+.notes-section + .notes-section { margin-top: 0.9rem; }
 
 /*
   Two display declarations, and the order is the point.
@@ -510,7 +520,7 @@ h1 {
   it correctly whether there are two items or three, so the fallback and the
   modern path lay out the same.
 */
-.not-measured-head {
+.notes-head {
   display: flex;
   display: list-item flex;
   align-items: baseline;
@@ -520,11 +530,11 @@ h1 {
   list-style-position: inside;
 }
 
-.not-measured-head::-webkit-details-marker { color: var(--ink-faint); }
-.not-measured-head::marker { color: var(--ink-faint); }
+.notes-head::-webkit-details-marker { color: var(--ink-faint); }
+.notes-head::marker { color: var(--ink-faint); }
 
-.not-measured-title,
-.not-measured-count {
+.notes-title,
+.notes-count {
   font-family: var(--mono);
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -532,12 +542,12 @@ h1 {
   color: var(--ink-faint);
 }
 
-.not-measured-count { flex: 0 0 auto; margin-left: auto; }
+.notes-count { flex: 0 0 auto; margin-left: auto; }
 
-.not-measured:hover .not-measured-title,
-.not-measured[open] .not-measured-title { color: var(--ink-soft); }
+.notes-section:hover .notes-title,
+.notes-section[open] .notes-title { color: var(--ink-soft); }
 
-.not-measured .notes { margin-top: 0.7rem; }
+.notes-section .notes { margin-top: 0.7rem; }
 
 .failure {
   max-width: var(--measure);

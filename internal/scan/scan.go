@@ -244,9 +244,9 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 				// Not fatal. The chain this report describes was analysed
 				// successfully, and refusing the whole scan because a second
 				// chain could not be read would lose the first as well.
-				out.TLS.Notes = append(out.TLS.Notes, fmt.Sprintf(
+				out.TLS.Notes = append(out.TLS.Notes, policy.Unsettled(fmt.Sprintf(
 					"The certificate served at %s differs from the one described and could not be read, "+
-						"so it was not graded.", alt.Version))
+						"so it was not graded.", alt.Version)))
 				continue
 			}
 			// Named, because the findings from both chains arrive in one
@@ -256,10 +256,10 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 			// from a certificate reaches this sentence unfiltered.
 			if len(altReport.Chain) > 0 {
 				leaf := altReport.Chain[0]
-				altReport.Notes = append(altReport.Notes, fmt.Sprintf(
+				altReport.Notes = append(altReport.Notes, policy.Observed(fmt.Sprintf(
 					"The certificate served at %s is %s, signed with %s, SHA-256 %s. Its findings are in the list "+
 						"above; the certificate section describes the newest handshake's chain instead.",
-					alt.Version, leaf.Subject, leaf.SignatureAlgorithm, leaf.FingerprintSHA256))
+					alt.Version, leaf.Subject, leaf.SignatureAlgorithm, leaf.FingerprintSHA256)))
 			}
 			out.AlternateCertificates = append(out.AlternateCertificates, altReport)
 			out.Verdict = policy.Worst(out.Verdict, altReport.Verdict)
@@ -479,8 +479,8 @@ func (r *Result) Findings() []policy.Finding {
 }
 
 // Notes collects every note from both stages.
-func (r *Result) Notes() []string {
-	var out []string
+func (r *Result) Notes() []policy.Note {
+	var out []policy.Note
 	if r.TLS != nil {
 		out = append(out, r.TLS.Notes...)
 	}
@@ -521,13 +521,16 @@ func (r *Result) Notes() []string {
 	// differs between the two chains reads differently and survives.
 	//
 	// Order is the order of first appearance, so the reading does not move.
+	// Compared by sentence rather than by sentence-and-kind. The same text
+	// under two kinds would be one fact filed two ways, which is a defect in
+	// whoever wrote it and not something to render twice.
 	seen := make(map[string]bool, len(out))
 	unique := out[:0]
 	for _, note := range out {
-		if seen[note] {
+		if seen[note.Text] {
 			continue
 		}
-		seen[note] = true
+		seen[note.Text] = true
 		unique = append(unique, note)
 	}
 	return unique

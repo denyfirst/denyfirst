@@ -303,7 +303,7 @@ func TestAChainServedOnlyToOldClientsIsSeen(t *testing.T) {
 
 	var said bool
 	for _, note := range report.Notes {
-		if strings.Contains(note, alt.Version) && strings.Contains(note, "different certificate") {
+		if strings.Contains(note.Text, alt.Version) && strings.Contains(note.Text, "different certificate") {
 			said = true
 		}
 	}

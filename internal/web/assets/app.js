@@ -476,26 +476,78 @@ function certificate(cert, tls, issuance, stapling, report) {
   opening them by default said otherwise. Nothing is hidden either way —
   the count sits in the summary line whether the block is open or shut.
 */
+// The three sections, their order and their words. The terminal report reads
+// the same three from noteSections in cmd/denyfirst-scan, and the two are
+// compared by a test: a reader holding one output beside the other should not
+// have to work out that they match.
+const NOTE_SECTIONS = [
+  {
+    kind: "observed",
+    title: "Observed",
+    open: true,
+    one: "1 finding not graded",
+    many: (n) => n + " findings not graded",
+  },
+  {
+    kind: "unsettled",
+    title: "Not established for this host",
+    open: false,
+    one: "1 limit",
+    many: (n) => n + " limits",
+  },
+  {
+    kind: "standing",
+    title: "Limits of this method",
+    open: false,
+    one: "1, and it applies to every scan",
+    many: (n) => n + ", and they apply to every scan",
+  },
+];
+
+// notes renders each kind under its own heading.
+//
+// Until 2026-09-01 there was one heading — "What this did not measure" — over
+// everything that was not a finding. A scan of kapitalbank.az put eleven
+// sentences under it, of which three were limits of that scan. Among the rest
+// was a post-quantum key exchange that had been measured and had passed, and
+// a stapled revocation response that had been read and verified. A reader who
+// trusted the heading concluded the scanner had established almost nothing,
+// which is the opposite of what the report contained.
+//
+// Observed opens by default, because it holds results. The other two are
+// closed: a limit is there for the reader who wants it, and a standing limit
+// says nothing about the host at all.
 function notes(list, verdict) {
-  if (!list || !list.length) return document.createDocumentFragment();
-
   const frag = document.createDocumentFragment();
-  const alwaysOpen = verdict === "ungraded";
+  if (!list || !list.length) return frag;
 
-  const box = el("details", "not-measured");
-  box.open = alwaysOpen;
+  for (const section of NOTE_SECTIONS) {
+    const chosen = list.filter((n) => n && n.kind === section.kind);
+    if (!chosen.length) continue;
 
-  const head = el("summary", "not-measured-head");
-  head.appendChild(el("span", "not-measured-title", "What this did not measure"));
-  head.appendChild(el("span", "not-measured-count",
-    list.length === 1 ? "1 limit" : list.length + " limits"));
-  box.appendChild(head);
+    // A literal class, not one built from the kind. internal/web reads the
+    // classes this script adds straight out of its source and checks each one
+    // is styled; a class assembled at runtime is invisible to that check, and
+    // an unstyled class is exactly what it exists to catch. The three sections
+    // differ by their words and by which of them opens, not by their colour.
+    const box = el("details", "notes-section");
+    // An ungraded verdict means something was not reached, so the reasons are
+    // opened rather than left behind a summary.
+    box.open = section.open || verdict === "ungraded";
 
-  const ul = el("ul", "notes");
-  for (const note of list) ul.appendChild(el("li", null, note));
-  box.appendChild(ul);
+    const head = el("summary", "notes-head");
+    head.appendChild(el("span", "notes-title", section.title));
+    head.appendChild(el("span", "notes-count",
+      chosen.length === 1 ? section.one : section.many(chosen.length)));
+    box.appendChild(head);
 
-  frag.appendChild(box);
+    const ul = el("ul", "notes");
+    for (const note of chosen) ul.appendChild(el("li", null, note.text));
+    box.appendChild(ul);
+
+    frag.appendChild(box);
+  }
+
   return frag;
 }
 

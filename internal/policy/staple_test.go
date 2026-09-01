@@ -179,11 +179,11 @@ func TestMustStapleFindingCitesItsSources(t *testing.T) {
 // because the issuer was missing.
 func TestTheStapledNoteSaysWhichOfTheThreeHappened(t *testing.T) {
 	verified := strings.ToLower(strings.Join(
-		GradeStapling(StapleFacts{Stapled: true, Validated: true, Status: "good"}).Notes, " "))
+		Texts(GradeStapling(StapleFacts{Stapled: true, Validated: true, Status: "good"}).Notes), " "))
 	unverified := strings.ToLower(strings.Join(
-		GradeStapling(StapleFacts{Stapled: true, Unverifiable: "the signature does not verify"}).Notes, " "))
+		Texts(GradeStapling(StapleFacts{Stapled: true, Unverifiable: "the signature does not verify"}).Notes), " "))
 	noIssuer := strings.ToLower(strings.Join(
-		GradeStapling(StapleFacts{Stapled: true, IssuerMissing: true}).Notes, " "))
+		Texts(GradeStapling(StapleFacts{Stapled: true, IssuerMissing: true}).Notes), " "))
 
 	if verified == unverified || unverified == noIssuer || verified == noIssuer {
 		t.Fatal("two of the three stapled cases share a sentence; the difference between them is the point")
@@ -212,9 +212,9 @@ func TestTheStapledNoteSaysWhichOfTheThreeHappened(t *testing.T) {
 // whose revocation is published as a list; one a certificate with no published
 // revocation channel at all.
 func TestUnstapledNotesDistinguishThreeSituations(t *testing.T) {
-	responder := strings.Join(GradeStapling(StapleFacts{HasResponder: true, HasCRL: true}).Notes, " ")
-	listOnly := strings.Join(GradeStapling(StapleFacts{HasCRL: true}).Notes, " ")
-	neither := strings.Join(GradeStapling(StapleFacts{}).Notes, " ")
+	responder := strings.Join(Texts(GradeStapling(StapleFacts{HasResponder: true, HasCRL: true}).Notes), " ")
+	listOnly := strings.Join(Texts(GradeStapling(StapleFacts{HasCRL: true}).Notes), " ")
+	neither := strings.Join(Texts(GradeStapling(StapleFacts{}).Notes), " ")
 
 	if responder == listOnly || listOnly == neither || responder == neither {
 		t.Fatal("two unstapled cases produce the same note; the difference between them is the point")
@@ -235,9 +235,69 @@ func TestUnstapledNotesDistinguishThreeSituations(t *testing.T) {
 // responder, including the ones that named no list either. The certificate
 // carried the answer — CRLDistributionPoints — and the rule was not given it.
 func TestListClaimIsNotMadeWithoutAList(t *testing.T) {
-	notes := strings.Join(GradeStapling(StapleFacts{}).Notes, " ")
+	notes := strings.Join(Texts(GradeStapling(StapleFacts{}).Notes), " ")
 
 	if strings.Contains(notes, "published as a list") {
 		t.Errorf("a certificate with no distribution point is described as publishing a list: %s", notes)
+	}
+}
+
+// Every outcome says that no authority was asked, and none of them says
+// revocation was not checked.
+//
+// Both halves of that sentence matter and they used to be one sentence in the
+// wrong package. internal/certinfo appended "Revocation was not checked" to
+// every report it produced. It was written when nothing here parsed a stapled
+// response; v0.3.0 taught this package to read one and verify it against the
+// issuer, and the sentence stayed. From then on a stapling server was told
+// both things at once — revocation not checked, directly above the stapled
+// response read and verified — and around a third of hosts staple.
+//
+// The standing half is true on every branch and is said on every branch. The
+// outcome is known only here, so the claim about it is made only here.
+func TestNoAuthorityIsAskedOnAnyStapleOutcome(t *testing.T) {
+	outcomes := map[string]StapleFacts{
+		"verified":          {Stapled: true, Validated: true, Status: "good"},
+		"revoked":           {Stapled: true, Validated: true, Status: "revoked"},
+		"unverifiable":      {Stapled: true, Unverifiable: "the signature does not verify"},
+		"issuer missing":    {Stapled: true, IssuerMissing: true},
+		"none, responder":   {HasResponder: true},
+		"none, no OCSP":     {HasCRL: true},
+		"none, nowhere":     {},
+		"must-staple, none": {MustStaple: true},
+	}
+
+	for name, facts := range outcomes {
+		notes := GradeStapling(facts).Notes
+
+		var standing int
+		for _, n := range notes {
+			if n.Kind == KindStanding {
+				standing++
+			}
+			if n.Kind == "" {
+				t.Errorf("%s: a note carries no kind, so it is filed under whichever heading comes first:\n  %s",
+					name, n.Text)
+			}
+		}
+		if standing != 1 {
+			t.Errorf("%s: %d standing notes, want exactly one saying no authority is asked",
+				name, standing)
+		}
+
+		joined := strings.ToLower(strings.Join(Texts(notes), " "))
+		if !strings.Contains(joined, "no certificate authority is asked") {
+			t.Errorf("%s: nothing says that no authority is asked:\n  %s", name, joined)
+		}
+		if strings.Contains(joined, "revocation was not checked") {
+			t.Errorf("%s: the sentence that contradicted a verified response is back:\n  %s", name, joined)
+		}
+	}
+
+	// The one case the old sentence made false, stated as its own assertion.
+	verified := strings.ToLower(strings.Join(
+		Texts(GradeStapling(StapleFacts{Stapled: true, Validated: true, Status: "good"}).Notes), " "))
+	if !strings.Contains(verified, "read and verified") {
+		t.Errorf("a verified response is no longer described as verified:\n  %s", verified)
 	}
 }

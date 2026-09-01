@@ -70,3 +70,15 @@ stats.json*.tmp
 # in the comment beside the code it changed, where a reader will find it.
 # A raw CI log committed to the source tree is not that.
 *.log
+
+# ── Patches applied by hand ──────────────────────────────────────────
+# A change arriving as a patch file is applied from wherever it was
+# downloaded, and on 2026-09-01 one was downloaded into this directory and
+# swept into its own commit by `git add -A` — the same shape as the logs
+# above, two days later. Nothing in it was sensitive: it was a diff of this
+# repository's own source, public the moment it merged.
+#
+# The lasting fix is in docs/releasing.md, which no longer tells anybody to
+# stage with `git add -A`. This is the layer under it.
+*.patch
+*.diff

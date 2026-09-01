@@ -30,11 +30,11 @@ func TestLimitsOpenOnlyWhenTheyAreTheWholeReport(t *testing.T) {
 	}
 	source := string(script)
 
-	if !strings.Contains(source, `const alwaysOpen = verdict === "ungraded";`) {
+	if !strings.Contains(source, `verdict === "ungraded"`) {
 		t.Error("the limits block does not open for an ungraded report, where they are the whole story")
 	}
 
-	if strings.Contains(source, `verdict === "ungraded" || verdict === "insecure"`) {
+	if strings.Contains(source, `verdict === "insecure"`) {
 		t.Error("the limits block still opens for an insecure verdict, which has a page of findings beside it")
 	}
 
@@ -43,6 +43,32 @@ func TestLimitsOpenOnlyWhenTheyAreTheWholeReport(t *testing.T) {
 	for _, required := range []string{`"1 limit"`, `" limits"`} {
 		if !strings.Contains(source, required) {
 			t.Errorf("the summary line does not carry the count %s", required)
+		}
+	}
+
+	// Results open, limits fold.
+	//
+	// The three sections are not alike. Observed holds what the scan
+	// established and chose not to grade, and a reader who never opens it
+	// never sees a post-quantum key exchange that passed or a revocation
+	// response that verified — which is the state this replaced, when all of
+	// it sat behind one summary saying nothing had been measured.
+	//
+	// The other two stay folded for the reason above: they are the caveat,
+	// and a caveat that is always open is one nobody reads.
+	opens := map[string]bool{"observed": true, "unsettled": false, "standing": false}
+	for kind, want := range opens {
+		i := strings.Index(source, `kind: "`+kind+`"`)
+		if i < 0 {
+			t.Errorf("the script has no %q section", kind)
+			continue
+		}
+		section := source[i:]
+		if end := strings.Index(section, "},"); end >= 0 {
+			section = section[:end]
+		}
+		if got := strings.Contains(section, "open: true"); got != want {
+			t.Errorf("the %q section opens by default = %v, want %v", kind, got, want)
 		}
 	}
 }

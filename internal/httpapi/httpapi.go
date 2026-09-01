@@ -202,7 +202,12 @@ type scanRequest struct {
 type scanResponse struct {
 	*scan.Result
 	Findings []policy.Finding `json:"findings,omitempty"`
-	Notes    []string         `json:"notes,omitempty"`
+
+	// Notes carry their kind. Until 2026-09-01 they were bare strings and
+	// every consumer, this project's own page included, had to guess which
+	// of them were results and which were limits. It guessed wrong: it filed
+	// all of them under a heading saying nothing had been measured.
+	Notes []policy.Note `json:"notes,omitempty"`
 }
 
 type errorResponse struct {
