@@ -1240,6 +1240,25 @@ added to fix, arriving by the same route. The ordering is self-adjusting:
 where nothing fell short there are no findings to print, so what holds is the
 first prose on the report anyway.
 
+**An assurance is a phrase.** Read on the live site, every line of the block
+restated something already on the report: the version table, the suite grades,
+the certificate rows, and — word for word — the sentence printed under the
+cipher table. Nine out of nine. A summary that repeats the page in longer form
+is not a summary but a screen of prose between a reader and the evidence, and
+the explanations in it were the same on every report, which is what `/method`
+is for.
+
+One claim is not a restatement, and it is why the block exists at all: the
+suite table shows four rows, and only this knows whether four was all of them.
+A truncated list looks identical.
+
+**And the two note sections fold.** Every fact an observation describes is
+already on the face of the report — the key exchange line, the revocation row,
+the issuance row, the certificate's names and timestamps — so what folds is
+the reasoning behind them and never a measurement. The counts stay in the
+summaries, so folding is not hiding, and what holds now carries the
+affirmative voice that kept the long block open.
+
 *Enforced in:* `internal/policy/assurance.go`,
 `internal/scan.assuranceFacts`, the print and append order in
 `cmd/denyfirst-scan` and `internal/web/assets/app.js`
@@ -1247,6 +1266,8 @@ first prose on the report anyway.
 `TestAChainThatFailsIdentityHoldsNothing`,
 `TestTheReportSaysWhetherTheNameAndTheDatesHold`,
 `TestWhatFellShortIsReadBeforeWhatHolds`,
+`TestAnAssuranceIsAPhraseAndNotAParagraph`,
+`TestLimitsOpenOnlyWhenTheyAreTheWholeReport`,
 `TestATruncatedSuiteListAssuresNothingAboutSuites`,
 `TestEachAssuranceWaitsForItsOwnMeasurement`,
 `TestAnAssuranceStatesAMeasurementRatherThanAJudgement`,

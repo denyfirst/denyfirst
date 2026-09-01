@@ -100,64 +100,77 @@ type AssuranceFacts struct {
 // Assurances is what holds, in the order a reader meets it: how the
 // connection is negotiated, then what the certificate is, then what stands
 // behind it.
+//
+// Each is a phrase rather than a sentence, and that is a correction.
+//
+// Written as full sentences, every line restated something already on the
+// report: the version table, the suite grades, the certificate rows, and — in
+// one case word for word — the sentence printed under the cipher table. Nine
+// lines out of nine. The block was adding interpretation, not information,
+// and paying for it in a screen of prose that stood between a reader and the
+// evidence.
+//
+// One claim here is not a restatement, and it is the reason the block exists:
+// the suite table shows four rows, and only this knows whether four was all
+// of them. A truncated list looks identical.
+//
+// The explanations that were cut are on /method, where they belong: they are
+// the same on every report.
 func Assurances(f AssuranceFacts) []Assurance {
 	var out []Assurance
 	add := func(id, text string) { out = append(out, Assurance{ID: id, Text: text}) }
 
 	if f.TLS13Accepted {
 		if f.TLS13Preferred {
-			add("tls13", "TLS 1.3 is accepted, and it is what this server picks.")
+			add("tls13", "TLS 1.3 accepted, and preferred")
 		} else {
-			add("tls13", "TLS 1.3 is accepted.")
+			add("tls13", "TLS 1.3 accepted")
 		}
 	}
 
+	// "No handshake" and not "refused". A server that speaks a version but
+	// shares no suite with this client answers exactly as one that refuses
+	// it, which is a standing limit of this method. Shortening a sentence is
+	// where that distinction is most easily lost.
 	if !f.ObsoleteAccepted {
-		add("no-obsolete", "No handshake completed at TLS 1.0 or TLS 1.1.")
+		add("no-obsolete", "No handshake at TLS 1.0 or TLS 1.1")
 	}
 
 	// Only from a complete list. A truncated one supports "something weak is
 	// here" and never "nothing weak is here", and this sentence is the second.
 	if f.CipherListComplete && f.AllSuitesStrong && f.SuitesGraded > 0 {
-		add("suites", fmt.Sprintf(
-			"Every one of the %s this server accepts was graded strong.",
+		add("suites", fmt.Sprintf("All %s graded strong",
 			plural(f.SuitesGraded, "cipher suite")))
 	}
 
 	if f.PreferenceKnown && f.ServerPreference {
-		add("server-order", "The server imposes its own cipher order, so a client with an "+
-			"outdated preference list cannot steer the connection towards a weaker suite.")
+		add("server-order", "The server chooses the cipher order")
 	}
 
 	// Four conditions, because the sentence is read as one claim about
 	// identity and "reaches a root" is only a quarter of it.
 	if f.ChainTrusted && f.ChainComplete && f.NameMatches && f.CertificateInDate {
 		add("chain", fmt.Sprintf(
-			"The chain is complete, reaches a root in this machine's trust store, and covers the "+
-				"name that was asked for: %s.",
+			"Chain trusted and complete, and covers the name (%s)",
 			plural(f.ChainLength, "certificate")))
 	}
 
 	if f.RevocationVerified {
-		add("revocation", "Revocation was checked from the response the server stapled, and that "+
-			"response verified against the issuing authority. No authority was asked anything.")
+		add("revocation", "Revocation checked from the stapled response, which verified")
 	}
 
 	if f.TransparencyCount > 0 {
-		add("transparency", fmt.Sprintf(
-			"The certificate carries %s from %s, so its issuance is on public record.",
+		add("transparency", fmt.Sprintf("%s, from %s",
 			plural(f.TransparencyCount, "transparency timestamp"), plural(f.TransparencyLogs, "log")))
 	}
 
 	if f.PostQuantumOffered && f.PostQuantumGroup != "" {
-		add("post-quantum", fmt.Sprintf(
-			"The hybrid post-quantum group %s was accepted, so a recording of this connection is "+
-				"not exposed to a quantum computer built later.", f.PostQuantumGroup))
+		add("post-quantum", fmt.Sprintf("The hybrid post-quantum group %s was accepted",
+			f.PostQuantumGroup))
 	}
 
 	if f.IssuanceRestricted && f.IssuanceFoundAt != "" {
-		add("issuance", fmt.Sprintf(
-			"Issuance is restricted by the CAA record set at %s.", f.IssuanceFoundAt))
+		add("issuance", fmt.Sprintf("Issuance restricted by CAA at %s", f.IssuanceFoundAt))
 	}
 
 	return out

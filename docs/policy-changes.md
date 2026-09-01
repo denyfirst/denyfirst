@@ -189,7 +189,13 @@ issued to somebody else, and on those reports the sentence was true and read
 as the opposite.
 
 The block is printed after the findings, so the reason for a verdict is read
-before what holds beside it.
+before what holds beside it. Each line is a phrase: written as sentences they
+restated the tables below them, and the explanations that were cut are on
+**/method**, where they are written once instead of on every report.
+
+**Observed** and **Not established for this host** are folded by default, with
+their counts in the summary. Every fact they describe is already on the face
+of the report; what folds is the reasoning.
 
 ### The limits of the method are on one page
 
