@@ -152,6 +152,28 @@ each component. Anything reading the field will need the `.text`. It is a
 breaking change, made one day after the field first shipped in v0.4.0 and
 recorded here rather than left for a reader to discover.
 
+### Reports say what holds
+
+A report used to describe only rules unbroken and absences observed. On a
+`strong` result the strongest sentence available was *Nothing here fell short
+of the rules*, and four of the five observations beside it named something the
+server does not do.
+
+Reports now open with **What holds**: TLS 1.3 accepted and preferred, no
+handshake at TLS 1.0 or 1.1, every suite graded strong, the server imposing
+its own cipher order, a complete and trusted chain, revocation checked from a
+verified staple, transparency timestamps, the hybrid post-quantum group
+accepted, issuance restricted by CAA. Each line appears only when that
+particular thing was measured.
+
+No handshake is added and no verdict is invented: every line is a fact the
+scan already used to reach its verdict. Consumers get the same list as
+`assurances` in the JSON, each entry carrying a stable `id`.
+
+The claim about suites is withheld unless the enumeration ran to the end,
+because *every suite this server accepts* claims an absence in the same way
+`strong` does.
+
 ### The limits of the method are on one page
 
 Four of the sentences a report carried were true of every scan and said

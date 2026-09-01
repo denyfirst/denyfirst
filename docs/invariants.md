@@ -1176,6 +1176,60 @@ succeeded, and the sentence stops where the measurement stopped.
 *Guarded by:* `TestTheFingerprintReachesTheReport`, which requires the finding
 to name a fingerprint and refuses one that claims a factorisation
 
+### R19 — What holds is stated, and only from what was measured
+
+A report described two things: rules that had not been broken, and absences
+that had been observed. The strongest sentence it could produce was *Nothing
+here fell short of the rules*, which is two negatives, and the prose beside it
+listed what a server does not do — no stapled response, no CAA record, a
+post-quantum group declined. Read against a live scan on 2026-09-01, four of
+the five observations on a `strong` report named a shortcoming.
+
+Nothing there was false. But a reader's eye lands on prose rather than on
+tables, and a report that only ever describes absences reads as a list of
+failures however good the configuration is. The fix is not to soften the
+absences. It is to say the other half, which the scan had already established
+and had already used to reach its verdict.
+
+Every assurance is a measurement. That is the whole of the invariant, and the
+failure it prevents is precise: an affirmative summary built from the findings
+would turn *no rule fired* into a reassurance — which is what an empty scan
+looks like, and what a scan looks like when the rule that would have fired is
+one nobody has written yet. `internal/scan.assuranceFacts` therefore reads
+`Certificate.Trusted`, the version walk and the suite grades, and not the
+finding list.
+
+There is one exception and it is narrow. Whether the server sent a complete
+chain is measured by `cert.chain-incomplete`, because a chain can verify and
+still be incomplete — the platform verifier fetches a missing issuer on macOS
+and Windows, and a local trust store may already hold it. Identifiers are
+stable by policy, which is what makes reading one safe where matching a
+sentence would not be.
+
+Two things an assurance never does. It does not state a conclusion drawn from
+the current rule set — "every suite was graded strong" and not "this server
+has forward secrecy", because rule sets move and the first stays true. And it
+repeats no threshold: whether 4096 bits is enough and whether thirty days is
+soon are numbers the rules own, and a second copy is a second thing to keep in
+step.
+
+`strong` is the verdict that claims an absence, and so is *every suite this
+server accepts*. It is withheld unless the enumeration ran to the end. The
+host decides when to stop answering, so without that gate a server could buy
+itself a line of praise by going quiet after two handshakes — the shape of the
+2026-08-22 defect where a truncated list produced a strong verdict.
+
+*Enforced in:* `internal/policy/assurance.go`,
+`internal/scan.assuranceFacts`
+*Guarded by:* `TestAScanThatMeasuredNothingAssuresNothing`,
+`TestATruncatedSuiteListAssuresNothingAboutSuites`,
+`TestEachAssuranceWaitsForItsOwnMeasurement`,
+`TestAnAssuranceStatesAMeasurementRatherThanAJudgement`,
+`TestAnAssuranceIsNotReadOffTheFindings`,
+`TestAnIncompleteChainIsNotAssuredComplete`,
+`TestAScanThatReachedNothingHoldsNothing`,
+`TestWhatHoldsIsOnBothFacesOfTheReport`
+
 ### R18 — A note carries the kind of claim it makes
 
 A report says three different things that are not verdicts, and for as long as
