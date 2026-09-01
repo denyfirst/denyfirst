@@ -433,6 +433,8 @@ func assuranceFacts(r *Result) policy.AssuranceFacts {
 		f.ChainTrusted = r.Certificate.Trusted
 		f.ChainLength = len(r.Certificate.Chain)
 		f.ChainComplete = !hasFinding(r.Certificate.Grade.Findings, "cert.chain-incomplete")
+		f.NameMatches = r.Certificate.HostnameMatches
+		f.CertificateInDate = r.Certificate.InDate
 	}
 
 	if r.Stapling != nil {

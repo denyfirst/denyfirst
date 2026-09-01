@@ -424,3 +424,80 @@ func TestThisPackageClaimsNothingAboutRevocation(t *testing.T) {
 		}
 	}
 }
+
+// Two measurements a caller needs and "trusted" does not carry.
+//
+// Trusted here means the chain reaches a root, and for an expired certificate
+// it is re-asked at a moment the certificate was valid — deliberately, since
+// Go checks dates before it looks for an issuer. The consequence is that a
+// certificate which expired eleven years ago, and one issued to a different
+// name, are both reported as trusted.
+//
+// Measured on 2026-09-01 against badssl.com: expired.badssl.com, valid for
+// three days in 2015, and wrong.host.badssl.com, whose certificate covers
+// *.badssl.com. Both produced "the chain is complete and reaches a root in
+// this machine's trust store" under a heading called What holds, above a
+// verdict of insecure. The sentences were true. What they were read as was
+// not, and the two fields below are what a caller needs to tell them apart.
+func TestTheReportSaysWhetherTheNameAndTheDatesHold(t *testing.T) {
+	root := newRoot(t)
+
+	cases := []struct {
+		name     string
+		leaf     leafOpts
+		hostname string
+		inDate   bool
+		matches  bool
+	}{
+		{
+			name:     "in date and for this name",
+			leaf:     leafOpts{},
+			hostname: "example.test",
+			inDate:   true,
+			matches:  true,
+		},
+		{
+			name: "expired",
+			leaf: leafOpts{
+				notBefore: refNow.Add(-400 * 24 * time.Hour),
+				notAfter:  refNow.Add(-40 * 24 * time.Hour),
+			},
+			hostname: "example.test",
+			inDate:   false,
+			matches:  true,
+		},
+		{
+			name: "not yet valid",
+			leaf: leafOpts{
+				notBefore: refNow.Add(10 * 24 * time.Hour),
+				notAfter:  refNow.Add(100 * 24 * time.Hour),
+			},
+			hostname: "example.test",
+			inDate:   false,
+			matches:  true,
+		},
+		{
+			name:     "for another name",
+			leaf:     leafOpts{dnsNames: []string{"elsewhere.test"}},
+			hostname: "example.test",
+			inDate:   true,
+			matches:  false,
+		},
+	}
+
+	for _, c := range cases {
+		leaf := newLeaf(t, root, c.leaf)
+
+		report, err := Analyse([]*x509.Certificate{leaf, root.cert}, c.hostname, refNow)
+		if err != nil {
+			t.Fatalf("%s: Analyse: %v", c.name, err)
+		}
+
+		if report.InDate != c.inDate {
+			t.Errorf("%s: InDate=%v, want %v", c.name, report.InDate, c.inDate)
+		}
+		if report.HostnameMatches != c.matches {
+			t.Errorf("%s: HostnameMatches=%v, want %v", c.name, report.HostnameMatches, c.matches)
+		}
+	}
+}

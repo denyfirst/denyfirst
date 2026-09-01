@@ -569,11 +569,16 @@ function notes(list, verdict) {
   return frag;
 }
 
-// assurances renders what holds, above what fell short.
+// assurances renders what holds, after what fell short.
 //
 // Open, and not a details block. These are results, and a report whose only
 // prose described absences read as a list of a server's shortcomings even
 // where the verdict was strong.
+//
+// After the findings, because a reader's first need is the verdict and its
+// reason. On an insecure server this block ran to seven reassuring sentences
+// and stood above the one finding that produced the verdict. Where there are
+// no findings it is the first prose on the page anyway.
 function assurances(list) {
   const frag = document.createDocumentFragment();
   if (!list || !list.length) return frag;
@@ -613,8 +618,8 @@ function render(data) {
 
   const frag = document.createDocumentFragment();
   frag.appendChild(summary(data));
-  frag.appendChild(assurances(data.assurances));
   frag.appendChild(findings(data.findings, verdict));
+  frag.appendChild(assurances(data.assurances));
   frag.appendChild(versions(data.tls));
   frag.appendChild(ciphers(data.tls, data));
   frag.appendChild(certificate(data.certificate, data.tls, data.issuance, data.stapling, data));

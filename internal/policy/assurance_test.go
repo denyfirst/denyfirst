@@ -19,6 +19,8 @@ func holding() AssuranceFacts {
 		ChainTrusted:       true,
 		ChainComplete:      true,
 		ChainLength:        3,
+		NameMatches:        true,
+		CertificateInDate:  true,
 		RevocationVerified: true,
 		TransparencyCount:  3,
 		TransparencyLogs:   3,
@@ -112,6 +114,11 @@ func TestEachAssuranceWaitsForItsOwnMeasurement(t *testing.T) {
 		{"server-order", func(f *AssuranceFacts) { f.PreferenceKnown = false }},
 		{"chain", func(f *AssuranceFacts) { f.ChainTrusted = false }},
 		{"chain", func(f *AssuranceFacts) { f.ChainComplete = false }},
+
+		// The two that "trusted" does not cover. Both were measured against
+		// badssl.com on 2026-09-01 and both produced the sentence.
+		{"chain", func(f *AssuranceFacts) { f.NameMatches = false }},
+		{"chain", func(f *AssuranceFacts) { f.CertificateInDate = false }},
 		{"revocation", func(f *AssuranceFacts) { f.RevocationVerified = false }},
 		{"transparency", func(f *AssuranceFacts) { f.TransparencyCount = 0 }},
 		{"post-quantum", func(f *AssuranceFacts) { f.PostQuantumOffered = false }},
@@ -155,6 +162,31 @@ func TestAnAssuranceStatesAMeasurementRatherThanAJudgement(t *testing.T) {
 		if strings.Contains(joined, forbidden) {
 			t.Errorf("an assurance says %q, which is a judgement or a threshold this file does not own:\n%s",
 				forbidden, joined)
+		}
+	}
+}
+
+// The two live counter-examples, kept as cases rather than as a comment.
+//
+// Both are true statements about a chain and both sat under a heading called
+// What holds, above a verdict of insecure, on a report whose whole subject was
+// that the certificate did not identify the server.
+func TestAChainThatFailsIdentityHoldsNothing(t *testing.T) {
+	// expired.badssl.com: valid for three days in 2015, and this chain still
+	// reaches a root because trust is re-asked at a moment it was valid.
+	expired := holding()
+	expired.CertificateInDate = false
+
+	// wrong.host.badssl.com: a certificate for *.badssl.com, served for a
+	// name it does not cover.
+	wrongName := holding()
+	wrongName.NameMatches = false
+
+	for name, f := range map[string]AssuranceFacts{"expired": expired, "wrong name": wrongName} {
+		for _, a := range Assurances(f) {
+			if a.ID == "chain" {
+				t.Errorf("%s: the chain is assured anyway:\n  %s", name, a.Text)
+			}
 		}
 	}
 }

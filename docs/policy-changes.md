@@ -172,7 +172,13 @@ scan already used to reach its verdict. Consumers get the same list as
 
 The claim about suites is withheld unless the enumeration ran to the end,
 because *every suite this server accepts* claims an absence in the same way
-`strong` does.
+`strong` does. The claim about the chain waits for the name to match and the
+dates to hold: a chain can reach a root while the certificate is expired or
+issued to somebody else, and on those reports the sentence was true and read
+as the opposite.
+
+The block is printed after the findings, so the reason for a verdict is read
+before what holds beside it.
 
 ### The limits of the method are on one page
 

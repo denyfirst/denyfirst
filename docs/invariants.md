@@ -1219,9 +1219,34 @@ host decides when to stop answering, so without that gate a server could buy
 itself a line of praise by going quiet after two handshakes — the shape of the
 2026-08-22 defect where a truncated list produced a strong verdict.
 
+Two additions came from reading thirteen live reports on the day this was
+written, which is how every rendering defect in this repository has been
+found.
+
+**A chain sentence is a claim about identity, and "reaches a root" is a
+quarter of it.** `expired.badssl.com`, whose certificate was valid for three
+days in 2015, and `wrong.host.badssl.com`, whose certificate covers another
+name, both carried *the chain is complete and reaches a root in this
+machine's trust store* under **What holds**, above a verdict of insecure.
+Both sentences were true: trust is re-asked at a moment the certificate was
+valid, deliberately, because Go checks dates before it looks for an issuer.
+What they were read as was not true, and the reader had no way to tell. The
+claim now waits for the name to match and the dates to hold, and says so.
+
+**What holds is printed after the findings.** `kapitalbank.az` is insecure,
+and with the block above them a reader met seven reassuring sentences before
+the reason for the verdict — the mirror image of the defect the block was
+added to fix, arriving by the same route. The ordering is self-adjusting:
+where nothing fell short there are no findings to print, so what holds is the
+first prose on the report anyway.
+
 *Enforced in:* `internal/policy/assurance.go`,
-`internal/scan.assuranceFacts`
+`internal/scan.assuranceFacts`, the print and append order in
+`cmd/denyfirst-scan` and `internal/web/assets/app.js`
 *Guarded by:* `TestAScanThatMeasuredNothingAssuresNothing`,
+`TestAChainThatFailsIdentityHoldsNothing`,
+`TestTheReportSaysWhetherTheNameAndTheDatesHold`,
+`TestWhatFellShortIsReadBeforeWhatHolds`,
 `TestATruncatedSuiteListAssuresNothingAboutSuites`,
 `TestEachAssuranceWaitsForItsOwnMeasurement`,
 `TestAnAssuranceStatesAMeasurementRatherThanAJudgement`,
