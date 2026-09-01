@@ -1199,11 +1199,24 @@ the point where the reader actually meets it.
 Every note now carries one of three kinds, and the kind is chosen where the
 sentence is written, by the code that knows which it is:
 
-| Kind | What it claims | Heading |
+| Kind | What it claims | Where it appears |
 |---|---|---|
-| `observed` | Established by this scan, deliberately not graded | Observed |
-| `unsettled` | This scan could not settle it, and the reason lies with this host | Not established for this host |
-| `standing` | True of every scan this program runs | Limits of this method |
+| `observed` | Established by this scan, deliberately not graded | Under **Observed**, open by default |
+| `unsettled` | This scan could not settle it, and the reason lies with this host | Under **Not established for this host** |
+| `standing` | True of every scan this program runs | Not on the report. Counted, and linked to `/method` |
+
+The third is not printed. A limit that is the same on every report is one
+nobody reads by the third report, and sitting beside a host's own
+shortcomings it reads as though it were one of them. The four are declared
+once in `internal/policy/standing.go`; `/method` ranges over that declaration
+and `denyfirst-scan -limits` prints it, so the page cannot fall out of step
+with the code and somebody offline is not sent to a website.
+
+Moving them is only honest if the report still says they exist. It gives the
+count and names both places to read them, and a test fails if it stops doing
+either — or if a standing sentence is written inline rather than added to the
+declaration, which would leave a report claiming four limits while carrying a
+fifth that nothing explains.
 
 Classifying afterwards by reading the finished prose was the alternative and is
 rejected for the reason R12 gives: it puts the sentence and its label in two
@@ -1216,11 +1229,14 @@ one declaration each, and a test reads both sources and compares them. A
 section renamed on the page and not in the terminal fails; a section on one
 face and not the other fails.
 
-*Enforced in:* `internal/policy/note.go`; `noteSections` in
-`cmd/denyfirst-scan`; `NOTE_SECTIONS` in `internal/web/assets/app.js`
+*Enforced in:* `internal/policy/note.go`, `internal/policy/standing.go`;
+`noteSections` in `cmd/denyfirst-scan`; `NOTE_SECTIONS` in
+`internal/web/assets/app.js`; `assets/method.html`
 *Guarded by:* `TestEveryNoteInAReportCarriesAKind`,
 `TestBothFacesNameTheSameNoteSections`,
-`TestLimitsOpenOnlyWhenTheyAreTheWholeReport`
+`TestLimitsOpenOnlyWhenTheyAreTheWholeReport`,
+`TestTheStandingLimitsAreNamedAndLinked`,
+`TestTheReportPointsAtTheLimitsItDoesNotPrint`
 
 ### R9a — A CAA value is an authority and its parameters, not one string
 

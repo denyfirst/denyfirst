@@ -469,17 +469,13 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	// why one version shows a single suite. Dropping either leaves the reader
 	// to assume the list is exhaustive.
 	if suiteCoverageApplies(results) {
-		report.standing(
-			"Only cipher suites implemented by Go's TLS stack were offered. Suites outside it, and SSLv2 or SSLv3, are not covered. " +
-				"A server that speaks a version but shares no suite with this client answers a handshake the same way as one that refuses the version, " +
-				"so a refusal here is not proof the version is switched off.")
+		report.standing(policy.LimitCipherSuitesOffered)
 	}
 
 	if slices.ContainsFunc(results, func(v VersionResult) bool {
 		return v.Supported && v.Version == tls.VersionTLS13
 	}) {
-		report.standing(
-			"For TLS 1.3 only the negotiated suite is listed. Go gives a client no way to choose among TLS 1.3 suites, so the rest could not be enumerated.")
+		report.standing(policy.LimitTLS13Suites)
 	}
 
 	report.Duration = time.Since(start)
@@ -1054,4 +1050,7 @@ func (r *Report) observe(text string) { r.Notes = append(r.Notes, policy.Observe
 
 func (r *Report) unsettled(text string) { r.Notes = append(r.Notes, policy.Unsettled(text)) }
 
-func (r *Report) standing(text string) { r.Notes = append(r.Notes, policy.Standing(text)) }
+// standing takes a limit rather than a sentence, so a standing note cannot
+// be written here without being in policy.StandingLimits() — and therefore on
+// the page that explains them.
+func (r *Report) standing(l policy.StandingLimit) { r.Notes = append(r.Notes, l.Note()) }

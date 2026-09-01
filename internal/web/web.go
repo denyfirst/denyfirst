@@ -10,7 +10,7 @@
 // listing what is allowed cannot be surprised by something nobody thought to
 // forbid.
 //
-// Pages share one layout. Three copies of a header would be three places for
+// Pages share one layout. Four copies of a header would be four places for
 // it to drift, and a footer that disagrees with itself is a small thing that
 // costs more than it looks on a site whose argument is that it can be
 // checked. Each page is a fragment; the shell is applied once at startup and
@@ -23,6 +23,8 @@ import (
 	"html/template"
 	"net/http"
 	"strconv"
+
+	"github.com/denyfirst/denyfirst/internal/policy"
 )
 
 //go:embed assets
@@ -95,6 +97,16 @@ type page struct {
 	// execute code, the smaller the question of what that code does.
 	Script bool
 
+	// Data, when set, means the fragment is a template rather than fixed
+	// markup, and is executed with this value before the layout wraps it.
+	//
+	// One page needs it. The limits of this method are declared once in
+	// internal/policy, where the code that emits them lives, and the page
+	// that explains them ranges over that declaration. Copying the sentences
+	// into the markup would put them in two places, and two places drift —
+	// which is the whole argument of R16, applied to a third renderer.
+	Data any
+
 	// Body is filled in at startup. It is template.HTML because the fragment
 	// is a file in this repository rather than anything a user supplied.
 	Body template.HTML
@@ -125,6 +137,27 @@ var pages = map[string]*page{
 		Description: "What you agree to when you use this service, and what it does not promise.",
 		Fragment:    "assets/terms.html",
 	},
+
+	// A fourth page, on a site that deliberately went from five to three.
+	//
+	// The consolidation was about pages a reader has to choose between: three
+	// explanations split across scanning, privacy and guarantees meant
+	// somebody arriving cold had to already know which one held their answer.
+	// Nobody arrives here cold. This page is reached from a link in the
+	// report it explains, at the moment the question comes up, and it exists
+	// so that four sentences true of every scan stop being printed on every
+	// report — where they read as findings about the reader's own server.
+	"/method": {
+		Title:       "What this can see, and what it cannot — denyfirst",
+		Description: "How to read a report, and the limits of the method: what every scan here cannot establish, whatever server it looks at.",
+		Fragment:    "assets/method.html",
+		Data:        methodPage{Limits: policy.StandingLimits()},
+	},
+}
+
+// methodPage is what assets/method.html ranges over.
+type methodPage struct {
+	Limits []policy.StandingLimit
 }
 
 // moved are paths that used to be pages of their own, or that a reader is
@@ -176,6 +209,20 @@ func init() {
 			// At startup, so a missing fragment stops the process instead of
 			// producing a page with a hole in it.
 			panic("web: reading " + p.Fragment + ": " + err.Error())
+		}
+		if p.Data != nil {
+			// Parsed as a template, and its values escaped by html/template
+			// on the way in. They come from this repository either way; the
+			// escaping is not a defence against them but the reason a
+			// sentence containing an angle bracket cannot silently become
+			// markup.
+			body := template.Must(template.New(p.Fragment).Parse(string(fragment)))
+
+			var filled bytes.Buffer
+			if err := body.Execute(&filled, p.Data); err != nil {
+				panic("web: filling " + p.Fragment + ": " + err.Error())
+			}
+			fragment = filled.Bytes()
 		}
 		p.Body = template.HTML(fragment) //nolint:gosec // a file in this repository, not user input
 

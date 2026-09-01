@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
+	"fmt"
 	"math/big"
 	"net"
 	"os"
@@ -388,21 +389,57 @@ func TestEveryNoteInAReportCarriesAKind(t *testing.T) {
 		t.Fatal("a full scan produced no notes at all, so this proves nothing")
 	}
 
-	known := map[policy.NoteKind]bool{}
+	sectioned := map[policy.NoteKind]bool{}
 	for _, section := range noteSections {
-		known[section.kind] = true
+		sectioned[section.kind] = true
 	}
 
-	var counted int
 	for _, note := range notes {
-		if !known[note.Kind] {
-			t.Errorf("a note carries the kind %q, which no section renders, so it is shown nowhere:\n  %s",
+		switch {
+		case sectioned[note.Kind]:
+			// Rendered under its heading, on both faces.
+
+		case note.Kind == policy.KindStanding:
+			// Not rendered, pointed at — so it has to be one of the limits
+			// the page and -limits enumerate. A standing sentence written
+			// inline would leave the report saying four limits exist while
+			// carrying a fifth nothing explains.
+			if !policy.IsStandingLimit(note.Text) {
+				t.Errorf("a standing note is not in policy.StandingLimits(), so nothing explains it:\n  %s",
+					note.Text)
+			}
+
+		default:
+			t.Errorf("a note carries the kind %q, which is neither rendered nor pointed at:\n  %s",
 				note.Kind, note.Text)
-			continue
 		}
-		counted++
 	}
-	if counted != len(notes) {
-		t.Errorf("%d of %d notes would not be rendered", len(notes)-counted, len(notes))
+}
+
+// The report says how many limits it did not print, and where they are.
+func TestTheReportPointsAtTheLimitsItDoesNotPrint(t *testing.T) {
+	port := testServer(t, serverOpts{})
+	text := report(t, port, noResolver())
+	standing := policy.NotesOfKind(scanned(t, port, noResolver()).Notes(), policy.KindStanding)
+
+	if len(standing) == 0 {
+		t.Fatal("this scan produced no standing limits, so this proves nothing")
+	}
+	for _, want := range []string{
+		"Limits of this method",
+		fmt.Sprintf("%d apply to every scan", len(standing)),
+		"denyfirst-scan -limits",
+		methodPage,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the report does not carry %q:\n%s", want, text)
+		}
+	}
+
+	// And none of their text is printed, or moving them changed nothing.
+	for _, limit := range policy.StandingLimits() {
+		if strings.Contains(text, limit.Text) {
+			t.Errorf("the report still prints the standing limit %q in full", limit.Title)
+		}
 	}
 }

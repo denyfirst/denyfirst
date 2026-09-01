@@ -718,3 +718,20 @@ h1 {
 .download:focus-visible {
   color: var(--ink);
 }
+
+/*
+  The pointer that replaced a section.
+
+  Set in the same small uppercase as the section headings so it reads as part
+  of that block rather than as a stray sentence after it, and left open — a
+  link folded inside a summary is one nobody follows.
+*/
+.notes-method {
+  margin: 1.1rem 0 0;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--rule);
+  font-size: 0.85rem;
+  color: var(--ink-faint);
+}
+
+.notes-method-link { color: var(--ink-soft); }

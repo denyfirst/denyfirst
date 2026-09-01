@@ -88,6 +88,11 @@ func run() int {
 
 	showVersion := flag.Bool("version", false, "print the release and policy versions, then exit")
 
+	// Needs no network and no page. A report names these and does not repeat
+	// them; this is where somebody offline reads them in full.
+	showLimits := flag.Bool("limits", false,
+		"print the limits of this method — true of every scan — then exit")
+
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "denyfirst-scan inspects TLS configuration and certificates.\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n  %s [flags] host[:port] ...\n\nFlags:\n", os.Args[0])
@@ -101,6 +106,11 @@ func run() int {
 	// comparable with a verdict from another.
 	if *showVersion {
 		fmt.Printf("denyfirst-scan %s\npolicy %s\n", version, policy.Version)
+		return exitOK
+	}
+
+	if *showLimits {
+		printLimits(os.Stdout)
 		return exitOK
 	}
 
@@ -412,8 +422,14 @@ var noteSections = []struct {
 }{
 	{policy.KindObserved, "Observed"},
 	{policy.KindUnsettled, "Not established for this host"},
-	{policy.KindStanding, "Limits of this method"},
 }
+
+// The third kind is not a section. A standing limit is the same on every
+// report, so printing all four on every report is how they stop being read —
+// and under a heading beside a host's own shortcomings they read as though
+// they were some. They are named here and printed in full by -limits, which
+// needs no network and no page.
+const methodPage = "https://denyfirst.dev/method"
 
 func printNotes(w io.Writer, r result) {
 	notes := r.Notes()
@@ -427,6 +443,30 @@ func printNotes(w io.Writer, r result) {
 			fmt.Fprintf(w, "    · %s\n", wrap(n.Text, 70, "      "))
 		}
 	}
+
+	// Said rather than dropped. The count is the point: a reader has to know
+	// there are limits and where they are, or leaving them off the report
+	// would be hiding them rather than moving them.
+	if standing := policy.NotesOfKind(notes, policy.KindStanding); len(standing) > 0 {
+		fmt.Fprintf(w, "\n  Limits of this method\n")
+		fmt.Fprintf(w, "    · %d apply to every scan and are the same here as anywhere.\n", len(standing))
+		fmt.Fprintf(w, "      denyfirst-scan -limits, or %s\n", methodPage)
+	}
+}
+
+// printLimits answers -limits: the standing limits in full, from the same
+// declaration the reports and the page read.
+func printLimits(w io.Writer) {
+	fmt.Fprintf(w, "\nLimits of this method\n")
+	fmt.Fprintf(w, "=====================\n\n")
+	fmt.Fprintf(w, "  True of every scan this program runs, whatever server it looks at.\n")
+	fmt.Fprintf(w, "  Read alongside %s\n", methodPage)
+
+	for _, limit := range policy.StandingLimits() {
+		fmt.Fprintf(w, "\n  %s\n", limit.Title)
+		fmt.Fprintf(w, "    %s\n", wrap(limit.Text, 70, "    "))
+	}
+	fmt.Fprintln(w)
 }
 
 // wrap breaks text at word boundaries so long rationales stay readable in a
