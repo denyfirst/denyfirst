@@ -9,6 +9,7 @@ package scan
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -115,6 +116,14 @@ type Result struct {
 	// no handshake completed, because a question about a response nobody
 	// could have sent has no answer.
 	Stapling *policy.StapleFinding `json:"stapling,omitempty"`
+
+	// Assurances is what holds, stated in the affirmative.
+	//
+	// A report used to describe only rules unbroken and absences observed, so
+	// a well configured server read as a list of its shortcomings. Every one
+	// of these is a fact this scan already established and already used to
+	// reach its verdict; none costs a handshake and none is a new verdict.
+	Assurances []policy.Assurance `json:"assurances,omitempty"`
 }
 
 // Scanner runs one scan. The zero value is usable, dials through safedial,
@@ -354,7 +363,109 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 	// worth reading.
 	out.Issuance = s.checkIssuance(ctx, host)
 
+	// Last, because it reads from everything above it.
+	out.Assurances = policy.Assurances(assuranceFacts(out))
+
 	return out, nil
+}
+
+// assuranceFacts gathers what held, from the measurements rather than from
+// the findings.
+//
+// Reading it off the findings would invert the claim: an assurance would then
+// mean "no rule fired", which is true of a scan that measured nothing at all.
+// Every field below is something that was established.
+func assuranceFacts(r *Result) policy.AssuranceFacts {
+	var f policy.AssuranceFacts
+
+	if r.TLS != nil {
+		f.PreferenceKnown = r.TLS.PreferenceKnown
+		f.ServerPreference = r.TLS.ServerPreference
+		f.PostQuantumOffered = r.TLS.PostQuantum.Measured && r.TLS.PostQuantum.Offered
+		f.PostQuantumGroup = r.TLS.PostQuantum.Group
+
+		// Complete until one accepted version says otherwise, and strong
+		// until one suite says otherwise. Both start true and are only ever
+		// weakened, so a version nobody thought about cannot make them true.
+		f.CipherListComplete = true
+		f.AllSuitesStrong = true
+
+		var accepted int
+		for _, v := range r.TLS.Versions {
+			if !v.Supported {
+				continue
+			}
+			accepted++
+
+			if v.Version == tls.VersionTLS13 {
+				f.TLS13Accepted = true
+			}
+			if v.Version == tls.VersionTLS10 || v.Version == tls.VersionTLS11 {
+				f.ObsoleteAccepted = true
+			}
+			if !v.CipherListComplete {
+				f.CipherListComplete = false
+			}
+			for _, c := range v.Ciphers {
+				f.SuitesGraded++
+				if c.Verdict != policy.Strong {
+					f.AllSuitesStrong = false
+				}
+			}
+		}
+		if accepted == 0 {
+			// Nothing was negotiated, so nothing about the negotiation holds.
+			f.CipherListComplete = false
+			f.AllSuitesStrong = false
+		}
+
+		// Preferred means the newest version this server picks when offered
+		// everything, which is the first accepted one in this walk.
+		for _, v := range r.TLS.Versions {
+			if v.Supported {
+				f.TLS13Preferred = v.Version == tls.VersionTLS13
+				break
+			}
+		}
+	}
+
+	if r.Certificate != nil {
+		f.ChainTrusted = r.Certificate.Trusted
+		f.ChainLength = len(r.Certificate.Chain)
+		f.ChainComplete = !hasFinding(r.Certificate.Grade.Findings, "cert.chain-incomplete")
+	}
+
+	if r.Stapling != nil {
+		f.RevocationVerified = r.Stapling.Validated && r.Stapling.Status == "good"
+	}
+
+	if r.Certificate != nil && r.TLS != nil {
+		// The same union the transparency line is built from: the two sources
+		// can name the same log, and adding two counts would report one log
+		// twice.
+		f.TransparencyCount = r.Certificate.Transparency.EmbeddedCount + r.TLS.SCTCount
+		f.TransparencyLogs = distinctLogs(r.Certificate.Transparency.LogIDs, r.TLS.SCTLogIDs)
+	}
+
+	if r.Issuance != nil {
+		f.IssuanceRestricted = len(r.Issuance.Facts.Authorities) > 0 || len(r.Issuance.Facts.Wildcards) > 0
+		f.IssuanceFoundAt = r.Issuance.Facts.FoundAt
+	}
+
+	return f
+}
+
+// hasFinding is the one place a rule identifier is matched, and the
+// identifiers are stable by policy: docs/policy-changes.md says a finding can
+// be tracked by its identifier rather than by matching prose, which is what
+// makes this safe where matching a sentence would not be.
+func hasFinding(findings []policy.Finding, id string) bool {
+	for _, f := range findings {
+		if f.RuleID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // issuerOf finds the certificate in the chain that signed the leaf.

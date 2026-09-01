@@ -735,3 +735,37 @@ h1 {
 }
 
 .notes-method-link { color: var(--ink-soft); }
+
+/*
+  What holds.
+
+  Above the findings and open, because these are results. A report whose only
+  prose described absences read as a list of a server's shortcomings even
+  where the verdict was strong, and the fix is not to soften the absences but
+  to state the other half.
+
+  Deliberately quieter than a finding: no colour, no badge. An affirmation
+  that shouts competes with the thing a reader came for.
+*/
+.holds {
+  margin: 2rem 0 0;
+  padding: 1rem 1.1rem;
+  border-left: 2px solid var(--rule);
+}
+
+.holds-title {
+  margin: 0 0 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--ink-faint);
+}
+
+.holds-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  max-width: var(--measure);
+}
+
+.holds-list li { margin: 0.35rem 0; }

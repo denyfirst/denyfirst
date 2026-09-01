@@ -443,3 +443,72 @@ func TestTheReportPointsAtTheLimitsItDoesNotPrint(t *testing.T) {
 		}
 	}
 }
+
+// What holds reaches both faces, and says the same things on each.
+//
+// Invariant R16. The affirmative summary is the newest thing a reader meets
+// and the easiest to add to one renderer and forget in the other, which would
+// leave two readers of one scan with different impressions of the same server.
+func TestWhatHoldsIsOnBothFacesOfTheReport(t *testing.T) {
+	port := testServer(t, serverOpts{})
+	res := scanned(t, port, noResolver())
+	text := report(t, port, noResolver())
+
+	if len(res.Assurances) == 0 {
+		t.Fatal("a completed scan established nothing worth stating, so this proves nothing")
+	}
+
+	if !strings.Contains(text, "  What holds\n") {
+		t.Errorf("the terminal report has no What holds block:\n%s", text)
+	}
+	// Compared with whitespace collapsed. The terminal wraps at seventy
+	// columns and indents the continuation, so a sentence longer than that
+	// arrives with newlines and spaces inside it — which is the wrapping
+	// working, not the sentence missing. Two of the assurances are long
+	// enough for it and this test failed on exactly those two before it was
+	// told.
+	flat := collapse(text)
+	for _, a := range res.Assurances {
+		if !strings.Contains(flat, collapse(a.Text)) {
+			t.Errorf("the terminal report does not carry the assurance %q:\n  %s", a.ID, a.Text)
+		}
+	}
+
+	script, err := os.ReadFile("../../internal/web/assets/app.js")
+	if err != nil {
+		t.Fatalf("reading the script: %v", err)
+	}
+	for _, required := range []string{
+		"function assurances(list)",
+		"data.assurances",
+		`"What holds"`,
+		"item.text",
+	} {
+		if !strings.Contains(string(script), required) {
+			t.Errorf("the page does not render what holds: missing %q", required)
+		}
+	}
+}
+
+// An assurance is never produced by a rule failing to fire.
+//
+// The whole risk of an affirmative summary is that it gets read off the
+// findings rather than off the measurements, at which point "no rule fired"
+// becomes a reassurance — and no rule fires on a scan that reached nothing.
+// This runs a scan against a port with no server on it.
+func TestAScanThatReachedNothingHoldsNothing(t *testing.T) {
+	// A listener that accepts and never speaks TLS, so every handshake fails
+	// and nothing about the connection is established.
+	port := silentServer(t)
+	res := scanned(t, port, noResolver())
+
+	for _, a := range res.Assurances {
+		if a.ID != "no-obsolete" {
+			t.Errorf("a scan that negotiated nothing claims %q holds:\n  %s", a.ID, a.Text)
+		}
+	}
+}
+
+// collapse turns every run of whitespace into one space, so a comparison is
+// about the words rather than about where the renderer broke the line.
+func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }

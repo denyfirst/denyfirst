@@ -242,6 +242,7 @@ func printReport(w io.Writer, r result) {
 		fmt.Fprintf(w, "  Address   %s\n", r.TLS.Address)
 	}
 
+	printAssurances(w, r)
 	printVersions(w, r.TLS)
 	printCiphers(w, r.TLS)
 
@@ -430,6 +431,23 @@ var noteSections = []struct {
 // they were some. They are named here and printed in full by -limits, which
 // needs no network and no page.
 const methodPage = "https://denyfirst.dev/method"
+
+// printAssurances puts what holds above what fell short.
+//
+// Before this, a report on a well configured server described only rules
+// unbroken and absences observed — the strongest thing it could say was
+// "Nothing here fell short of the rules", which is two negatives. Every line
+// below was measured and was already used to reach the verdict.
+func printAssurances(w io.Writer, r result) {
+	if len(r.Assurances) == 0 {
+		return
+	}
+
+	fmt.Fprintf(w, "\n  What holds\n")
+	for _, a := range r.Assurances {
+		fmt.Fprintf(w, "    · %s\n", wrap(a.Text, 70, "      "))
+	}
+}
 
 func printNotes(w io.Writer, r result) {
 	notes := r.Notes()

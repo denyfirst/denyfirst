@@ -485,8 +485,11 @@ const NOTE_SECTIONS = [
     kind: "observed",
     title: "Observed",
     open: true,
-    one: "1 finding not graded",
-    many: (n) => n + " findings not graded",
+    // Not "findings". The report uses that word for a rule that was broken
+    // and says, three lines above this, that there were none — so "5 findings
+    // not graded" asked a reader to hold two meanings of one word at once.
+    one: "1 measured, not graded",
+    many: (n) => n + " measured, not graded",
   },
   {
     kind: "unsettled",
@@ -566,6 +569,26 @@ function notes(list, verdict) {
   return frag;
 }
 
+// assurances renders what holds, above what fell short.
+//
+// Open, and not a details block. These are results, and a report whose only
+// prose described absences read as a list of a server's shortcomings even
+// where the verdict was strong.
+function assurances(list) {
+  const frag = document.createDocumentFragment();
+  if (!list || !list.length) return frag;
+
+  const box = el("section", "holds");
+  box.appendChild(el("h2", "holds-title", "What holds"));
+
+  const ul = el("ul", "holds-list");
+  for (const item of list) ul.appendChild(el("li", null, item.text));
+  box.appendChild(ul);
+
+  frag.appendChild(box);
+  return frag;
+}
+
 function failure(message, detail) {
   const box = el("div", "failure");
   box.appendChild(el("p", null, message));
@@ -590,6 +613,7 @@ function render(data) {
 
   const frag = document.createDocumentFragment();
   frag.appendChild(summary(data));
+  frag.appendChild(assurances(data.assurances));
   frag.appendChild(findings(data.findings, verdict));
   frag.appendChild(versions(data.tls));
   frag.appendChild(ciphers(data.tls, data));
