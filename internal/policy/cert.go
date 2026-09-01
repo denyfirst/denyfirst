@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 var (
@@ -105,6 +106,27 @@ type LeafFacts struct {
 	// certificate.
 	HostnameMatches bool
 }
+
+// What a finding may repeat back from the certificate it describes.
+//
+// Every name quoted by a rule below is chosen by the server being examined,
+// which on a hostile target means it is chosen by the target. internal/certinfo
+// bounds what reaches the report for display and says why at the top of its
+// file: passing it through unbounded turns one small request into a reply
+// measured in megabytes, paid for by whoever asked for the scan rather than by
+// the server that sent it.
+//
+// These are the same bound applied to a sentence, and they are separate
+// because the two jobs differ: a rule has to decide on the whole list even
+// when it may only quote part of it. A wildcard malformed at position three
+// thousand is still a malformed wildcard.
+//
+// Measured on 2026-09-01, before this existed: a certificate carrying five
+// thousand malformed names produced one finding of 1,085,200 bytes.
+const (
+	maxNamesInAFinding = 5
+	maxNameInAFinding  = 64
+)
 
 // expiryWarningDays is when a certificate is close enough to expiry that
 // something in the renewal path has probably failed. With the CA/Browser
@@ -340,7 +362,7 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 			"A wildcard name that no client will match",
 			fmt.Sprintf("%s. A wildcard has to be the entire leftmost label — `*.example.com` and "+
 				"nothing else — so a client following RFC 9525 matches no host against these. The "+
-				"certificate covers less than it appears to.", list(quoteAll(bad))),
+				"certificate covers less than it appears to.", named(bad)),
 			rfc9525, cabBR)
 	}
 
@@ -351,11 +373,11 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 	if f.CommonName != "" && looksLikeHostname(f.CommonName) && !covers(f.DNSNames, f.CommonName) {
 		add("cert.cn-not-in-san", Weak,
 			"The common name is not among the names",
-			fmt.Sprintf("The subject common name is %q and it is not in the subject alternative name "+
+			fmt.Sprintf("The subject common name is %s and it is not in the subject alternative name "+
 				"extension. Clients have matched names only from that extension since RFC 2818 was "+
 				"replaced, so this name is matched by nothing, and the CA/Browser Forum requires a "+
 				"common name to repeat a value from the extension rather than add one.",
-				f.CommonName),
+				named([]string{f.CommonName})),
 			rfc9525, cabBR)
 	}
 
@@ -462,12 +484,40 @@ func covers(names []string, want string) bool {
 	return false
 }
 
-// quoteAll is for naming several things in one sentence without running them
-// together with the prose around them.
-func quoteAll(values []string) []string {
-	out := make([]string, len(values))
-	for i, v := range values {
-		out[i] = strconv.Quote(v)
+// named renders values for a sentence: quoted, shortened, and counted.
+//
+// Quoted with strconv.Quote rather than written in plain, which is not only
+// for reading. A name arrives as the bytes the server chose, and a certificate
+// may carry an escape sequence in one: a terminal reads 0x1b as an
+// instruction, so a name can erase the verdict printed above it. Quoting
+// renders it as \x1b and the terminal prints four characters. certinfo makes
+// the same argument for the subject, one round earlier.
+func named(values []string) string {
+	shown := values
+	if len(shown) > maxNamesInAFinding {
+		shown = shown[:maxNamesInAFinding]
+	}
+
+	quoted := make([]string, len(shown))
+	for i, v := range shown {
+		quoted[i] = strconv.Quote(shorten(v))
+	}
+
+	out := list(quoted)
+	if extra := len(values) - len(shown); extra > 0 {
+		out += fmt.Sprintf(", and %d more", extra)
 	}
 	return out
+}
+
+// shorten cuts on a rune boundary, so a truncated name is still text.
+func shorten(s string) string {
+	if len(s) <= maxNameInAFinding {
+		return s
+	}
+	cut := maxNameInAFinding
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "…"
 }
