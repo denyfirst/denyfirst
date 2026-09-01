@@ -92,6 +92,15 @@ func TestTheReportIsOfferedInOneFormatOnly(t *testing.T) {
 		{"text/html", "a browser would read a name as markup"},
 		{"text/plain", "a terminal would read an escape sequence in a name as an instruction"},
 		{"application/vnd.ms-excel", "the same as text/csv, under another name"},
+
+		// The clipboard reads as the same offer and is not. It is shared with
+		// every process on the machine, Windows keeps a history of it, and a
+		// cloud clipboard sends it off the machine. What is sensitive in a
+		// report is not its contents, which are public, but that somebody
+		// asked about that host — and this service undertakes to keep no
+		// record of exactly that.
+		{"clipboard.writeText", "the clipboard is readable by every process on the machine and is sometimes synced off it"},
+		{"execCommand(\"copy\")", "the same, by the older name"},
 	} {
 		if strings.Contains(source, forbidden.text) {
 			t.Errorf("the report is offered as %s — %s", forbidden.text, forbidden.why)
