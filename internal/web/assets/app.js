@@ -166,6 +166,15 @@ function reportFilename(data) {
 function summary(data) {
   const wrap = el("div", "summary");
 
+  // The verdict and the thing it is a verdict on, on one line.
+  //
+  // Until 2026-09-01 the two sentences below were in this row too, inside the
+  // left column. A dl is a block, so the column took the whole width and the
+  // stamp — the first thing anybody looks for — wrapped to a line of its own
+  // underneath four lines of coverage, below the sentence that explains it.
+  // A verdict that arrives after its explanation is a verdict read twice.
+  const head = el("div", "summary-head");
+
   const left = el("div");
   left.appendChild(el("p", "summary-target", data.target || "—"));
 
@@ -181,14 +190,16 @@ function summary(data) {
   if (meta.length) left.appendChild(el("p", "summary-meta", meta.join("  ·  ")));
   left.appendChild(downloadLink(data));
 
-  wrap.appendChild(left);
+  head.appendChild(left);
 
   const verdict = verdictOf(data);
   const stamp = el("div", "stamp " + verdictClass("stamp", verdict), verdict);
   if (!data.verdict) stamp.textContent = "not graded";
-  wrap.appendChild(stamp);
+  head.appendChild(stamp);
 
-  // What a weak or insecure verdict means, beside the verdict.
+  wrap.appendChild(head);
+
+  // What a weak or insecure verdict means, under the verdict.
   //
   // The report's likeliest misreading: a red stamp sits next to a trusted
   // chain, a verified staple, transparency, CAA and an accepted post-quantum
@@ -196,7 +207,7 @@ function summary(data) {
   // The sentence is built in internal/policy so that both faces say it in the
   // same words. R16.
   if (verdict === "weak" || verdict === "insecure") {
-    left.appendChild(el("p", "summary-worst", WORST_CASE));
+    wrap.appendChild(el("p", "summary-worst", WORST_CASE));
   }
 
   // How much of the picture this scan reached, which is what the verdict
@@ -211,7 +222,7 @@ function summary(data) {
     const reached = el("dl", "pairs summary-pairs");
     reached.appendChild(el("dt", null, "Coverage"));
     reached.appendChild(el("dd", "summary-coverage", data.coverage));
-    left.appendChild(reached);
+    wrap.appendChild(reached);
   }
 
   return wrap;
@@ -622,8 +633,12 @@ function notes(list, verdict) {
   const standing = list.filter((n) => n && n.kind === "standing");
   if (standing.length) {
     const p = el("p", "notes-method");
-    p.appendChild(document.createTextNode(
-      standing.length + " limits of this method apply to every scan and are the same here as anywhere. "));
+    // Two of the four limits are conditional, so a report can carry one: a
+    // host that speaks only TLS 1.2 and returns no transparency receipts
+    // leaves exactly one, and the page said "1 limits".
+    p.appendChild(document.createTextNode(standing.length === 1
+      ? "1 limit of this method applies to every scan and is the same here as anywhere. "
+      : standing.length + " limits of this method apply to every scan and are the same here as anywhere. "));
 
     const a = el("a", "notes-method-link", "What this can see, and what it cannot");
     a.href = METHOD_PAGE;

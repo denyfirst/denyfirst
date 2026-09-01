@@ -1225,6 +1225,18 @@ staple, transparency, CAA and an accepted post-quantum group, and nothing else
 on the page says why one option outweighs all of that. `policy.WorstCase` is
 one sentence, written once and read by both faces.
 
+**Both are written under the verdict, never in the row with it.** The summary
+was one flex row — a column holding the target and the address, the stamp
+beside it — and this line was added to that column as a `dl`. A `dl` is a
+block, so the column took the whole width and the stamp wrapped to a line of
+its own. On a live report the reader met the hostname, then *Worst case: an
+attacker chooses which option to negotiate…*, then four lines of coverage, and
+only then the word INSECURE: the explanation of a verdict arriving before the
+verdict, and the one element the page exists to deliver last in its own block.
+Nothing was false and nothing failed. It rendered, and it read backwards,
+which is why it survived a release — and why the rule is now about position
+and not only about wording.
+
 The tests over `Coverage` run every combination of what a scan can reach —
 thirty-two of them — because the first version of them ran one live scan,
 that scan had no transparency and no CAA, and it therefore never saw two of
@@ -1232,7 +1244,8 @@ the five clauses it claimed to check. A sabotage that put the word *no* into
 one of those clauses went straight past it.
 
 *Enforced in:* `internal/policy/coverage.go`,
-`internal/scan.coverageFacts`
+`internal/scan.coverageFacts`, `internal/web/assets/app.js`,
+`internal/web/assets/style.css`
 *Guarded by:* `TestCoverageNamesNothingItDidNotReach`,
 `TestCoverageIsEmptyWhenNothingWasReached`,
 `TestEachClauseWaitsForWhatItDescribes`,
@@ -1240,7 +1253,9 @@ one of those clauses went straight past it.
 `TestTheCoverageLineSaysWhatWasReached`,
 `TestAScanThatReachedNothingClaimsNoCoverage`,
 `TestAWeakOrInsecureVerdictSaysWhatItMeans`,
-`TestBothFacesSayWhatAVerdictMeansInTheSameWords`
+`TestBothFacesSayWhatAVerdictMeansInTheSameWords`,
+`TestTheVerdictIsGivenBeforeItIsExplained`,
+`TestTheVerdictRowIsSeparateFromWhatIsWrittenUnderIt`
 
 ### R18 — A note carries the kind of claim it makes
 

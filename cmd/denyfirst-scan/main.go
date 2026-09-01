@@ -468,9 +468,21 @@ func printNotes(w io.Writer, r result) {
 	// would be hiding them rather than moving them.
 	if standing := policy.NotesOfKind(notes, policy.KindStanding); len(standing) > 0 {
 		fmt.Fprintf(w, "\n  Limits of this method\n")
-		fmt.Fprintf(w, "    · %d apply to every scan and are the same here as anywhere.\n", len(standing))
+		fmt.Fprintf(w, "    · %s\n", limitsLine(len(standing)))
 		fmt.Fprintf(w, "      denyfirst-scan -limits, or %s\n", methodPage)
 	}
+}
+
+// limitsLine is the count sentence, which has to read as English at one.
+//
+// It read "1 apply to every scan" and that is reachable rather than
+// theoretical: two of the four limits are conditional, so a host that speaks
+// only TLS 1.2 and returns no transparency receipts leaves exactly one.
+func limitsLine(n int) string {
+	if n == 1 {
+		return "1 applies to every scan and is the same here as anywhere."
+	}
+	return fmt.Sprintf("%d apply to every scan and are the same here as anywhere.", n)
 }
 
 // printLimits answers -limits: the standing limits in full, from the same

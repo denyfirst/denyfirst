@@ -241,14 +241,27 @@ h1 {
 }
 
 .summary {
+  padding: 1.5rem 0;
+  border-top: 2px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
+}
+
+/*
+  The verdict and the thing it is a verdict on, on one line.
+
+  The two sentences below the row are deliberately outside it. They were in
+  it until 2026-09-01, inside the left column, and a dl is a block: the column
+  took the whole width, and the stamp wrapped to a line of its own beneath
+  four lines of coverage — underneath the sentence that explains it. Whatever
+  is added here has to grow beside the stamp, not through it, which is why
+  this row holds nothing that wraps to more than a few words.
+*/
+.summary-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 1.5rem;
   flex-wrap: wrap;
-  padding: 1.5rem 0;
-  border-top: 2px solid var(--ink);
-  border-bottom: 1px solid var(--rule);
 }
 
 .summary-target {
@@ -746,7 +759,7 @@ h1 {
   Quiet by design. What replaced them here was a nine-line block that restated
   the tables below it, and the lesson of that is not to shout louder.
 */
-.summary-pairs { margin: 0.7rem 0 0; }
+.summary-pairs { margin: 1rem 0 0; }
 
 .summary-worst,
 .summary-coverage {
