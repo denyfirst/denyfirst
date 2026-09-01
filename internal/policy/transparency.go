@@ -73,7 +73,7 @@ func DescribeTransparency(f TransparencyFacts) []Note {
 		// about this certificate; that none of them was verified is true of
 		// every scan this program runs, and joining them made the second read
 		// as though it were a limit of this one.
-		return []Note{Observed(note), Standing(receiptsNotVerified)}
+		return []Note{Observed(note), LimitTransparencyReceipts.Note()}
 	}
 
 	if !f.Trusted {
@@ -99,11 +99,6 @@ func DescribeTransparency(f TransparencyFacts) []Note {
 			"expected to be logged, and browsers refuse one that is not, so a client may well decline " +
 			"this connection where this report does not.")}
 }
-
-// Counting a receipt is not checking one, and the difference holds for every
-// certificate this program looks at rather than for any particular one.
-const receiptsNotVerified = "Transparency receipts are counted and not verified: checking one needs " +
-	"the log's public key, and this service carries no copy of that list."
 
 // plural writes a count with its noun, so a report does not say "1 logs".
 func plural(n int, noun string) string {

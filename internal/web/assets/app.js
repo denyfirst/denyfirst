@@ -495,14 +495,16 @@ const NOTE_SECTIONS = [
     one: "1 limit",
     many: (n) => n + " limits",
   },
-  {
-    kind: "standing",
-    title: "Limits of this method",
-    open: false,
-    one: "1, and it applies to every scan",
-    many: (n) => n + ", and they apply to every scan",
-  },
 ];
+
+// The third kind is a link, not a section.
+//
+// A standing limit is the same on every report, so showing all four on every
+// report is how they stop being read — and sitting beside a host's own
+// shortcomings they read as though they were some. They are on one page, and
+// the report says how many there are and points at it, so moving them is not
+// hiding them.
+const METHOD_PAGE = "/method";
 
 // notes renders each kind under its own heading.
 //
@@ -546,6 +548,19 @@ function notes(list, verdict) {
     box.appendChild(ul);
 
     frag.appendChild(box);
+  }
+
+  const standing = list.filter((n) => n && n.kind === "standing");
+  if (standing.length) {
+    const p = el("p", "notes-method");
+    p.appendChild(document.createTextNode(
+      standing.length + " limits of this method apply to every scan and are the same here as anywhere. "));
+
+    const a = el("a", "notes-method-link", "What this can see, and what it cannot");
+    a.href = METHOD_PAGE;
+    p.appendChild(a);
+
+    frag.appendChild(p);
   }
 
   return frag;

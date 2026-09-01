@@ -237,12 +237,7 @@ func GradeStapling(f StapleFacts) StapleFinding {
 	// revocation had not been checked — a claim that contradicted the
 	// verified case sitting directly beneath it. The standing policy is true
 	// always; the outcome is known only here.
-	out.standing(
-		"No certificate authority is asked anything by this scan: that question would tell the " +
-			"authority which certificate is being looked at. Revocation is read only from a response " +
-			"the server stapled into the handshake, so where none was stapled it has not been " +
-			"established here by any means. A chain reported as trusted reaches a root and is in " +
-			"date; it may still have been withdrawn.")
+	out.standing(LimitNoAuthorityAsked)
 	switch {
 	case f.Stapled && f.IssuerMissing:
 		out.unsettled(
@@ -326,4 +321,5 @@ func (r *StapleFinding) observe(text string) { r.Notes = append(r.Notes, Observe
 
 func (r *StapleFinding) unsettled(text string) { r.Notes = append(r.Notes, Unsettled(text)) }
 
-func (r *StapleFinding) standing(text string) { r.Notes = append(r.Notes, Standing(text)) }
+// standing takes a limit rather than a sentence: see policy/standing.go.
+func (r *StapleFinding) standing(l StandingLimit) { r.Notes = append(r.Notes, l.Note()) }

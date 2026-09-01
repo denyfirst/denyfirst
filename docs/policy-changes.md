@@ -152,6 +152,19 @@ each component. Anything reading the field will need the `.text`. It is a
 breaking change, made one day after the field first shipped in v0.4.0 and
 recorded here rather than left for a reader to discover.
 
+### The limits of the method are on one page
+
+Four of the sentences a report carried were true of every scan and said
+nothing about the host: which cipher suites this client is able to offer, why
+TLS 1.3 suites cannot be enumerated, that no certificate authority is ever
+asked, and that transparency receipts are counted rather than verified.
+
+They are no longer printed on each report. Reports name how many there are and
+link **/method**, which explains how a report is read and lists all four; the
+command line prints them with `denyfirst-scan -limits`, which needs no
+network. They are declared once in `internal/policy/standing.go` and the page
+is generated from that declaration, so the two cannot disagree.
+
 ### One sentence was wrong, on about a third of hosts
 
 `Revocation was not checked` was appended to every report. It was written when

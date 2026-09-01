@@ -1,0 +1,88 @@
+<article class="prose">
+
+    <h1>What this can see,<br>and what it cannot.</h1>
+
+    <p class="lede">
+      Every report ends with what that particular scan could not settle. This
+      page holds the other kind: the limits of the instrument itself, which
+      are the same for every scan and say nothing about any server. They used
+      to be printed on every report, where a reader had no way to tell them
+      apart from a finding about their own host.
+    </p>
+
+    <nav class="jump">
+      <a href="#reading">How to read a report</a>
+      {{range .Limits}}<a href="#{{.ID}}">{{.Title}}</a>
+      {{end}}
+    </nav>
+
+    <h2 id="reading">How to read a report</h2>
+
+    <p>
+      A report says four kinds of thing, and telling them apart is most of
+      knowing what it means.
+    </p>
+
+    <p>
+      <strong>Findings</strong> are graded. Each one names a rule, states what
+      was measured, and cites the document it rests on. Grading is worst-case:
+      one insecure option makes a configuration insecure however many strong
+      options sit beside it, because an attacker chooses which to negotiate.
+    </p>
+
+    <p>
+      <strong>Observed</strong> is what the scan established and deliberately
+      does not grade — a post-quantum key exchange the server accepted, a
+      stapled revocation response that verified, how many names one key stands
+      behind. These are results. A verdict is withheld where no document this
+      rule set follows requires one, because a verdict invented here would be
+      this project grading against its own opinion.
+    </p>
+
+    <p>
+      <strong>Not established for this host</strong> is what this scan could
+      not settle, for a reason that lies with the server in front of it: it
+      stopped answering before the suite list ran out, it offers only one
+      protocol version, it sent a field that could not be parsed. These
+      qualify that report's verdict and travel with it.
+    </p>
+
+    <p>
+      <strong>Limits of this method</strong> are below. They are true of every
+      scan, so they are stated once, here, rather than repeated under a
+      heading that made each report look like a failure.
+    </p>
+
+    <p>
+      The distinction that matters most: <em>strong</em> is the verdict that
+      claims an absence, and an absence can only be claimed from a complete
+      measurement. Where a list was cut short the verdict is
+      <em>ungraded</em> rather than <em>strong</em>, and the command line
+      exits <code>4</code> for it rather than <code>0</code>.
+    </p>
+
+    {{range .Limits}}
+    <h2 id="{{.ID}}">{{.Title}}</h2>
+
+    <p>{{.Text}}</p>
+    {{end}}
+
+    <h2 id="elsewhere">What else is written down</h2>
+
+    <p>
+      Every property this project holds itself to is in
+      <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/invariants.md">docs/invariants.md</a>,
+      each one naming the test that guards it and, where there was one, the
+      mistake that produced it. What changed between rule sets is in
+      <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/policy-changes.md">docs/policy-changes.md</a>,
+      because a report graded under one version is not comparable with a
+      report graded under another.
+    </p>
+
+    <p>
+      What a scan sends to a server, what is recorded about it here, and how
+      to have a domain excluded are on the
+      <a href="/privacy">privacy page</a>.
+    </p>
+
+</article>

@@ -1,8 +1,11 @@
 package web
 
 import (
+	"html"
 	"strings"
 	"testing"
+
+	"github.com/denyfirst/denyfirst/internal/policy"
 )
 
 // The limits of a scan open by default in one case and only one.
@@ -56,7 +59,7 @@ func TestLimitsOpenOnlyWhenTheyAreTheWholeReport(t *testing.T) {
 	//
 	// The other two stay folded for the reason above: they are the caveat,
 	// and a caveat that is always open is one nobody reads.
-	opens := map[string]bool{"observed": true, "unsettled": false, "standing": false}
+	opens := map[string]bool{"observed": true, "unsettled": false}
 	for kind, want := range opens {
 		i := strings.Index(source, `kind: "`+kind+`"`)
 		if i < 0 {
@@ -130,6 +133,51 @@ func TestTheReportIsOfferedInOneFormatOnly(t *testing.T) {
 	} {
 		if strings.Contains(source, forbidden.text) {
 			t.Errorf("the report is offered as %s — %s", forbidden.text, forbidden.why)
+		}
+	}
+}
+
+// The standing limits left the report and are pointed at instead.
+//
+// Moving them is only defensible if the report still says they exist, how
+// many there are, and where to read them. A section quietly dropped would be
+// hiding, which is the thing this project objects to in other tools.
+func TestTheStandingLimitsAreNamedAndLinked(t *testing.T) {
+	script, err := assets.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("reading the script: %v", err)
+	}
+	source := string(script)
+
+	if strings.Contains(source, `kind: "standing"`) {
+		t.Error("the script still renders the standing limits as a section of every report")
+	}
+	for _, required := range []string{
+		`const METHOD_PAGE = "/method"`,
+		"limits of this method apply to every scan",
+		"standing.length",
+	} {
+		if !strings.Contains(source, required) {
+			t.Errorf("the report does not say where the standing limits went: missing %q", required)
+		}
+	}
+
+	// And the page it points at has to exist and list every one of them.
+	page, ok := rendered["/method"]
+	if !ok {
+		t.Fatal("the report links /method and the site does not serve it")
+	}
+	// Compared against the escaped form. The page is a template and
+	// html/template escapes what it interpolates, so "Go's" arrives as
+	// "Go&#39;s" — which is the escaping working, not the sentence missing.
+	// Two of the four carry an apostrophe and this test failed on exactly
+	// those two before it was told.
+	for _, limit := range policy.StandingLimits() {
+		if !strings.Contains(string(page), html.EscapeString(limit.Text)) {
+			t.Errorf("/method does not carry the limit %q", limit.Title)
+		}
+		if !strings.Contains(string(page), `id="`+limit.ID+`"`) {
+			t.Errorf("/method has no anchor for %q, so a report cannot point at it", limit.ID)
 		}
 	}
 }
