@@ -152,6 +152,17 @@ each component. Anything reading the field will need the `.text`. It is a
 breaking change, made one day after the field first shipped in v0.4.0 and
 recorded here rather than left for a reader to discover.
 
+### A CAA record set reads the same twice
+
+RFC 8659 gives `issue` and `issuewild` properties no ordering and no
+precedence, and a resolver returns them in whatever order it likes. Two scans
+of paypal.com a quarter of an hour apart named the same authorities in
+different orders, and so did cloudflare.com and kapitalbank.az.
+
+They are sorted now, in the facts as well as in the sentence, so a report on
+an unchanged server does not move between scans. A diff full of changes that
+did not happen is one where the change that did happen is lost.
+
 ### Reports say what holds
 
 A report used to describe only rules unbroken and absences observed. On a
