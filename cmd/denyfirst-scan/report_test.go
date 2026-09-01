@@ -167,6 +167,7 @@ func TestAReportSaysWhatWasMeasured(t *testing.T) {
 		{"Protocol versions", "the version table"},
 		{"TLS 1.3", "a version this server speaks"},
 		{"TLS 1.0", "a version this server refuses, which still has to appear"},
+		{"Key exchange", "the one measurement that costs the scanned server an extra handshake"},
 		{"Certificate", "the certificate section"},
 		{"Fingerprint", "how a reader identifies the certificate they are looking at"},
 	} {

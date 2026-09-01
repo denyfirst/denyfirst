@@ -104,6 +104,10 @@ type Result struct {
 	RevocationLine   string `json:"revocationLine,omitempty"`
 	TransparencyLine string `json:"transparencyLine,omitempty"`
 
+	// KeyExchangeLine is what the extra post-quantum handshake established,
+	// in the sentence both faces show.
+	KeyExchangeLine string `json:"keyExchangeLine,omitempty"`
+
 	// Stapling grades the status response against what the certificate asked
 	// for. It is neither a transport property nor a certificate property: the
 	// request is written in the certificate and the answer arrives in the
@@ -321,6 +325,20 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 		}
 		certReport.Notes = append(certReport.Notes, policy.DescribeTransparency(transparency)...)
 		out.TransparencyLine = policy.TransparencyLine(transparency)
+	}
+
+	// The key exchange, which is a property of the transport rather than of
+	// the certificate, and the only measurement here that costs the scanned
+	// server an extra handshake.
+	if tlsReport != nil {
+		pq := policy.PostQuantumFacts{
+			Measured: tlsReport.PostQuantum.Measured,
+			Offered:  tlsReport.PostQuantum.Offered,
+			Group:    tlsReport.PostQuantum.Group,
+			Reason:   tlsReport.PostQuantum.Reason,
+		}
+		out.KeyExchangeLine = policy.PostQuantumLine(pq)
+		tlsReport.Notes = append(tlsReport.Notes, policy.DescribePostQuantum(pq)...)
 	}
 
 	// Asked last, and bounded by whatever is left of the caller's deadline.

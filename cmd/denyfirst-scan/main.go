@@ -234,6 +234,14 @@ func printReport(w io.Writer, r result) {
 
 	printVersions(w, r.TLS)
 	printCiphers(w, r.TLS)
+
+	// A property of the transport rather than of the certificate, so it sits
+	// with the suites rather than with the chain. It is the one measurement
+	// in this report that costs the scanned server an extra handshake.
+	if r.KeyExchangeLine != "" {
+		fmt.Fprintf(w, "\n  Key exchange  %s\n", wrap(r.KeyExchangeLine, 60, "                "))
+	}
+
 	printCertificate(w, r)
 	printFindings(w, r)
 	printNotes(w, r)

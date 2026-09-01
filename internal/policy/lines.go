@@ -109,3 +109,72 @@ func TransparencyLine(f TransparencyFacts) string {
 	}
 	return stamps + " from " + from
 }
+
+// PostQuantumFacts is what one extra handshake established about the key
+// exchange.
+type PostQuantumFacts struct {
+	// Measured is false when the question could not be put or answered.
+	Measured bool
+
+	// Offered is true when the server completed a handshake with the hybrid
+	// group as the only one on the table.
+	Offered bool
+
+	// Group names what was offered, so this reads correctly when the name
+	// changes.
+	Group string
+
+	// Reason says why nothing was measured.
+	Reason string
+}
+
+// PostQuantumLine describes the key exchange in one sentence.
+func PostQuantumLine(f PostQuantumFacts) string {
+	if !f.Measured {
+		if f.Reason == "" {
+			return "not measured"
+		}
+		return "not measured: " + f.Reason
+	}
+	if f.Offered {
+		return "the hybrid post-quantum group " + f.Group + " was accepted"
+	}
+	return "the hybrid post-quantum group " + f.Group + " was declined"
+}
+
+// DescribePostQuantum says why the answer matters.
+//
+// Reported and not graded. No document this rule set follows requires a hybrid
+// key exchange, and a verdict invented here would be this project grading
+// against its own opinion — the thing it says other tools do. What it can do
+// is state the measurement and the reason somebody would act on it.
+func DescribePostQuantum(f PostQuantumFacts) []string {
+	const why = "Traffic recorded today can be kept and decrypted by whoever first builds a quantum " +
+		"computer large enough to break the key exchange, which is why the attack is called harvest " +
+		"now, decrypt later. Forward secrecy does not prevent it: forward secrecy protects against a " +
+		"private key stolen afterwards, not against the exchange itself being broken."
+
+	switch {
+	case !f.Measured:
+		if f.Reason == "" {
+			return []string{"Whether the key exchange resists a future quantum computer was not established."}
+		}
+		return []string{"Whether the key exchange resists a future quantum computer was not established: " +
+			f.Reason + ". " + why}
+
+	case f.Offered:
+		return []string{fmt.Sprintf(
+			"%s combines X25519 with ML-KEM-768, so recovering the session key means breaking both, and "+
+				"the second has no known quantum attack. %s A recording of this connection is not "+
+				"exposed to that. This is not graded — no document this rule set follows requires it — "+
+				"and it is the strongest thing a server can do about it today.", f.Group, why)}
+
+	default:
+		return []string{fmt.Sprintf(
+			"%s was offered and the server did not take it. %s Nothing is wrong with this connection "+
+				"today and no client fails because of this: a client that offers the hybrid falls back "+
+				"to X25519 and the handshake succeeds. It is not graded, because no document this rule "+
+				"set follows requires it yet, and it is reported because the traffic being recorded now "+
+				"is what the decision is about.", f.Group, why)}
+	}
+}

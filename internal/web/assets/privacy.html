@@ -172,10 +172,14 @@
       completes handshakes — the same exchange every browser performs before
       loading a page. A modern server takes fewer than twenty over a few
       seconds; one that still accepts every obsolete protocol version and
-      cipher suite takes up to fifty, because each one has to be offered
+      cipher suite takes rather more, because each one has to be offered
       before it can be reported. One per protocol version, one per suite the
-      server turns out to accept, and two more to see whether it imposes its
-      own ordering. Each is closed as soon as its handshake finishes.
+      server turns out to accept, two more to see whether it imposes its own
+      ordering, and one to ask whether it will negotiate a key exchange that
+      resists a future quantum computer — that last one only where the
+      question exists, which is a server speaking TLS 1.3. That last one adds
+      exactly one connection and is not asked of a server that could not
+      answer it. Each connection is closed as soon as its handshake finishes.
     </p>
 
     <p>

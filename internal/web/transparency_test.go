@@ -39,3 +39,23 @@ func TestTransparencyReachesThePage(t *testing.T) {
 		}
 	}
 }
+
+// The key exchange is a property of the transport, so it sits with the suites
+// rather than with the chain — and, like the two sentences above it, it is
+// built in internal/policy and printed here unchanged.
+//
+// It is the one measurement in this report that costs the scanned server an
+// extra handshake, which is a reason to be sure it reaches a reader.
+func TestTheKeyExchangeLineReachesThePage(t *testing.T) {
+	source := script(t)
+
+	if !strings.Contains(source, "keyExchangeLine") {
+		t.Error("the page never reads the key exchange line, so the extra handshake buys nothing")
+	}
+	if !strings.Contains(source, "ciphers(data.tls, data)") {
+		t.Error("the cipher section is not given the report, so the line is always empty")
+	}
+	if strings.Contains(source, "postQuantum.offered") {
+		t.Error("the page composes the sentence from the facts again; it belongs in internal/policy")
+	}
+}
