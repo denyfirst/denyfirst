@@ -88,6 +88,66 @@ function verdictOf(data) {
   return data && data.verdict ? data.verdict : "ungraded";
 }
 
+// Saving a report, entirely in the browser.
+//
+// Nothing is asked of the service again and nothing is kept anywhere: the JSON
+// already arrived, and this hands the reader the bytes they already have. A
+// server endpoint returning the same thing would have to keep the result or
+// scan a second time, and this project does neither.
+//
+// JSON and nothing else, which is a security decision rather than a
+// preference. Every string in a report — subjects, names, issuers — is chosen
+// by the server that was scanned, and each of the other formats hands those
+// strings to something that executes them. A spreadsheet reads a value
+// beginning with =, +, - or @ as a formula. A terminal reads an escape
+// sequence in a name as an instruction and rewrites what is already on the
+// screen, which is a defect this project found in its own command line output.
+// A browser reads HTML as markup. JSON escapes a control byte as \u001b and
+// carries no executable meaning anywhere, so the format itself is the
+// protection rather than something bolted onto it.
+
+// The object URL for the report on screen, and only ever one.
+//
+// An object URL keeps its blob alive for as long as the document does, so the
+// previous one is released before the next is made: a reader who scans twenty
+// hosts holds one report in memory rather than twenty.
+let reportURL = null;
+
+function downloadLink(data) {
+  if (reportURL) {
+    URL.revokeObjectURL(reportURL);
+    reportURL = null;
+  }
+
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  reportURL = URL.createObjectURL(blob);
+
+  // A link rather than a button driving a synthetic click: it can be
+  // right-clicked, opened in a new tab, and read by anything that reads links.
+  const anchor = el("a", "download", "Download as JSON");
+  anchor.href = reportURL;
+  anchor.download = reportFilename(data);
+  return anchor;
+}
+
+// reportFilename builds a name from the target.
+//
+// The target reaching here is already canonical — the service accepts letters,
+// digits, dot, hyphen, underscore and colon in a hostname and nothing else —
+// so this is a second fence rather than the first. A colon is legal in an IPv6
+// target and illegal in a Windows filename; anything outside the set becomes a
+// hyphen; and the whole is cut short, because a name that can be made long is
+// a name that ends up somewhere it does not fit.
+function reportFilename(data) {
+  const target = String((data && data.target) || "report").toLowerCase();
+  const safe = target
+    .replace(/[^a-z0-9.-]+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "")
+    .slice(0, 60);
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  return "denyfirst-" + (safe || "report") + "-" + stamp + "Z.json";
+}
+
 function summary(data) {
   const wrap = el("div", "summary");
 
@@ -104,6 +164,7 @@ function summary(data) {
   if (data.tls && data.tls.alpn) meta.push(data.tls.alpn);
   if (data.policy) meta.push("graded by " + data.policy);
   if (meta.length) left.appendChild(el("p", "summary-meta", meta.join("  ·  ")));
+  left.appendChild(downloadLink(data));
 
   wrap.appendChild(left);
 
