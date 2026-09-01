@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -518,6 +519,18 @@ func (s *Scanner) checkIssuance(ctx context.Context, host string) *policy.Issuan
 		return &unchecked
 	}
 
+	facts := issuanceFacts(answer)
+
+	described := policy.DescribeIssuance(facts)
+	return &described
+}
+
+// issuanceFacts turns a resolver's answer into what the sentence needs.
+//
+// Separate from checkIssuance so that it can be read against a record set
+// without a resolver: the ordering below is the thing under test, and the
+// resolver is the thing that varies it.
+func issuanceFacts(answer dnsclient.Answer) policy.IssuanceFacts {
 	facts := policy.IssuanceFacts{
 		Checked:    true,
 		Exists:     answer.Existed,
@@ -547,8 +560,26 @@ func (s *Scanner) checkIssuance(ctx context.Context, host string) *policy.Issuan
 		}
 	}
 
-	described := policy.DescribeIssuance(facts)
-	return &described
+	// Sorted, because a CAA record set is a set.
+	//
+	// RFC 8659 gives issue and issuewild properties no ordering and no
+	// precedence: an authority is permitted or it is not. A resolver is free
+	// to return them in any order and does — measured on 2026-09-01, two
+	// scans of paypal.com a quarter of an hour apart named the same
+	// authorities in different orders, and so did cloudflare.com and
+	// kapitalbank.az.
+	//
+	// The consequence is not cosmetic. Two reports on one unchanged server
+	// differ, so a reader diffing them, or a pipeline comparing yesterday's
+	// output with today's, sees a change that did not happen. A report that
+	// moves for no reason is one nobody can use to notice a reason.
+	//
+	// Sorted here rather than at the sentence, so the JSON a consumer reads
+	// is stable too.
+	slices.Sort(facts.Authorities)
+	slices.Sort(facts.Wildcards)
+
+	return facts
 }
 
 func (s *Scanner) now() time.Time {
