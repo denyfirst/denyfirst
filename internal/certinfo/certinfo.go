@@ -515,6 +515,55 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 		facts.KeyFromBrokenGenerator = rocaFingerprint(key.N)
 	}
 
+	// A serial that was read, and separately whether there was one to read.
+	// Zero bits means nobody looked, so the rule can tell that apart from a
+	// serial it measured and found small.
+	if leaf.SerialNumber != nil && leaf.SerialNumber.Sign() > 0 {
+		facts.SerialBits = leaf.SerialNumber.BitLen()
+	} else {
+		report.Notes = append(report.Notes,
+			"The serial number is not a positive integer. RFC 5280 requires one, and a certificate "+
+				"without it is malformed however it was issued.")
+	}
+
+	facts.CommonName = leaf.Subject.CommonName
+	facts.DNSNames = leaf.DNSNames
+
+	// Absent is not the same as excluding. A certificate with no extended key
+	// usage extension may be used for anything, which is permitted; one that
+	// lists purposes has listed all of them.
+	facts.HasExtKeyUsage = len(leaf.ExtKeyUsage) > 0 || len(leaf.UnknownExtKeyUsage) > 0
+	for _, usage := range leaf.ExtKeyUsage {
+		if usage == x509.ExtKeyUsageServerAuth || usage == x509.ExtKeyUsageAny {
+			facts.ServerAuth = true
+		}
+	}
+
+	// The exponent, which the Baseline Requirements say SHOULD be at least
+	// 65537 rather than SHALL. A note and not a finding: inventing a verdict
+	// the document does not carry is how a rule set stops being checkable
+	// against the document it claims to follow.
+	if key, ok := leaf.PublicKey.(*rsa.PublicKey); ok && key.E > 0 && key.E < 65537 {
+		report.Notes = append(report.Notes, fmt.Sprintf(
+			"The RSA public exponent is %d. The CA/Browser Forum says it should be at least 65537, "+
+				"and small exponents have a long history of turning a flaw in somebody's signature "+
+				"verification into a forgery. It is permitted, and it is not current practice.", key.E))
+	}
+
+	// How much rests on one key. A certificate covering a hundred names is one
+	// key whose loss takes a hundred hosts with it, which is a fact about the
+	// arrangement rather than a fault in it.
+	if n := len(leaf.DNSNames); n > 1 {
+		note := fmt.Sprintf(
+			"This certificate covers %d names, so one private key stands behind all of them.", n)
+		if n >= 20 {
+			note += " A certificate shared across many unrelated hosts is ordinary on a content " +
+				"delivery network and is worth knowing about, because whoever holds the key holds " +
+				"every one of them."
+		}
+		report.Notes = append(report.Notes, note)
+	}
+
 	if facts.KeyAlgorithm == "" {
 		report.Notes = append(report.Notes, fmt.Sprintf(
 			"Public key algorithm %q is not recognised, so key strength was not graded.",

@@ -16,8 +16,9 @@ free to improve without breaking that.
 
 ## `denyfirst-v3` → `denyfirst-v4`
 
-Unreleased. One rule added, and it is the most serious thing this report can
-say about a key.
+Unreleased. Five rules added and two notes. Every one of them is read off a
+certificate this scan already had, so nothing new is asked of the server: the
+same handshakes, the same bytes, the same load at the other end.
 
 ### A key made by a generator known to be broken
 
@@ -51,12 +52,67 @@ authorities have been required to refuse such keys since; where it still bites
 is keys generated on a smart card or a TPM for a server somebody runs
 themselves, which is exactly what this project expects to be pointed at.
 
+### What the certificate says it is for, and about whom
+
+| Rule | Verdict | When |
+|---|---|---|
+| `cert.no-server-auth` | Insecure | The extended key usage extension lists purposes and server authentication is not among them |
+| `cert.wildcard-shape` | Weak | A name contains `*` somewhere other than as the whole of the leftmost label |
+| `cert.cn-not-in-san` | Weak | The common name holds a hostname that the subject alternative name does not |
+| `cert.serial-entropy` | Weak | On a publicly trusted chain, a serial number too small to hold the required randomness |
+
+**`cert.no-server-auth`.** RFC 5280 makes the extended key usage list
+exhaustive, so a certificate listing purposes and omitting server
+authentication is a certificate for something else, and a client following the
+document refuses the connection however correct the rest is. An absent
+extension means *any purpose* and is not this case — absent is not the same as
+excluding, and older certificates commonly carry none.
+
+**`cert.wildcard-shape`.** RFC 9525 permits one form: a leftmost label that is
+exactly `*`. `w*.example.com`, `a.*.example.com`, `*.*.example.com` and a bare
+`*` were each matched by some client at some point and are matched by none now.
+A name in one of those shapes is worse than a missing one, because whoever
+issued it believes the host is covered.
+
+**`cert.cn-not-in-san`.** Clients have matched names from the subject
+alternative name and nowhere else since RFC 2818 was replaced, and the Baseline
+Requirements say the common name, if present, must repeat one of those values
+rather than add one. So a hostname there that is not in the extension is
+matched by nothing while telling a reader the certificate covers it. Only
+raised when the common name is trying to be a hostname: an authority's own
+label, `R11`, and an organisation name are not accused of being one.
+
+**`cert.serial-entropy`, and why the threshold is not 64.** The Baseline
+Requirements have required at least 64 bits from a random source since 2016,
+because a predictable serial lets an attacker who can influence a certificate's
+contents mount a hash collision against its signature. But a serial carrying 64
+bits of that output is uniform over `[0, 2^64)`, so its *value* has fewer than
+64 bits half the time and fewer than 63 a quarter of the time: a rule demanding
+64 would accuse half of every compliant certificate ever issued. What one
+certificate can honestly show is that a serial is far too small to hold that
+output at all — a compliant one lands below `2^32` about once in four thousand
+million — so that is what this rule says, and it catches counters and sequences
+rather than pretending to measure entropy. It is raised only for a chain that
+reaches the trust store, because the requirement is the Forum's and a private
+authority answers to whoever runs it.
+
+### Two notes, which are not verdicts
+
+A **small RSA public exponent** is reported when it is below 65537. The
+Baseline Requirements say the exponent *should* be at least that, not that it
+must, and inventing a verdict the document does not carry is how a rule set
+stops being checkable against the document it claims to follow.
+
+**How many names a certificate covers** is reported whenever it is more than
+one, with a sentence about shared certificates once it passes twenty. One key
+standing behind a hundred hosts is a fact about the arrangement rather than a
+fault in it, and it is the fact that decides what a stolen key costs.
+
 ### What did not change
 
-No existing rule changed meaning, no verdict moved, and a report from
+No existing rule changed meaning and no verdict moved. A report from
 `denyfirst-v3` and one from `denyfirst-v4` are comparable for every server
-whose key was made by something that is not RSALib — which is nearly all of
-them.
+that keeps to the documents these rules cite — which is nearly all of them.
 
 ---
 

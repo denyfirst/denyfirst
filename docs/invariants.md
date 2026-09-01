@@ -931,6 +931,16 @@ absence of a result, and every renderer has to read it.** `Refused` exists for
 that reason and carries no `omitempty`, for the same reason `CipherListComplete`
 does not.
 
+The smallest instance of this is worth keeping, because it took no protocol
+knowledge to make and none to miss. `cert.serial-entropy` reads a bit count,
+and a bit count of zero means two things: a serial that is zero, and a serial
+nobody read. The first version of the rule fired on both, so every certificate
+whose facts were built by hand without a serial was accused of carrying a
+counter. The existing tests in the package caught it on the first run. The rule
+now requires a measurement before it says anything, and a serial that really is
+not positive is reported as a note, because a malformed field and an unread one
+are not the same finding either.
+
 *Enforced in:* `internal/tlsprobe.VersionResult.Refused`,
 `internal/tlsprobe.classifyHandshakeError`,
 `internal/tlsprobe.suiteCoverageApplies`, `internal/web/assets/app.js`
@@ -943,7 +953,8 @@ does not.
 `TestUnreadableTimestampsDoNotBecomeAMeasurement`,
 `TestTheLimitsOfThisClientAreStatedWhenNothingWasAccepted`,
 `TestTheClassesTheScriptAddsAreStyled`, `TestClientRefusalIsNotServerRefusal`,
-`TestAVersionThatCouldNotBeMeasuredIsNotDrawnAsRefused`
+`TestAVersionThatCouldNotBeMeasuredIsNotDrawnAsRefused`,
+`TestASerialTooSmallToBeRandom`
 
 ### R13 — An exit status is a verdict, and `ungraded` is not zero
 
