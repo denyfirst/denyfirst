@@ -174,6 +174,12 @@ func TestTheDeployProcedureIsWrittenDown(t *testing.T) {
 			"where the capability actually comes from"},
 		{"MainPID",
 			"the running process is identified through /proc/<pid>/exe: a failed restart leaves the old inode serving while the new file looks correct"},
+		{"set -euo pipefail",
+			"the deploy block stops at the first failure: pasted as loose lines, three 404s let it carry on and copy the running binary over itself as a rollback of the version already running"},
+		{`git rev-parse "v0.2.0^{commit}"`,
+			"the tag has to be on the commit just read, and quoted, or PowerShell hands git the tag's first parent — which on a merge commit is the previous tip and looks exactly like the failure this check is for"},
+		{"An existing tag means either that",
+			"an existing tag is a stop: on 2026-09-01 the release carried on past `fatal: tag already exists` and shipped, signed and deployed the commit before the change it was for"},
 		{"noexec",
 			"why the download goes under the deploying user's home rather than /tmp"},
 	} {

@@ -79,8 +79,16 @@ func Coverage(f CoverageFacts) string {
 	if f.TransparencyRead {
 		reached = append(reached, "transparency receipts were counted")
 	}
+	// "The CAA lookup completed" and not "issuance policy was answered".
+	//
+	// Read on the live site against emanat.az, which publishes no CAA record
+	// at all: the walk reached the top of the tree and found nothing, which is
+	// an answer and is what this clause is about. But "issuance policy was
+	// answered" reads as though a policy existed and had spoken. True, and
+	// misread — which is the one thing this line is supposed to be immune to,
+	// because it says what was reached and nothing else.
 	if f.IssuanceAnswered {
-		reached = append(reached, "issuance policy was answered")
+		reached = append(reached, "the CAA lookup completed")
 	}
 
 	switch len(reached) {

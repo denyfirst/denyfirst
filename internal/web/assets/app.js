@@ -201,8 +201,17 @@ function summary(data) {
 
   // How much of the picture this scan reached, which is what the verdict
   // rests on and what no table says.
+  //
+  // Labelled, in the same grammar as the certificate rows and the cipher
+  // facts. Unlabelled it arrived directly beneath the worst-case sentence and
+  // the two read as one paragraph — and an unlabelled sentence under a table
+  // is exactly what made the key exchange invisible until somebody looked
+  // twice.
   if (data.coverage) {
-    left.appendChild(el("p", "summary-coverage", data.coverage));
+    const reached = el("dl", "pairs summary-pairs");
+    reached.appendChild(el("dt", null, "Coverage"));
+    reached.appendChild(el("dd", "summary-coverage", data.coverage));
+    left.appendChild(reached);
   }
 
   return wrap;
