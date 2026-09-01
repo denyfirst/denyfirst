@@ -49,17 +49,21 @@ func TestLimitsOpenOnlyWhenTheyAreTheWholeReport(t *testing.T) {
 		}
 	}
 
-	// Results open, limits fold.
+	// Both fold, and what makes that safe is what is in them.
 	//
-	// The three sections are not alike. Observed holds what the scan
-	// established and chose not to grade, and a reader who never opens it
-	// never sees a post-quantum key exchange that passed or a revocation
-	// response that verified — which is the state this replaced, when all of
-	// it sat behind one summary saying nothing had been measured.
+	// Observed opened by default at first, on the reasoning that a reader who
+	// never opens it never sees a post-quantum exchange that passed. Read on
+	// the live site, the block ran to five paragraphs and stood between the
+	// verdict and the evidence — and every fact in it was already on the face
+	// of the report: the key exchange line, the revocation row, the issuance
+	// row, the certificate's names and timestamps. What folds is the
+	// reasoning, which is the same on every report.
 	//
-	// The other two stay folded for the reason above: they are the caveat,
-	// and a caveat that is always open is one nobody reads.
-	opens := map[string]bool{"observed": true, "unsettled": false}
+	// What holds, above the tables, is what now carries the affirmative
+	// voice, and it is six phrases rather than five paragraphs.
+	//
+	// The counts stay in the summaries either way, so folding is not hiding.
+	opens := map[string]bool{"observed": false, "unsettled": false}
 	for kind, want := range opens {
 		i := strings.Index(source, `kind: "`+kind+`"`)
 		if i < 0 {

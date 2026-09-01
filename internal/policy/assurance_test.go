@@ -190,3 +190,30 @@ func TestAChainThatFailsIdentityHoldsNothing(t *testing.T) {
 		}
 	}
 }
+
+// An assurance is a phrase, not a paragraph.
+//
+// Written as sentences, every line of this block restated something already
+// on the report — the version table, the suite grades, the certificate rows,
+// and in one case the sentence printed under the cipher table, word for word.
+// Nine out of nine. A summary that repeats the page in longer form is not a
+// summary; it is a screen of prose between a reader and the evidence.
+//
+// The ceiling is what stops it growing back. Explanations belong on /method,
+// where they are written once instead of on every report.
+func TestAnAssuranceIsAPhraseAndNotAParagraph(t *testing.T) {
+	const ceiling = 72
+
+	for _, a := range Assurances(holding()) {
+		if len(a.Text) > ceiling {
+			t.Errorf("%s is %d characters, and the ceiling is %d:\n  %s",
+				a.ID, len(a.Text), ceiling, a.Text)
+		}
+
+		// A phrase, so no full stop and no second sentence. Both are how one
+		// grows into the paragraph this replaced.
+		if strings.Contains(a.Text, ". ") || strings.HasSuffix(a.Text, ".") {
+			t.Errorf("%s is written as a sentence rather than a phrase:\n  %s", a.ID, a.Text)
+		}
+	}
+}

@@ -484,7 +484,19 @@ const NOTE_SECTIONS = [
   {
     kind: "observed",
     title: "Observed",
-    open: true,
+
+    // Folded, and this is safe because of what is in it.
+    //
+    // Every fact an observation describes is already on the face of the
+    // report: the key exchange line says the hybrid was declined, the
+    // revocation row says nothing was stapled, the issuance row says no CAA
+    // was found, the certificate rows carry the names and the timestamps.
+    // What folds is the reasoning behind them, which is the same on every
+    // report and is what made this block five paragraphs long.
+    //
+    // The count stays in the summary, so folding is not hiding. What holds,
+    // above, carries the affirmative voice that this block used to have to.
+    open: false,
     // Not "findings". The report uses that word for a rule that was broken
     // and says, three lines above this, that there were none — so "5 findings
     // not graded" asked a reader to hold two meanings of one word at once.
