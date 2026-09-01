@@ -72,6 +72,17 @@ type AssuranceFacts struct {
 	ChainComplete bool
 	ChainLength   int
 
+	// NameMatches and CertificateInDate are what "trusted" does not cover,
+	// and without them the chain sentence was true and read as a
+	// reassurance on exactly the reports where identity had failed.
+	//
+	// Measured on 2026-09-01: expired.badssl.com, whose certificate expired
+	// 4159 days ago, and wrong.host.badssl.com, whose certificate is for
+	// another name, both carried "the chain is complete and reaches a root"
+	// under a heading called What holds, above a verdict of insecure.
+	NameMatches       bool
+	CertificateInDate bool
+
 	// RevocationVerified is true only for a stapled response that verified
 	// against the issuer. Nothing here is ever asked of an authority.
 	RevocationVerified bool
@@ -118,9 +129,12 @@ func Assurances(f AssuranceFacts) []Assurance {
 			"outdated preference list cannot steer the connection towards a weaker suite.")
 	}
 
-	if f.ChainTrusted && f.ChainComplete {
+	// Four conditions, because the sentence is read as one claim about
+	// identity and "reaches a root" is only a quarter of it.
+	if f.ChainTrusted && f.ChainComplete && f.NameMatches && f.CertificateInDate {
 		add("chain", fmt.Sprintf(
-			"The chain is complete and reaches a root in this machine's trust store: %s.",
+			"The chain is complete, reaches a root in this machine's trust store, and covers the "+
+				"name that was asked for: %s.",
 			plural(f.ChainLength, "certificate")))
 	}
 

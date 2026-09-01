@@ -242,7 +242,6 @@ func printReport(w io.Writer, r result) {
 		fmt.Fprintf(w, "  Address   %s\n", r.TLS.Address)
 	}
 
-	printAssurances(w, r)
 	printVersions(w, r.TLS)
 	printCiphers(w, r.TLS)
 
@@ -255,6 +254,7 @@ func printReport(w io.Writer, r result) {
 
 	printCertificate(w, r)
 	printFindings(w, r)
+	printAssurances(w, r)
 	printNotes(w, r)
 
 	if r.TLS != nil {
@@ -432,12 +432,19 @@ var noteSections = []struct {
 // needs no network and no page.
 const methodPage = "https://denyfirst.dev/method"
 
-// printAssurances puts what holds above what fell short.
+// printAssurances says what holds, after what fell short.
 //
 // Before this, a report on a well configured server described only rules
 // unbroken and absences observed — the strongest thing it could say was
 // "Nothing here fell short of the rules", which is two negatives. Every line
 // below was measured and was already used to reach the verdict.
+//
+// It sits after the findings and not before them, which is the second half of
+// the same argument. Measured on 2026-09-01: kapitalbank.az is insecure, and
+// with this block first a reader met seven reassuring sentences before the
+// reason for the verdict. The ordering is self-adjusting — where there are no
+// findings this is the first prose on the report, which is exactly where it
+// should be, and where there are findings the reason comes first.
 func printAssurances(w io.Writer, r result) {
 	if len(r.Assurances) == 0 {
 		return

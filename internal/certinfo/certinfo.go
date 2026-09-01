@@ -89,6 +89,25 @@ type Report struct {
 	// would describe one problem twice.
 	Trusted bool `json:"trusted"`
 
+	// HostnameMatches and InDate are the two questions "trusted" does not
+	// answer, exposed because a caller that says something reassuring about
+	// the chain has to know them.
+	//
+	// Trusted here means the chain reaches a root, and for an expired
+	// certificate it is re-asked at a moment the certificate was valid —
+	// deliberately, because Go checks dates before it looks for an issuer and
+	// would otherwise report every expired certificate as untrusted whether
+	// or not anything ever vouched for it. The consequence is that "trusted"
+	// is true for a certificate that expired eleven years ago and for one
+	// issued to a different name, both of which were measured on
+	// 2026-09-01 against badssl.com.
+	//
+	// Both are computed here rather than re-derived by a caller. Matching a
+	// name against a certificate is RFC 9525's rules, and a second
+	// implementation of them is a second thing to get wrong.
+	HostnameMatches bool `json:"hostnameMatches"`
+	InDate          bool `json:"inDate"`
+
 	// VerifyError is the raw verification failure, kept because the reason
 	// matters more than the boolean.
 	VerifyError string `json:"verifyError,omitempty"`
@@ -525,6 +544,9 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 			"The serial number is not a positive integer. RFC 5280 requires one, and a certificate " +
 				"without it is malformed however it was issued.")
 	}
+
+	report.HostnameMatches = hostnameMatches
+	report.InDate = !now.Before(leaf.NotBefore) && !now.After(leaf.NotAfter)
 
 	facts.CommonName = leaf.Subject.CommonName
 	facts.DNSNames = leaf.DNSNames

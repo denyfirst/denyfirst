@@ -512,3 +512,43 @@ func TestAScanThatReachedNothingHoldsNothing(t *testing.T) {
 // collapse turns every run of whitespace into one space, so a comparison is
 // about the words rather than about where the renderer broke the line.
 func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// The reason for the verdict comes before what holds.
+//
+// Measured on 2026-09-01: kapitalbank.az is graded insecure, and with the
+// affirmative block above the findings a reader met seven reassuring
+// sentences — post-quantum accepted, revocation verified, issuance restricted
+// — before the one finding that produced the verdict. That is the mirror
+// image of the defect this block was added to fix, and it arrives by the same
+// route: prose read in the order it is printed.
+//
+// The ordering is self-adjusting. Where nothing fell short there are no
+// findings to print, so what holds is the first prose on the report anyway.
+func TestWhatFellShortIsReadBeforeWhatHolds(t *testing.T) {
+	// A server with something wrong: this one is self-signed and offers CBC.
+	port := testServer(t, serverOpts{})
+	text := report(t, port, noResolver())
+
+	findings := strings.Index(text, "\n  Findings\n")
+	holds := strings.Index(text, "\n  What holds\n")
+	if findings < 0 || holds < 0 {
+		t.Fatalf("the report is missing one of the two blocks: findings=%d holds=%d", findings, holds)
+	}
+	if holds < findings {
+		t.Error("what holds is printed above the findings, so a reader meets the reassurance first")
+	}
+
+	script, err := os.ReadFile("../../internal/web/assets/app.js")
+	if err != nil {
+		t.Fatalf("reading the script: %v", err)
+	}
+	source := string(script)
+	pageFindings := strings.Index(source, "frag.appendChild(findings(")
+	pageHolds := strings.Index(source, "frag.appendChild(assurances(")
+	if pageFindings < 0 || pageHolds < 0 {
+		t.Fatal("the page does not append both blocks")
+	}
+	if pageHolds < pageFindings {
+		t.Error("the page puts what holds above the findings, and the terminal does not")
+	}
+}
