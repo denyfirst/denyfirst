@@ -134,3 +134,85 @@ func TestEveryRunCommandNamesItsRun(t *testing.T) {
 		}
 	}
 }
+
+// A release is bytes anybody can verify. A deploy is the separate claim that
+// those bytes are what answers on port 443, and it is made by a person typing
+// commands into a server a few times a year.
+//
+// Until 2026-09-01 that sequence was written nowhere. The release page said
+// "then deploy" and gave one command, which does not exist on the machine it
+// was written for — so the whole of S1 to S14 ended at the point where its
+// conclusion had to be carried to production by memory.
+//
+// Each entry below is a step whose absence is not visible from the result. A
+// deploy that skipped every one of them still leaves a service answering
+// correctly, which is why they are written down rather than noticed.
+func TestTheDeployProcedureIsWrittenDown(t *testing.T) {
+	body, err := os.ReadFile("../../docs/releasing.md")
+	if err != nil {
+		t.Fatalf("reading docs/releasing.md: %v", err)
+	}
+	page := string(body)
+
+	for _, required := range []struct {
+		text string
+		why  string
+	}{
+		{"--workflow=reproduce.yml --limit 1",
+			"a build that was signed but not reproduced is one a single laptop vouches for"},
+		{"ssh-keygen -Y verify",
+			"the signature is checked on the machine that will run the file, not only on the one that downloaded it"},
+		{"raw.githubusercontent.com/denyfirst/denyfirst/main/.allowed_signers",
+			"the key comes from the repository; a key shipped beside the file it vouches for establishes nothing"},
+		{"install -o root -g root -m 0755",
+			"owner and mode are set as the file is written, so there is no interval with the wrong ownership on the live path"},
+		{"denyfirstd.rollback-",
+			"a rollback carries the version it holds; denyfirstd.bak from 2026-08-18 is what the alternative looks like"},
+		{"getcap /opt/denyfirst/denyfirstd",
+			"the binary must carry no file capability — the unit grants the port to one process instead"},
+		{"AmbientCapabilities",
+			"where the capability actually comes from"},
+		{"MainPID",
+			"the running process is identified through /proc/<pid>/exe: a failed restart leaves the old inode serving while the new file looks correct"},
+		{"noexec",
+			"why the download goes under the deploying user's home rather than /tmp"},
+	} {
+		if !strings.Contains(page, required.text) {
+			t.Errorf("docs/releasing.md no longer covers %q — %s", required.text, required.why)
+		}
+	}
+}
+
+// The service is named by the path it is at.
+//
+// `denyfirstd` is not on PATH on the server, and on 2026-09-01 the one deploy
+// instruction this repository contained was `denyfirstd -version`. It answered
+// `denyfirstd: command not found` the first time anybody followed it.
+//
+// This is the same defect as the release script's own example failing on
+// Windows: a document naming a command nobody had run. Prose mentioning the
+// bare name is how the failure gets explained; a line handing it a flag is an
+// instruction, and an instruction has to work.
+func TestTheServiceIsNamedByThePathItIsAt(t *testing.T) {
+	for _, path := range []string{
+		"../../docs/releasing.md",
+		"../../docs/verify.md",
+		"../../README.md",
+	} {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("reading %s: %v", path, err)
+		}
+
+		for n, line := range strings.Split(string(body), "\n") {
+			command := strings.TrimSpace(line)
+			command = strings.TrimPrefix(command, "sudo ")
+			rest, bare := strings.CutPrefix(command, "denyfirstd")
+			if !bare || !strings.HasPrefix(rest, " -") {
+				continue
+			}
+			t.Errorf("%s:%d invokes the service by a name that is not on PATH there:\n  %s",
+				path, n+1, strings.TrimSpace(line))
+		}
+	}
+}
