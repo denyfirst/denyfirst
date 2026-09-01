@@ -240,11 +240,160 @@ Write the release notes so somebody upgrading knows what moved.
 verdict from one policy version is not comparable with a verdict from another
 — link it rather than restating it.
 
-Then deploy, and confirm the running service is the build you just made:
+The notes are edited with `gh release edit vX.Y.Z --notes-file NOTES.md`, and
+`--notes-file` is read relative to the current directory. On 2026-09-01 it was
+not, the command failed, and the published release kept a draft sentence
+saying it had no signature yet — an actively false statement on a release that
+was signed. Check what the page says after editing it, not that the command
+was typed.
+
+Then deploy, which is the section below.
+
+---
+
+## Deploying
+
+A release is a set of bytes anybody can verify. A deploy is the separate claim
+that those exact bytes are what now answers on port 443, and nothing above
+establishes it.
+
+Until 2026-09-01 this page said *then deploy* and gave one command,
+`denyfirstd -version`. It is not on `PATH` on the machine it was written for,
+so the only instruction that existed failed on the evening it was first
+followed.
+
+### Nothing is deployed that was not reproduced
+
+Publication is not the last gate. `reproduce.yml` is the only step showing
+these bytes come from this source on a machine that is not the maintainer's,
+so a build that was signed but not reproduced is one that a single laptop
+vouches for.
 
 ```sh
-denyfirstd -version
+gh run list --workflow=reproduce.yml --limit 1
 ```
+
+### The signature is checked again, on the machine that will run it
+
+Verifying on the laptop that did the download establishes something about the
+laptop. The bytes that matter are the ones on the server, so the server checks
+them — with the same commands `docs/verify.md` gives a stranger, which is the
+point of publishing them.
+
+```sh
+V=v0.4.0
+base=https://github.com/denyfirst/denyfirst/releases/download/${V}
+
+mkdir -p ~/deploy && cd ~/deploy
+curl -fsSLO "${base}/denyfirstd_${V}_linux_amd64"
+curl -fsSLO "${base}/SHA256SUMS"
+curl -fsSLO "${base}/SHA256SUMS.sig"
+curl -fsSLO https://raw.githubusercontent.com/denyfirst/denyfirst/main/.allowed_signers
+
+ssh-keygen -Y verify \
+  -f .allowed_signers \
+  -I releases@denyfirst.dev \
+  -n file \
+  -s SHA256SUMS.sig \
+  < SHA256SUMS
+
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+The key comes from the repository and not from the release, because a
+signature verifies against whatever key it is handed: a key shipped beside the
+file it vouches for establishes nothing. The fingerprint `ssh-keygen` prints
+is the one in `docs/verify.md`, and it is the same fingerprint whether a
+stranger checks it or this server does.
+
+Nothing here needs a credential for the repository. The production machine
+holds no token, no deploy key and no write access to anything — it fetches
+public files and checks a signature, which is all a deploy requires.
+
+`/tmp` is mounted `noexec` on this server. The download directory is under the
+deploying user's home for that reason, and the binary is never executed from
+where it lands.
+
+### Install
+
+```sh
+/opt/denyfirst/denyfirstd -version
+
+sudo install -o root -g root -m 0755 \
+  ~/deploy/denyfirstd_${V}_linux_amd64 /opt/denyfirst/denyfirstd.new
+sudo cp -a /opt/denyfirst/denyfirstd /opt/denyfirst/denyfirstd.rollback-v0.3.2
+sudo mv /opt/denyfirst/denyfirstd.new /opt/denyfirst/denyfirstd
+sudo systemctl restart denyfirstd
+```
+
+The first line is read, not run for form's sake: the rollback below is named
+for the version it printed.
+
+`install` sets owner and mode as it writes. `cp` followed by `chmod` leaves a
+window in which the file is in place with the wrong ownership, and that window
+is on the live path.
+
+`mv` inside one filesystem is a rename, so the path never exists half-written.
+Copying onto the live path does, and the moment it is half-written is a moment
+the service might restart.
+
+The file is `root:root`; the service runs as `denyfirst`. The account the
+service runs as cannot rewrite the file it executes, which is the entire
+reason the two are different.
+
+The rollback carries the version in its name. A file called `denyfirstd.bak`
+is one nobody can reason about a week later — there was one on this server
+from 2026-08-18, and nothing recorded what it held. Keep one, named.
+
+### The binary carries no capability
+
+Port 443 is reached through the unit:
+
+```
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+```
+
+which grants the capability to this one process as it starts. A file
+capability would grant it to anybody on the machine who runs the file, which
+is a much larger claim than the one that needs making.
+
+```sh
+getcap /opt/denyfirst/denyfirstd
+```
+
+must print nothing. `install` does not carry capabilities across, so this
+holds unless somebody sets one by hand — which is exactly why it is checked
+rather than assumed.
+
+### Confirm the service, not the file
+
+```sh
+/opt/denyfirst/denyfirstd -version
+sudo readlink /proc/$(systemctl show -p MainPID --value denyfirstd)/exe
+curl -s https://denyfirst.dev/healthz
+```
+
+The first runs the file on disk and says what was installed. It does not say
+what is serving: a restart that failed leaves the previous process alive on
+the previous inode, still answering, while the new file sits in place looking
+correct. The second line is what separates them — it must print
+`/opt/denyfirst/denyfirstd`, and must not end in `(deleted)`.
+
+The third is the running process answering over the network, and it is the
+only one of the three that is evidence about what people actually reach.
+
+Every command here names the service by its path. `denyfirstd` alone is not on
+`PATH`.
+
+### Afterwards
+
+```sh
+rm -rf ~/deploy
+```
+
+The downloaded files are public and are not secret. They are removed because a
+stale binary beside a live one is the copy somebody installs by mistake next
+time.
 
 ---
 

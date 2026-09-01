@@ -1863,6 +1863,48 @@ a race inside the toolchain's own shutdown path and cannot be provoked on
 demand. The step fails closed instead, which is the property a test would have
 been asserting.
 
+### S15 — The deploy is a step with a procedure, not the end of one
+
+Everything S1 to S14 establishes is about bytes in a release. A user reaches a
+running process, and the claim that the two are the same thing is made by a
+person typing commands into a server a few times a year.
+
+That sequence was written nowhere until 2026-09-01. `docs/releasing.md` said
+*then deploy* and gave one command — `denyfirstd -version` — which is not on
+`PATH` on the machine it was written for, so the single instruction that
+existed failed on the evening it was first followed. This is the defect S13
+records about the release procedure's entry point, in the one procedure S13
+did not cover.
+
+What the procedure now establishes, in order. The release was reproduced
+before it was installed, because a signature and a public build without a
+reproduction say only that one laptop's output is self-consistent. The
+signature is checked again on the server rather than only on the laptop that
+downloaded it, against a key fetched from the repository rather than from the
+release beside it — a signature verifies against whatever key it is handed.
+The file is installed with owner and mode set as it is written and moved into
+place by a rename, so there is no interval in which the live path holds a file
+that is half-written or owned by the wrong account. The service runs as
+`denyfirst` and the file is `root:root`, so the account that executes it
+cannot rewrite it. The binary carries no file capability: the unit grants
+`CAP_NET_BIND_SERVICE` to one process at start, which is a smaller claim than
+granting it to anybody on the machine who runs the file.
+
+And the running process is identified through `/proc/<pid>/exe` rather than by
+running the file on disk. `-version` reports what was installed; a restart
+that failed leaves the previous process alive on the previous inode, still
+answering, with the new file in place and looking correct. Those two states
+are indistinguishable from the file, which is the reason the check is not the
+obvious one.
+
+The rollback is kept under the version it holds. `denyfirstd.bak`, left on
+this server on 2026-08-18 with nothing recording what was in it, is what the
+alternative looks like a week later.
+
+*Enforced in:* `docs/releasing.md`
+*Guarded by:* `TestTheDeployProcedureIsWrittenDown`,
+`TestTheServiceIsNamedByThePathItIsAt`
+
 ## Known gaps
 
 Listed rather than hidden. An unnamed gap is a surprise; a named one is work.
