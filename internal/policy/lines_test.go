@@ -169,3 +169,61 @@ func TestNoReceiptsAtAll(t *testing.T) {
 		t.Errorf("unexpected sentence for a certificate with no receipts: %s", got)
 	}
 }
+
+// The three answers stay three.
+//
+// A server that declined and a question that could not be asked read
+// differently, and the sentence for the second says why rather than leaving a
+// reader to assume the first.
+func TestThePostQuantumLineKeepsTheThreeAnswersApart(t *testing.T) {
+	accepted := PostQuantumLine(PostQuantumFacts{Measured: true, Offered: true, Group: "X25519MLKEM768"})
+	declined := PostQuantumLine(PostQuantumFacts{Measured: true, Group: "X25519MLKEM768"})
+	unknown := PostQuantumLine(PostQuantumFacts{Reason: "no TLS 1.3 handshake completed"})
+
+	for _, pair := range [][2]string{{accepted, declined}, {accepted, unknown}, {declined, unknown}} {
+		if pair[0] == pair[1] {
+			t.Errorf("two answers produce the same sentence: %q", pair[0])
+		}
+	}
+	if !strings.Contains(accepted, "accepted") {
+		t.Errorf("the accepting case does not say so: %q", accepted)
+	}
+	if !strings.Contains(declined, "declined") {
+		t.Errorf("the declining case does not say so: %q", declined)
+	}
+	if !strings.Contains(unknown, "not measured") || !strings.Contains(unknown, "no TLS 1.3") {
+		t.Errorf("the unmeasured case does not say so, or does not say why: %q", unknown)
+	}
+
+	// The group is named rather than assumed, so the sentence stays true when
+	// the name changes.
+	if !strings.Contains(accepted, "X25519MLKEM768") || !strings.Contains(declined, "X25519MLKEM768") {
+		t.Error("the group is not named in the measured sentences")
+	}
+}
+
+// The note says why somebody would act on it, and stops where the measurement
+// stops.
+func TestThePostQuantumNoteExplainsWithoutGrading(t *testing.T) {
+	declined := DescribePostQuantum(PostQuantumFacts{Measured: true, Group: "X25519MLKEM768"})
+	if len(declined) != 1 {
+		t.Fatalf("expected one note, got %d", len(declined))
+	}
+	note := declined[0]
+
+	for _, want := range []string{
+		"harvest now, decrypt later",
+		"Forward secrecy does not prevent it",
+		"no client fails because of this",
+		"not graded",
+	} {
+		if !strings.Contains(note, want) {
+			t.Errorf("the note does not say %q:\n%s", want, note)
+		}
+	}
+
+	accepted := DescribePostQuantum(PostQuantumFacts{Measured: true, Offered: true, Group: "X25519MLKEM768"})[0]
+	if strings.Contains(accepted, "did not take it") {
+		t.Errorf("the accepting case carries the declining sentence:\n%s", accepted)
+	}
+}

@@ -16,7 +16,7 @@ free to improve without breaking that.
 
 ## `denyfirst-v3` → `denyfirst-v4`
 
-Unreleased. Five rules added and two notes. Every one of them is read off a
+Unreleased. Five rules added and three notes. Every one of them is read off a
 certificate this scan already had, so nothing new is asked of the server: the
 same handshakes, the same bytes, the same load at the other end.
 
@@ -107,6 +107,29 @@ stops being checkable against the document it claims to follow.
 one, with a sentence about shared certificates once it passes twenty. One key
 standing behind a hundred hosts is a fact about the arrangement rather than a
 fault in it, and it is the fact that decides what a stolen key costs.
+
+### One more note, and the only measurement that costs a handshake
+
+Whether the server will negotiate **X25519MLKEM768**, a hybrid of X25519 and
+ML-KEM-768, is now reported on a `Key exchange` line beside the cipher suites.
+
+It is the reason to care about a key exchange at all in 2026: traffic recorded
+today can be kept and decrypted by whoever first builds a quantum computer
+large enough, which is why the attack is called *harvest now, decrypt later*.
+Forward secrecy does not prevent it — that protects against a private key
+stolen afterwards, not against the exchange itself being broken.
+
+Reported and not graded, because no document this rule set follows requires a
+hybrid yet, and a verdict invented here would be this project grading against
+its own opinion.
+
+Three answers, not two: accepted, declined, and not established. The hybrid is
+defined for TLS 1.3 alone, so a server without it is never asked and the
+report says so rather than reading the silence as a refusal.
+
+**It costs the scanned server one extra handshake, and only where the question
+exists.** Measured on a synthetic server: a full scan of a modern host went
+from twelve connections to thirteen, and a TLS 1.2 server stayed at twelve.
 
 ### What did not change
 

@@ -225,7 +225,7 @@ function versions(tls) {
   return frag;
 }
 
-function ciphers(tls) {
+function ciphers(tls, report) {
   if (!tls || !Array.isArray(tls.versions)) return document.createDocumentFragment();
 
   const offered = tls.versions.filter(v => v.supported && Array.isArray(v.ciphers) && v.ciphers.length);
@@ -281,6 +281,13 @@ function ciphers(tls) {
     frag.appendChild(el("p", "group-label", tls.serverPreference
       ? "The server imposes its own cipher order."
       : "The server follows the client's order, which lets an outdated client choose a weaker suite."));
+  }
+
+  // A property of the transport rather than of the certificate, so it sits
+  // with the suites. The sentence is built in internal/policy and printed
+  // here unchanged, for the reason given above revocationLine. R16.
+  if (report && report.keyExchangeLine) {
+    frag.appendChild(el("p", "group-label", "Key exchange: " + report.keyExchangeLine));
   }
 
   return frag;
@@ -442,7 +449,7 @@ function render(data) {
   frag.appendChild(summary(data));
   frag.appendChild(findings(data.findings, verdict));
   frag.appendChild(versions(data.tls));
-  frag.appendChild(ciphers(data.tls));
+  frag.appendChild(ciphers(data.tls, data));
   frag.appendChild(certificate(data.certificate, data.tls, data.issuance, data.stapling, data));
   frag.appendChild(notes(data.notes, verdict));
   show(frag);

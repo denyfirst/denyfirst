@@ -954,7 +954,8 @@ are not the same finding either.
 `TestTheLimitsOfThisClientAreStatedWhenNothingWasAccepted`,
 `TestTheClassesTheScriptAddsAreStyled`, `TestClientRefusalIsNotServerRefusal`,
 `TestAVersionThatCouldNotBeMeasuredIsNotDrawnAsRefused`,
-`TestASerialTooSmallToBeRandom`
+`TestASerialTooSmallToBeRandom`,
+`TestThePostQuantumQuestionHasThreeAnswers`
 
 ### R13 — An exit status is a verdict, and `ungraded` is not zero
 

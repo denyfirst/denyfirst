@@ -140,8 +140,12 @@ type Report struct {
 	// typically because fewer than two suites were available to compare.
 	PreferenceKnown bool `json:"preferenceKnown"`
 
-	ALPN        string `json:"alpn,omitempty"`
-	OCSPStapled bool   `json:"ocspStapled"`
+	ALPN string `json:"alpn,omitempty"`
+	// PostQuantum is the answer to the one extra handshake this probe makes
+	// beyond version and suite enumeration.
+	PostQuantum PostQuantum `json:"postQuantum"`
+
+	OCSPStapled bool `json:"ocspStapled"`
 
 	// OCSPResponse is the stapled certificate status response, as sent.
 	//
@@ -256,6 +260,34 @@ type VersionResult struct {
 
 // AlternateChain is a certificate chain served at one protocol version that
 // differs from the chain the report describes.
+// PostQuantum is what one extra handshake established about the key exchange.
+//
+// The question is whether the server will negotiate X25519MLKEM768, a hybrid
+// of X25519 and ML-KEM-768. It matters for a reason none of the other
+// measurements cover: traffic recorded today can be kept and decrypted by
+// whoever first builds a quantum computer large enough, and forward secrecy
+// does not help — that protects against a key stolen later, not against the
+// key exchange itself being broken.
+//
+// Three states, not two. A server that says no and a question that could not
+// be asked are different answers, and reporting the second as the first would
+// be R12 in a new place.
+type PostQuantum struct {
+	// Measured is false when the question could not be put or answered.
+	Measured bool `json:"measured"`
+
+	// Offered is true when the server completed the handshake with the
+	// hybrid group as the only one on the table.
+	Offered bool `json:"offered"`
+
+	// Group names what was offered, so the report is still true when the
+	// name of the group changes.
+	Group string `json:"group,omitempty"`
+
+	// Reason says why nothing was measured. Empty when something was.
+	Reason string `json:"reason,omitempty"`
+}
+
 type AlternateChain struct {
 	// Version is the human-readable protocol version it was served at.
 	Version string
@@ -295,7 +327,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 		go func() {
 			defer wg.Done()
 
-			state, addr, err := p.handshake(ctx, host, port, version, nil)
+			state, addr, err := p.handshake(ctx, host, port, version, nil, nil)
 			result := VersionResult{Version: version, Name: versionName(version)}
 
 			if err != nil {
@@ -390,6 +422,22 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 		report.Notes = append(report.Notes, fmt.Sprintf(
 			"%s is served a different certificate from the one described above. Both were graded and the "+
 				"worse of the two set the verdict; the details shown are the newest handshake's.", alt.Version))
+	}
+
+	// One extra handshake, and only where the question exists.
+	//
+	// X25519MLKEM768 is defined for TLS 1.3 alone, so a server that does not
+	// speak it is not asked and pays nothing. Measured on a synthetic server:
+	// a full scan of a modern host costs twelve connections and this makes it
+	// thirteen, which is the whole price of the answer.
+	if idx := slices.IndexFunc(results, func(v VersionResult) bool {
+		return v.Supported && v.Version == tls.VersionTLS13
+	}); idx >= 0 {
+		report.PostQuantum = p.postQuantum(ctx, host, port)
+	} else {
+		report.PostQuantum = PostQuantum{
+			Reason: "no TLS 1.3 handshake completed, and the hybrid group is defined for TLS 1.3 alone",
+		}
 	}
 
 	// Preference detection needs a version where we control the ordering.
@@ -617,7 +665,7 @@ func (p *Prober) enumerateCiphers(ctx context.Context, host, port string, versio
 			return found, false
 		}
 
-		state, _, err := p.handshake(ctx, host, port, version, remaining)
+		state, _, err := p.handshake(ctx, host, port, version, remaining, nil)
 		if err != nil {
 			return found, isNoSharedSuite(err)
 		}
@@ -672,11 +720,11 @@ func (p *Prober) detectServerPreference(ctx context.Context, host, port string, 
 	reversed := slices.Clone(forward)
 	slices.Reverse(reversed)
 
-	first, _, err := p.handshake(ctx, host, port, v.Version, forward)
+	first, _, err := p.handshake(ctx, host, port, v.Version, forward, nil)
 	if err != nil {
 		return false, false
 	}
-	second, _, err := p.handshake(ctx, host, port, v.Version, reversed)
+	second, _, err := p.handshake(ctx, host, port, v.Version, reversed, nil)
 	if err != nil {
 		return false, false
 	}
@@ -684,9 +732,42 @@ func (p *Prober) detectServerPreference(ctx context.Context, host, port string, 
 	return true, first.CipherSuite == second.CipherSuite
 }
 
+// postQuantum offers the hybrid group and nothing else, once.
+//
+// The classification is its own rather than classifyHandshakeError's, because
+// the alerts mean something different here. That function answers "did the
+// server refuse this version"; this one asks "did the server refuse this
+// group", and a server with no group in common sends handshake_failure or
+// illegal_parameter, while one that wants a different group sends a
+// HelloRetryRequest naming a group this client did not offer. All three are
+// the server answering. Anything else is the question going unanswered, and
+// the two are not reported alike.
+func (p *Prober) postQuantum(ctx context.Context, host, port string) PostQuantum {
+	const group = "X25519MLKEM768"
+
+	if _, _, err := p.handshake(ctx, host, port, tls.VersionTLS13, nil,
+		[]tls.CurveID{tls.X25519MLKEM768}); err == nil {
+		return PostQuantum{Measured: true, Offered: true, Group: group}
+	} else if declinedGroup(err) {
+		return PostQuantum{Measured: true, Group: group}
+	} else {
+		text, _ := classifyHandshakeError(err, tls.VersionTLS13)
+		return PostQuantum{Group: group, Reason: text}
+	}
+}
+
+// declinedGroup reports whether the server answered and said no.
+func declinedGroup(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "handshake failure") ||
+		strings.Contains(msg, "illegal parameter") ||
+		strings.Contains(msg, "insufficient security") ||
+		strings.Contains(msg, "server selected unsupported group")
+}
+
 // handshake performs one handshake at a fixed version with an optional suite
 // list, returning the connection state and the address reached.
-func (p *Prober) handshake(ctx context.Context, host, port string, version uint16, suites []uint16) (*tls.ConnectionState, string, error) {
+func (p *Prober) handshake(ctx context.Context, host, port string, version uint16, suites []uint16, groups []tls.CurveID) (*tls.ConnectionState, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.handshakeTimeout())
 	defer cancel()
 
@@ -722,6 +803,12 @@ func (p *Prober) handshake(ctx context.Context, host, port string, version uint1
 	}
 	if len(suites) > 0 {
 		cfg.CipherSuites = suites
+	}
+	if len(groups) > 0 {
+		// Offering one group and nothing else is how a question gets a plain
+		// answer: the server either takes it or says no, with no third
+		// outcome to interpret.
+		cfg.CurvePreferences = groups
 	}
 
 	tlsConn := tls.Client(conn, cfg)
