@@ -201,6 +201,12 @@ type Certificate struct {
 	Issuer       string `json:"issuer"`
 	SerialNumber string `json:"serialNumber"`
 
+	// Validation is the CA/Browser Forum policy this certificate names —
+	// domain, organisation, individual or extended validation — and is empty
+	// where it names none. See validation.go for why it is reported and not
+	// graded.
+	Validation string `json:"validation,omitempty"`
+
 	NotBefore time.Time `json:"notBefore"`
 	NotAfter  time.Time `json:"notAfter"`
 
@@ -862,6 +868,7 @@ func describe(c *x509.Certificate, trim *trimmer) Certificate {
 		Subject:            trim.text(distinguishedName(c.Subject)),
 		Issuer:             trim.text(distinguishedName(c.Issuer)),
 		SerialNumber:       trim.text(c.SerialNumber.String()),
+		Validation:         validationLevel(c),
 		NotBefore:          c.NotBefore,
 		NotAfter:           c.NotAfter,
 		DNSNames:           trim.list(c.DNSNames, maxListEntries),
