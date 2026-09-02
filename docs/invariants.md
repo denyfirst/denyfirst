@@ -80,10 +80,29 @@ and adding one would make it an open proxy into whatever network it runs in.
 Dialling arbitrary ports on arbitrary hosts makes this a port scanner
 operating from our address, and the scanned network's logs will name us.
 
-*Enforced in:* `internal/scan`, in `Scanner.Scan`, unless `AllowAnyPort`
+Eight ports, all implicit-TLS: 443, 8443, 465, 636, 990, 993, 995 and 5061.
+STARTTLS ports are deliberately absent — the probe speaks TLS from the first
+byte, so 25 or 587 would fail in a way that reads as a fault of the server.
+
+**Two locks, on different doors.** `Scanner.Scan` refuses the port for every
+caller, which is why the check is there and not in the HTTP handler; and the
+list is handed down to the dialer, so a prober reached without passing `Scan`
+still cannot open the connection. The second was added on 2026-09-02 during an
+audit: the check was correct and singular, and a guard in one place is a guard
+somebody walks around by adding an entry point.
+
+This is the invariant a description of the service has to be measured against.
+The letter written to the hosting provider on 2026-09-01 said *port 443 and no
+other*, which was never what the code did — see
+`claude/denyfirst-accuracy-audit-2026-09-02.md`. A statement about this
+project is worth what the code says, and the code is here.
+
+*Enforced in:* `internal/scan`, in `Scanner.Scan`, unless `AllowAnyPort`;
+`internal/scan.Scanner.prober`, passed to `internal/safedial.Dialer`
 *Lifted by:* the command line only
 *Guarded by:* `TestScannerEnforcesPortsByDefault`, `TestCheckPort`,
-`TestAllowedPortsAreImplicitTLS`
+`TestAllowedPortsAreImplicitTLS`, `TestThePortAllowListReachesTheDialer`,
+`TestTheAllowListReachesTheDialer`
 
 ### N4 — Every network operation is bounded
 

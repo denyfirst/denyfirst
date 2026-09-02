@@ -83,6 +83,25 @@ func FuzzGradeCipher(f *testing.F) {
 	})
 }
 
+// composed reports whether a run of spaces in a sentence was put there by the
+// template rather than carried in by a value.
+//
+// The distinction matters and the fuzzer taught it. A missing value leaving a
+// hole — "  expires in 10 days" — is this package's defect and was fixed
+// three times over. A value that itself contains two spaces is not: an
+// organisation really can be called "Foo  Bar", and tidying the certificate's
+// own text would be reporting something the server did not send. So the
+// assertion applies where the inputs are clean, and says nothing where they
+// are not.
+func composed(values ...string) bool {
+	for _, v := range values {
+		if strings.Contains(v, "  ") {
+			return false
+		}
+	}
+	return true
+}
+
 // FuzzGradeLeaf drives the certificate rules with arbitrary dates and
 // algorithm names. Certificates in the wild carry dates centuries apart, and
 // the arithmetic here must not fall over on them.
@@ -92,6 +111,10 @@ func FuzzGradeLeaf(f *testing.F) {
 	f.Add(int64(0), int64(730), "ECDSA", 256, "ECDSA-SHA256", true, true, false, false, false)
 	f.Add(int64(-100000), int64(100000), "Ed25519", 0, "Ed25519", true, false, true, true, true)
 	f.Add(int64(0), int64(0), "", 0, "", false, false, false, false, false)
+	// The same hole, on this face: an algorithm name that is only whitespace,
+	// and one with a trailing space.
+	f.Add(int64(0), int64(90), " ", 256, "SHA256-RSA", true, false, true, true, true)
+	f.Add(int64(0), int64(90), "0 ", 256, "SHA256-RSA", true, false, true, true, true)
 
 	now := time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC)
 	valid := []Verdict{Strong, Weak, Insecure}
@@ -152,6 +175,11 @@ func FuzzGradeLeaf(f *testing.F) {
 			if finding.Rationale == "" {
 				t.Fatalf("rule %s carries no rationale", finding.RuleID)
 			}
+			// Held to the same standard as the chain grader: a sentence with
+			// a gap in it is a sentence something was supposed to fill.
+			if composed(keyAlg, sigAlg) && strings.Contains(finding.Rationale, "  ") {
+				t.Fatalf("rule %s produced a sentence with a gap in it: %q", finding.RuleID, finding.Rationale)
+			}
 		}
 	})
 }
@@ -182,6 +210,83 @@ func FuzzMaxValidityDays(f *testing.F) {
 		if later > got {
 			t.Fatalf("MaxValidityDays loosened over time: %s allows %d, ten years later allows %d",
 				issued, got, later)
+		}
+	})
+}
+
+// FuzzGradeIssuer drives the chain rules the same way, and adds the question
+// the leaf target does not have to ask: the subject.
+//
+// GradeIssuer repeats the subject back into every sentence it writes, and a
+// subject is bytes the scanned server chose. certinfo sanitises the value
+// before handing it over — this target is about what happens here whatever
+// arrives: no panic, a verdict from the set, a finding for every verdict that
+// is not strong, and a sentence that still reads as one.
+func FuzzGradeIssuer(f *testing.F) {
+	f.Add(int64(-365), int64(2920), "CN=Example Issuing CA", "RSA", 4096, "SHA256-RSA", false)
+	f.Add(int64(-365), int64(-1), "CN=COMODO SSL CA,O=COMODO CA Limited,C=GB", "RSA", 2048, "SHA1-RSA", false)
+	f.Add(int64(-3650), int64(3650), "", "RSA", 1024, "MD5-RSA", true)
+	f.Add(int64(0), int64(10), "CN=\x1b[2K", "ECDSA", 224, "0", false)
+	f.Add(int64(0), int64(0), "CN=…", "", 0, "", true)
+	// The three shapes of nothing the fuzzer found on 2026-09-02: a subject
+	// that is only a space, an algorithm name with a trailing space, and one
+	// that is only a space. Each produced a sentence with a hole in it.
+	f.Add(int64(-87), int64(10), " ", "0", 224, "0", false)
+	f.Add(int64(-87), int64(10), "CN=x", "0 ", 224, "0", false)
+	f.Add(int64(-87), int64(10), "CN=x", " ", 224, "0", false)
+
+	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
+	valid := []Verdict{Strong, Weak, Insecure}
+
+	f.Fuzz(func(t *testing.T,
+		startDays, endDays int64,
+		subject, keyAlg string, keyBits int, sigAlg string, broken bool,
+	) {
+		const limit = 36500 // a century, for the reason the leaf target gives
+		if startDays > limit || startDays < -limit || endDays > limit || endDays < -limit {
+			t.Skip()
+		}
+
+		facts := IssuerFacts{
+			Subject:                subject,
+			NotBefore:              now.AddDate(0, 0, int(startDays)),
+			NotAfter:               now.AddDate(0, 0, int(endDays)),
+			KeyAlgorithm:           keyAlg,
+			KeyBits:                keyBits,
+			SignatureAlgorithm:     sigAlg,
+			KeyFromBrokenGenerator: broken,
+		}
+
+		got := GradeIssuer(facts, now)
+
+		if !slices.Contains(valid, got.Verdict) {
+			t.Fatalf("GradeIssuer returned verdict %q, not one of %v", got.Verdict, valid)
+		}
+		if got.Verdict != Strong && len(got.Findings) == 0 {
+			t.Fatalf("GradeIssuer returned %q with no finding to explain it", got.Verdict)
+		}
+
+		// An expired issuer must never be graded strong, whatever else is
+		// true of it: a chain is only as valid as every certificate in it.
+		if facts.NotAfter.Before(now) && got.Verdict == Strong {
+			t.Fatalf("an issuer that expired on %s was graded strong", facts.NotAfter)
+		}
+
+		for _, finding := range got.Findings {
+			if len(finding.References) == 0 {
+				t.Fatalf("rule %s carries no reference", finding.RuleID)
+			}
+			if finding.Rationale == "" {
+				t.Fatalf("rule %s carries no rationale", finding.RuleID)
+			}
+			if !strings.HasPrefix(finding.RuleID, "chain.") {
+				t.Fatalf("rule %s came out of the chain grader without a chain. identifier", finding.RuleID)
+			}
+			// The subject is interpolated. Whatever it held, the sentence
+			// must not end up with a hole where a name belongs.
+			if composed(subject, keyAlg, sigAlg) && strings.Contains(finding.Rationale, "  ") {
+				t.Fatalf("rule %s produced a sentence with a gap in it: %q", finding.RuleID, finding.Rationale)
+			}
 		}
 	})
 }

@@ -349,7 +349,9 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 		// the absence of a finding here is a decision and not an omission.
 
 	default:
-		named := f.KeyAlgorithm
+		// See the note in chain.go: an algorithm name of only whitespace is
+		// no name, and testing for "" alone left "  key" in a sentence.
+		named := strings.TrimSpace(f.KeyAlgorithm)
 		if named == "" {
 			named = "of an unnamed type"
 		} else {
@@ -425,7 +427,7 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 	if len(f.UnhandledCriticalExtensions) > 0 {
 		add("cert.critical-extension-unrecognised", Weak,
 			"A critical extension this checker does not recognise",
-			"The certificate marks "+named(f.UnhandledCriticalExtensions)+" critical, and RFC 5280 "+
+			"The certificate marks "+listed(f.UnhandledCriticalExtensions)+" critical, and RFC 5280 "+
 				"requires a client that does not recognise a critical extension to reject the "+
 				"certificate. What this scan cannot tell you is whether the clients you care about "+
 				"recognise it; what it can tell you is that this one does not.",
@@ -458,7 +460,7 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 			"A wildcard name that no client will match",
 			fmt.Sprintf("%s. A wildcard has to be the entire leftmost label — `*.example.com` and "+
 				"nothing else — so a client following RFC 9525 matches no host against these. The "+
-				"certificate covers less than it appears to.", named(bad)),
+				"certificate covers less than it appears to.", listed(bad)),
 			rfc9525, cabBR)
 	}
 
@@ -473,7 +475,7 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 				"extension. Clients have matched names only from that extension since RFC 2818 was "+
 				"replaced, so this name is matched by nothing, and the CA/Browser Forum requires a "+
 				"common name to repeat a value from the extension rather than add one.",
-				named([]string{f.CommonName})),
+				listed([]string{f.CommonName})),
 			rfc9525, cabBR)
 	}
 
@@ -588,7 +590,7 @@ func covers(names []string, want string) bool {
 // instruction, so a name can erase the verdict printed above it. Quoting
 // renders it as \x1b and the terminal prints four characters. certinfo makes
 // the same argument for the subject, one round earlier.
-func named(values []string) string {
+func listed(values []string) string {
 	shown := values
 	if len(shown) > maxNamesInAFinding {
 		shown = shown[:maxNamesInAFinding]
