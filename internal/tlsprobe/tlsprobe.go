@@ -85,6 +85,20 @@ type Prober struct {
 	// TotalTimeout bounds the whole probe. Zero means thirty seconds. A
 	// tighter deadline on the caller's context takes precedence.
 	TotalTimeout time.Duration
+
+	// AllowedPorts, when non-empty, is passed to the dialer so that the
+	// innermost layer refuses a port as well.
+	//
+	// The scanner already checks the port for every caller, and that check is
+	// the one that holds. This is the second lock on the same door: a guard
+	// in one place is a guard somebody can walk around by adding an entry
+	// point, and the whole argument for this service being safe to run in
+	// public rests on it never being a way to reach an arbitrary port on
+	// somebody else's machine.
+	//
+	// Empty here means the dialer imposes nothing, which is what a test
+	// wants. Production sets it; internal/scan holds the list.
+	AllowedPorts []string
 }
 
 // Report is the outcome of probing one host.
@@ -883,6 +897,7 @@ func (p *Prober) dial() DialFunc {
 	d := &safedial.Dialer{
 		Timeout:      p.handshakeTimeout(),
 		TotalTimeout: p.totalTimeout(),
+		AllowedPorts: p.AllowedPorts,
 	}
 	return d.DialContext
 }

@@ -128,3 +128,38 @@ func TestTheAddressesReachedAreRecordedOnceEach(t *testing.T) {
 		}
 	}
 }
+
+// The allow list the prober is given reaches the dialer it builds.
+//
+// internal/scan hands the list down so that the refusal sits at the dialer as
+// well as at the entry point. That is only true if the prober passes it on,
+// and a field set on a struct nobody reads is the quietest kind of dead
+// safeguard.
+//
+// Hermetic: safedial refuses a port before it resolves anything, so this test
+// touches no network and no name server.
+func TestTheAllowListReachesTheDialer(t *testing.T) {
+	prober := &Prober{
+		AllowedPorts:     []string{"443"},
+		HandshakeTimeout: time.Second,
+		TotalTimeout:     5 * time.Second,
+	}
+
+	report, err := prober.Probe(context.Background(), "example.test", "22")
+	if err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+
+	if report.Address != "" {
+		t.Fatalf("a connection was made to %s on a port the list does not carry", report.Address)
+	}
+	for _, v := range report.Versions {
+		if v.Supported {
+			t.Errorf("%s was reported as supported on a refused port", v.Name)
+		}
+		if !v.Blocked {
+			t.Errorf("%s was not marked blocked, so the refusal reads as a fault of the server "+
+				"rather than as this service declining to dial", v.Name)
+		}
+	}
+}

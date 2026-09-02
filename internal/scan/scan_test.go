@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -486,6 +487,44 @@ func TestAFindingAboutAnIssuerReachesTheFindings(t *testing.T) {
 	for _, want := range []string{"chain.signature-sha1", "chain.expiring-soon"} {
 		if !seen[want] {
 			t.Errorf("%s was graded and does not appear among the findings a caller reads", want)
+		}
+	}
+}
+
+// The port allow list reaches the dialer as well as the handler.
+//
+// The check in Scan is the one that holds, and it holds for every caller —
+// that is why it is there rather than in the HTTP handler. This is the second
+// lock on the same door: the prober's dialer refuses the port too, so a future
+// entry point that reaches a prober without passing Scan still cannot open a
+// connection to an arbitrary port on somebody else's machine.
+//
+// The whole argument for running this service in public rests on that: it is
+// a TLS checker, not a scanner for hire, and the logs of a scanned network
+// name us rather than whoever asked.
+func TestThePortAllowListReachesTheDialer(t *testing.T) {
+	s := &Scanner{}
+	if _, err := s.Scan(context.Background(), "example.test:22"); err == nil {
+		t.Fatal("the scanner dialled a port that is not on the list")
+	}
+
+	// And the prober this scanner actually builds carries the list, so the
+	// refusal does not depend on Scan having been the way in. Read from the
+	// scanner rather than constructed here: a test that builds its own prober
+	// proves only that a prober can hold a list.
+	built := (&Scanner{}).prober()
+	if !slices.Equal(built.AllowedPorts, AllowedPorts) {
+		t.Fatalf("the prober the scanner builds carries %v, not the allow list %v",
+			built.AllowedPorts, AllowedPorts)
+	}
+	for _, port := range AllowedPorts {
+		if err := CheckPort(port); err != nil {
+			t.Errorf("port %s is on the list and CheckPort refuses it: %v", port, err)
+		}
+	}
+	for _, port := range []string{"22", "80", "3389", "25", "587", "0", "65536"} {
+		if err := CheckPort(port); err == nil {
+			t.Errorf("port %s is not on the list and CheckPort allows it", port)
 		}
 	}
 }
