@@ -47,9 +47,17 @@ it was missing. It is listed because a deny list is worth exactly its
 completeness, and "not reachable on the kernel we happen to run" is a property
 of the kernel rather than of this code.
 
-The hostname is resolved once and the resolved literal is dialled, so a name
-that answers differently on a second lookup cannot redirect the connection
-after it was checked.
+The hostname is resolved once **per connection**, and the resolved literal is
+dialled, so a name that answers differently on a second lookup cannot redirect
+the connection after it was checked.
+
+Per connection, not per scan. That distinction was left implicit here and on
+the privacy page — both said "resolved once", which reads as a claim about the
+whole scan and is not one. A scan opens up to about fifty connections and
+resolves the name for each, which is why a rotating answer set can hand them to
+different machines; R3 is where that is reported. The rebinding property is
+unaffected and is what this paragraph is about: within one connection, the
+address that was checked is the address that is dialled.
 
 This is a deny list, which is the shape this document argues against. The
 reason is stated rather than hidden: the standard library has no predicate for

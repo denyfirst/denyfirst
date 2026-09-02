@@ -203,7 +203,7 @@
       <li>No administrative path is probed, because no request of any kind is made.</li>
       <li>No malformed packets are constructed.</li>
       <li>Only ports that speak TLS from the first byte: 443, 8443, 465, 636, 990, 993, 995 and 5061. This cannot be used as a port scanner.</li>
-      <li>No private or internal addresses. A hostname is resolved once and the address is checked before anything connects to it.</li>
+      <li>No private or internal addresses. Every connection resolves the name, checks the address it was given, and then connects to that address rather than to the name — so a name that answers differently a moment later cannot redirect a connection that was already checked. A scan opens many connections, so the resolver is asked many times rather than once.</li>
     </ul>
 
     <p>

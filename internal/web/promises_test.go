@@ -214,3 +214,48 @@ func gradesRevocation() string {
 	}
 	return string(body)
 }
+
+// The pages do not say a scan resolves the name once.
+//
+// It resolves it once per connection, and a scan opens up to about fifty. The
+// privacy page and docs/invariants.md both said "resolved once", meaning the
+// rebinding property — the address that was checked is the address dialled —
+// and reading plainly as a claim about the whole scan. That claim is false,
+// and since 2026-09-02 a report contradicts it in so many words: *each
+// connection resolved it again*.
+//
+// A page that contradicts the report it explains is worse than a page that
+// says less, and the privacy page is the last place to be loose about what a
+// resolver is told.
+func TestThePagesDoNotSayANameIsResolvedOnce(t *testing.T) {
+	body, err := assets.ReadFile("assets/privacy.html")
+	if err != nil {
+		t.Fatalf("reading the privacy page: %v", err)
+	}
+	text := strings.ToLower(string(body))
+
+	for _, wrong := range []string{
+		"resolved once",
+		"resolves the name once",
+		"one lookup",
+		"a single lookup",
+	} {
+		if strings.Contains(text, wrong) {
+			t.Errorf("the privacy page says %q; a scan resolves the name once per connection "+
+				"and opens many", wrong)
+		}
+	}
+
+	// And it says the true thing, which a check for absence alone would let
+	// somebody satisfy by deleting the sentence.
+	for _, required := range []string{
+		"every connection resolves the name",
+		"connects to that address rather than to the name",
+		"the resolver is asked many times",
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("the privacy page no longer says %q, so it explains neither what protects a "+
+				"connection nor what the resolver is told", required)
+		}
+	}
+}
