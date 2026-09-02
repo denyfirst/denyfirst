@@ -71,6 +71,19 @@ type leafOpts struct {
 	policies []x509.OID
 }
 
+// constraintOpts are the limits an intermediate carries, for the cases about
+// what an authority is not allowed to do.
+type constraintOpts struct {
+	permittedDNS []string
+	excludedDNS  []string
+	permittedIP  []string
+
+	// pathLen is stated when statePathLen is set, so that zero — which is the
+	// interesting value — can be told from absent.
+	pathLen      int
+	statePathLen bool
+}
+
 func newLeaf(t *testing.T, root issuer, o leafOpts) *x509.Certificate {
 	t.Helper()
 

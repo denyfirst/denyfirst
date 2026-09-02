@@ -1166,7 +1166,28 @@ grades `weak`. The issuer's fault is deliberately one Go's verifier tolerates
 — a SHA-1 issuer would break the chain and put the leaf back at `insecure`,
 which is the blind spot again.
 
-*Enforced in:* `internal/policy/chain.go`, `internal/certinfo.worstAcross`
+**What an issuer is not allowed to do is reported, and only where it says.**
+Name constraints bound which names an authority may issue for; a path length
+bounds how many authorities it may create beneath itself. Both matter for one
+reason: an unconstrained intermediate whose key is stolen issues certificates
+for any name on the internet, and a constrained one issues for a handful of
+domains and nothing else.
+
+Only the positive case is reported. An issuer with no constraints produces no
+sentence, and that is not the kind of silence the rest of this document closes.
+The silences that mattered — one hop, one address, one root store — changed
+what a claim covered. This one does not: an unconstrained issuer is the
+ordinary state of nearly every certificate on the internet, and saying so on
+every report would be true, add nothing, and teach a reader to skip the block
+it sits in. That is how the old *What this did not measure* heading stopped
+being read. It is also, for once, a report with something good to say.
+
+A root's constraints are skipped for the same reason its signature is not
+graded: the root a client uses is the copy in its own store, not the one the
+server sent, and the two need not carry the same extensions.
+
+*Enforced in:* `internal/policy/chain.go`, `internal/certinfo.worstAcross`,
+`internal/certinfo.issuerConstraints`
 *Guarded by:* `TestASoundIssuerRaisesNothing`, `TestWhatAnIssuerIsGradedOn`,
 `TestBothGradersFireOnTheSameCryptography`,
 `TestAnIssuerIsNotGradedOnWhatItIsNot`, `TestAWeakIssuerReachesTheVerdict`,
@@ -1174,7 +1195,10 @@ which is the blind spot again.
 `TestAnIssuerSubjectCannotRewriteTheReport`,
 `TestTheVerdictIsTheWorstAcrossTheChain`,
 `TestAFindingAboutAnIssuerReachesTheFindings`,
-`TestASoundLeafTakesItsIssuersVerdict`, `TestTheTestRootIsInTheStore`
+`TestASoundLeafTakesItsIssuersVerdict`, `TestTheTestRootIsInTheStore`,
+`TestAConstrainedIssuerIsDescribed`, `TestAnUnconstrainedIssuerSaysNothing`,
+`TestARootsConstraintsAreNotReported`,
+`TestAConstraintCannotRewriteTheReport`
 
 ### R14 — A chain reachable at any version is a chain reachable
 

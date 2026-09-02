@@ -694,6 +694,13 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 		issuer := policy.GradeIssuer(issuerFacts, now)
 
 		report.IssuerGrades = append(report.IssuerGrades, issuer)
+
+		// And what it is not allowed to do, where it says. Reported rather
+		// than graded, and only where there is something to report — see
+		// constraints.go for why the ordinary unconstrained case is silent.
+		if note := issuerConstraints(c, report.Chain[i].Subject, &trim); note != "" {
+			report.observe(note)
+		}
 	}
 
 	// One assignment, from every grade this report holds.
