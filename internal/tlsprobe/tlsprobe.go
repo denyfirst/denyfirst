@@ -464,6 +464,22 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 			"Cipher preference could not be determined: it requires a pre-1.3 version offering at least two suites.")
 	}
 
+	// What answered, before anything about what it answered.
+	//
+	// Every measurement above describes the endpoint reached at report.Address
+	// and nothing further along the path. Where a content delivery network or
+	// a reverse proxy terminates TLS, that is the machine measured, and the
+	// link from it to the server behind it is invisible from here — which is
+	// exactly where a hybrid post-quantum group accepted at the edge stops
+	// meaning what a reader takes it to mean.
+	//
+	// Raised only when something answered. On a report where nothing did,
+	// "everything here was measured at one hop" describes an empty set and
+	// would be a sentence about nothing.
+	if report.Address != "" {
+		report.standing(policy.LimitFirstHop)
+	}
+
 	// The two notes below describe different gaps and both belong in a
 	// report. The first bounds what was offered at all; the second explains
 	// why one version shows a single suite. Dropping either leaves the reader

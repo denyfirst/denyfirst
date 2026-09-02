@@ -444,7 +444,7 @@ var noteSections = []struct {
 }
 
 // The third kind is not a section. A standing limit is the same on every
-// report, so printing all four on every report is how they stop being read —
+// report, so printing them all on every report is how they stop being read —
 // and under a heading beside a host's own shortcomings they read as though
 // they were some. They are named here and printed in full by -limits, which
 // needs no network and no page.

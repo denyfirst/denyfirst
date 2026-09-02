@@ -8,7 +8,7 @@ package policy
 // heading as everything else a report could not settle, it made each scan
 // look as though it had failed at something.
 //
-// They are declared here rather than at the four places that mention them so
+// They are declared here rather than at the places that mention them so
 // that the page explaining them and the reports referring to them cannot say
 // different things. That is R16's argument applied to a third renderer: one
 // set of facts, however many faces read it.
@@ -32,10 +32,25 @@ type StandingLimit struct {
 // sentence that is not one of these.
 func (l StandingLimit) Note() Note { return Note{Kind: KindStanding, Text: l.Text} }
 
-// The four. Adding one means adding it here and nowhere else; the page picks
+// The set. Adding one means adding it here and nowhere else; the page picks
 // it up, and a test fails if a report carries a standing sentence this list
 // does not contain.
+//
+// Nothing here names how many there are. The count is read from the list at
+// render time on both faces, because a sentence saying "four" is a sentence
+// that goes stale the day a fifth is written — the same defect as a change
+// log section that still says "Unreleased" five releases after it shipped.
 var (
+	LimitFirstHop = StandingLimit{
+		ID:    "first-hop-only",
+		Title: "Only the first hop was measured",
+		Text: "Everything here describes the endpoint that answered on the address named at the top of " +
+			"this report. Where a content delivery network, a reverse proxy or a load balancer terminates " +
+			"TLS, that endpoint is the one measured: the link from it to the server behind it is not " +
+			"visible from here, and may negotiate other versions, other suites and another key exchange. " +
+			"A name that resolves to several addresses was measured at one of them.",
+	}
+
 	LimitCipherSuitesOffered = StandingLimit{
 		ID:    "cipher-suites-offered",
 		Title: "Only the suites this client can offer were offered",
@@ -73,6 +88,9 @@ var (
 // StandingLimits is the whole set, in the order the page shows them.
 func StandingLimits() []StandingLimit {
 	return []StandingLimit{
+		// First because it bounds every other measurement on the page: what
+		// answered, rather than what was asked of it.
+		LimitFirstHop,
 		LimitCipherSuitesOffered,
 		LimitTLS13Suites,
 		LimitNoAuthorityAsked,

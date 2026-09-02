@@ -579,7 +579,7 @@ const NOTE_SECTIONS = [
 
 // The third kind is a link, not a section.
 //
-// A standing limit is the same on every report, so showing all four on every
+// A standing limit is the same on every report, so showing them all on every
 // report is how they stop being read — and sitting beside a host's own
 // shortcomings they read as though they were some. They are on one page, and
 // the report says how many there are and points at it, so moving them is not
