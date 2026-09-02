@@ -248,6 +248,51 @@ func TestARootIsNotGradedAndTheReportSaysWhy(t *testing.T) {
 	}
 }
 
+// And the verdict of a sound leaf follows its issuer.
+//
+// This is the observation that was impossible until 2026-09-02, and its
+// absence had already let a sabotage through: with no root installed, every
+// chain a test built failed verification, so every report was insecure from
+// cert.chain-untrusted whatever else was true. The fold over the issuers could
+// be replaced by the leaf's own verdict and nothing noticed, because the leaf
+// was already as bad as a report could be.
+//
+// With a root the tests trust, an impeccable leaf under an issuer that expires
+// in ten days produces exactly the shape that was invisible: the chain
+// verifies, the leaf grades strong, and the report grades weak because of a
+// certificate the reader would otherwise never have been told about.
+//
+// The issuer's fault is chosen to be one Go's verifier tolerates. A SHA-1
+// issuer would break the chain and put the leaf back at insecure, which is the
+// blind spot all over again.
+func TestASoundLeafTakesItsIssuersVerdict(t *testing.T) {
+	root := newRoot(t)
+	ca := newIntermediate(t, root, intermediateOpts{
+		commonName: "soon issuing CA",
+		notBefore:  refNow.AddDate(-2, 0, 0),
+		notAfter:   refNow.AddDate(0, 0, 10),
+	})
+	leaf := leafUnder(t, ca, "example.test")
+
+	report, err := Analyse([]*x509.Certificate{leaf, ca.cert}, "example.test", refNow)
+	if err != nil {
+		t.Fatalf("Analyse: %v", err)
+	}
+
+	if !report.Trusted {
+		t.Fatalf("the chain did not verify, so this test is back in the blind spot it was written "+
+			"to leave: %s", report.VerifyError)
+	}
+	if report.Grade.Verdict != policy.Strong {
+		t.Fatalf("the leaf is not strong on its own (%s), so the report's verdict says nothing about "+
+			"the issuer: %v", report.Grade.Verdict, ruleIDs(report))
+	}
+	if report.Verdict != policy.Weak {
+		t.Errorf("a strong leaf under an issuer expiring in ten days produced %s, not weak — the "+
+			"issuer's verdict did not reach the report", report.Verdict)
+	}
+}
+
 // Nothing from an issuer's subject can rewrite the report.
 //
 // The subject reaches a sentence in policy.GradeIssuer, and it is text the
@@ -276,31 +321,10 @@ func TestAnIssuerSubjectCannotRewriteTheReport(t *testing.T) {
 	}
 }
 
-// The verdict is the worst across the whole chain.
+// The verdict is the worst across the whole chain, as a rule.
 //
-// Checked here rather than through Analyse, and the reason is worth writing
-// down: no chain built in a test verifies, because the root a test makes is
-// not in the machine's store. Every report these tests produce is already
-// insecure from cert.chain-untrusted, so an issuer's contribution to the
-// verdict cannot be seen from the outside no matter what it is.
-//
-// So the fold is tested directly, and the call site is protected by shape
-// instead: there is exactly one assignment to report.Verdict, and deleting it
-// leaves a report with no verdict at all rather than one that quietly stopped
-// meaning what it says.
-//
-// What this arrangement still cannot see is the one substitution that keeps a
-// verdict and drops the chain — writing report.Grade.Verdict where the fold
-// belongs. Saying so is better than implying otherwise.
-//
-// It can be closed, and the way is known: Go's verifier reads SSL_CERT_FILE,
-// so a test that writes its root to a PEM and sets that variable gets a chain
-// that actually verifies — measured on 2026-09-02, a sound test chain graded
-// strong instead of insecure. The catch is that the system pool is built once
-// per process, so it only works if nothing has verified yet. Doing it properly
-// means a TestMain, one shared root for the package, and revisiting every test
-// that currently relies on chains being untrusted by accident. That is worth
-// doing and is not worth doing inside a patch about grading the chain.
+// The fold itself, over every combination that matters. The test below is the
+// one that watches it happen on a real chain.
 func TestTheVerdictIsTheWorstAcrossTheChain(t *testing.T) {
 	weak := policy.IssuerFinding{Verdict: policy.Weak}
 	insecure := policy.IssuerFinding{Verdict: policy.Insecure}

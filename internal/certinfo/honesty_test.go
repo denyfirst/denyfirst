@@ -26,7 +26,7 @@ import (
 // cert.chain-untrusted, and a transparency note that turns round and tells a
 // private certificate that browsers refuse it for not being logged.
 func TestAnExpiredUntrustedChainIsNotReportedTrusted(t *testing.T) {
-	root := newRoot(t) // deliberately not installed anywhere
+	root := newUntrustedRoot(t)
 	leaf := newLeaf(t, root, leafOpts{
 		dnsNames:  []string{"expired.test"},
 		notBefore: refNow.AddDate(0, 0, -60),
@@ -66,7 +66,7 @@ answer.`)
 
 // The mechanism, asserted separately from the report it feeds.
 func TestTrustWithinValidityAsksARealQuestion(t *testing.T) {
-	root := newRoot(t)
+	root := newUntrustedRoot(t)
 	pool := x509.NewCertPool()
 	pool.AddCert(root.cert)
 
