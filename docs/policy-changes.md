@@ -14,6 +14,86 @@ free to improve without breaking that.
 
 ---
 
+## `denyfirst-v5` → `denyfirst-v6`
+
+Released in v0.11.0, 2026-09. **The rest of the chain is graded.** Until now
+all twenty-four certificate rules looked at the certificate served for the
+host and at nothing else: the chain was checked for trust — does it reach a
+root — and never for strength. A report said
+
+```
+Chain   4 certificates, trusted
+```
+
+beside a `strong` verdict, and three of those four had been graded by nothing.
+An intermediate signed with SHA-1, or holding a 1024-bit key, passed in
+silence.
+
+It matters more on an issuer than on a leaf. **A forged leaf impersonates the
+names inside it; a forged intermediate issues certificates for any name at
+all**, and every client that trusts the chain accepts them. That is the
+argument `cert.leaf-is-ca` rests on, arriving from the other direction.
+
+Nothing new is asked of the server. These are bytes the handshake already
+delivered.
+
+### Rules added
+
+| Rule | Verdict | When |
+|---|---|---|
+| `chain.signature-sha1` | Insecure | An issuer carries a SHA-1 signature |
+| `chain.signature-md5` | Insecure | An issuer carries an MD5 or MD2 signature |
+| `chain.signature-algorithm-unrecognised` | Weak | An issuer's signature algorithm is not one this rule set knows |
+| `chain.roca` | Insecure | An issuer's RSA modulus carries the RSALib fingerprint |
+| `chain.rsa-key-too-small` | Insecure | An issuer holds an RSA key below 2048 bits |
+| `chain.ec-key-too-small` | Insecure | An issuer holds a curve below P-256 |
+| `chain.key-algorithm-unrecognised` | Weak | An issuer's key type cannot be sized by this rule set |
+| `chain.expired` | Insecure | An issuer's validity has ended |
+| `chain.not-yet-valid` | Insecure | An issuer's validity has not begun |
+| `chain.expiring-soon` | Weak | An issuer expires within 30 days |
+| `chain.critical-extension-unrecognised` | Weak | An issuer marks an extension critical that this checker does not recognise |
+
+The identifiers are `chain.` and not `cert.` deliberately. A pipeline
+filtering on `cert.signature-sha1` today would otherwise start receiving
+findings about a different certificate under an identifier whose meaning it
+had already fixed. A new identifier is additive; a widened one is a silent
+change.
+
+### What is deliberately not graded
+
+**Names.** A wildcard shape, a missing subject alternative name, a common name
+outside the SAN list are questions about a certificate presented *for a name*.
+An issuer is not presented for one.
+
+**Self-signature.** A root is self-signed; that is what a root is, and
+`cert.self-signed` would fire on every complete chain.
+
+**Validity length.** An authority is issued for ten or twenty years by design.
+The leaf's limit would fire on every chain ever served.
+
+**Being an authority, and holding `keyCertSign`.** On an issuer both are
+required rather than suspect — the exact inverse of `cert.leaf-is-ca` and
+`cert.key-usage-cert-sign`.
+
+### And the root is not graded at all
+
+A root is trusted because the client already holds a copy, **not** because of
+the signature it carries. No client verifies that signature — one that did
+would be asking a certificate to vouch for itself — so grading it would raise
+an alarm about a risk nobody is exposed to, and roots predating SHA-256 are
+still in every store doing no harm.
+
+Any self-signed certificate in the chain is skipped, which is how a client
+treats it too. Where the server sent one, the report says so and says why.
+
+### What this means for a verdict
+
+An insecure issuer makes the report insecure, by the same worst-case rule as
+everything else: a chain is only as sound as the weakest certificate a client
+has to accept to reach a root.
+
+---
+
 ## `denyfirst-v4` → `denyfirst-v5`
 
 Released in v0.8.0, 2026-09. Four rules, all of them read off a certificate

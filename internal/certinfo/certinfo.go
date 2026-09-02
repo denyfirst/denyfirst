@@ -69,11 +69,21 @@ type Report struct {
 	// reproduced after the rules change.
 	Policy string `json:"policy"`
 
-	// Verdict is the worst finding on the leaf certificate.
+	// Verdict is the worst finding on any certificate in this chain: the one
+	// served for the host, and every issuer above it that was graded.
 	Verdict policy.Verdict `json:"verdict"`
 
-	// Grade carries the findings and the validity arithmetic.
+	// Grade carries the leaf's findings and the validity arithmetic.
 	Grade policy.LeafFinding `json:"grade"`
+
+	// IssuerGrades carries one entry per certificate between the leaf and the
+	// root, in chain order, skipping any that is self-signed.
+	//
+	// Separate from Grade rather than merged into it, because a reader — and
+	// a pipeline — has to be able to tell a fault in the certificate served
+	// for this host from a fault in the authority that issued it. The rule
+	// identifiers differ for the same reason: `cert.` and `chain.`.
+	IssuerGrades []policy.IssuerFinding `json:"issuerGrades,omitempty"`
 
 	// Chain is the certificates the server sent, leaf first, up to the limit
 	// above. Notes says so when there were more.
@@ -639,7 +649,55 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 	}
 
 	report.Grade = policy.GradeLeaf(facts, now)
-	report.Verdict = report.Grade.Verdict
+
+	// And the rest of the chain, which until 2026-09-02 was graded by
+	// nothing. See policy.GradeIssuer for what is graded there and what is
+	// deliberately not.
+	//
+	// The subjects handed over are the ones describe() has already put
+	// through the sanitiser, because GradeIssuer repeats them back into a
+	// sentence. R10.
+	for i, c := range described {
+		if i == 0 {
+			continue // the leaf, graded above
+		}
+		if isSelfSigned(c) {
+			// A root, or something presenting itself as one. Trusted by the
+			// copy a client already holds rather than by the signature it
+			// carries, so nobody verifies that signature and grading it would
+			// warn about a risk no client runs.
+			report.observe(fmt.Sprintf(
+				"%s is self-signed and was not graded: a root is trusted because a client already holds "+
+					"a copy, not because of the signature on it, so no client verifies that signature.",
+				report.Chain[i].Subject))
+			continue
+		}
+
+		issuerFacts := policy.IssuerFacts{
+			Subject:                     report.Chain[i].Subject,
+			NotBefore:                   c.NotBefore,
+			NotAfter:                    c.NotAfter,
+			SignatureAlgorithm:          c.SignatureAlgorithm.String(),
+			UnhandledCriticalExtensions: oidStrings(c.UnhandledCriticalExtensions),
+		}
+		issuerFacts.KeyAlgorithm, issuerFacts.KeyBits = keyDetails(c)
+		if key, ok := c.PublicKey.(*rsa.PublicKey); ok {
+			issuerFacts.KeyFromBrokenGenerator = rocaFingerprint(key.N)
+		}
+
+		issuer := policy.GradeIssuer(issuerFacts, now)
+
+		report.IssuerGrades = append(report.IssuerGrades, issuer)
+	}
+
+	// One assignment, from every grade this report holds.
+	//
+	// It was two — the leaf's verdict, then a fold over the issuers as they
+	// were graded — and that shape hides a deletion: remove the fold and the
+	// report still has a verdict, still looks complete, and quietly stops
+	// meaning what it says. With one assignment there is nothing to remove
+	// that leaves a report standing.
+	report.Verdict = worstAcross(report.Grade.Verdict, report.IssuerGrades)
 
 	// Revocation is said elsewhere, and until 2026-09-01 it was said here,
 	// unconditionally, in words that had stopped being true.
@@ -760,6 +818,34 @@ func chainComplete(chain []*x509.Certificate, selfSigned bool) bool {
 // self-signed server certificates in the wild are not marked as CAs, and
 // treating them as ordinary untrusted certificates would hide the one fact
 // that actually explains the failure.
+// oidStrings renders object identifiers in dotted form.
+//
+// Used for the critical extensions this implementation does not recognise, on
+// the leaf and on every issuer, so the two lists are spelled the same way.
+func oidStrings(oids []asn1.ObjectIdentifier) []string {
+	if len(oids) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(oids))
+	for _, oid := range oids {
+		out = append(out, oid.String())
+	}
+	return out
+}
+
+// worstAcross folds the issuers' verdicts into the leaf's.
+//
+// The same worst-case rule as everywhere else, applied up the chain: a chain
+// is only as sound as the weakest certificate a client has to accept on the
+// way to a root. R5.
+func worstAcross(leaf policy.Verdict, issuers []policy.IssuerFinding) policy.Verdict {
+	out := leaf
+	for _, issuer := range issuers {
+		out = policy.Worst(out, issuer.Verdict)
+	}
+	return out
+}
+
 func isSelfSigned(c *x509.Certificate) bool {
 	if !bytes.Equal(c.RawSubject, c.RawIssuer) {
 		return false

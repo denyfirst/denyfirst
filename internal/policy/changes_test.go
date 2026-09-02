@@ -51,8 +51,8 @@ func TestTheChangeLogNamesRulesThatExist(t *testing.T) {
 		known[rule.id] = true
 	}
 
-	quoted := regexp.MustCompile(`"((?:cipher|cert|version)\.[a-z0-9-]+)"`)
-	for _, file := range []string{"policy.go", "cert.go", "issuance.go", "staple.go", "transparency.go"} {
+	quoted := regexp.MustCompile(`"((?:cipher|cert|chain|version)\.[a-z0-9-]+)"`)
+	for _, file := range []string{"policy.go", "cert.go", "chain.go", "issuance.go", "staple.go", "transparency.go"} {
 		source, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatalf("reading %s: %v", file, err)
@@ -65,7 +65,7 @@ func TestTheChangeLogNamesRulesThatExist(t *testing.T) {
 	for _, line := range strings.Split(string(body), "\n") {
 		for _, token := range strings.Fields(line) {
 			id := strings.Trim(token, "`|,.")
-			if !strings.HasPrefix(id, "cipher.") && !strings.HasPrefix(id, "cert.") {
+			if !strings.HasPrefix(id, "cipher.") && !strings.HasPrefix(id, "cert.") && !strings.HasPrefix(id, "chain.") {
 				continue
 			}
 			if !known[id] {

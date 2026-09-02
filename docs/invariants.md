@@ -1075,6 +1075,58 @@ the end of `run`, so it can be exercised without a network.
 `TestAnUngradedTargetIsNotHiddenByAGoodOne`,
 `TestSeverityOutranksAnAbsentResult`
 
+### R14a — A chain is graded, not only checked for trust
+
+Until 2026-09-02 all twenty-four certificate rules looked at the certificate
+served for the host. The chain was checked for trust — does it reach a root —
+and never for strength, so a report could say
+
+```
+Chain   4 certificates, trusted
+```
+
+beside a `strong` verdict while three of those four had been graded by
+nothing. An intermediate signed with SHA-1, or holding a 1024-bit key, passed
+in silence.
+
+It matters more on an issuer than on a leaf. A forged leaf impersonates the
+names inside it; a forged intermediate issues certificates for **any** name,
+accepted by every client that trusts the chain. That is R5 applied upwards: a
+chain is only as sound as the weakest certificate a client must accept on the
+way to a root.
+
+What is not graded is as deliberate as what is. **Names** are a question about
+a certificate presented for a name, and an issuer is not presented for one.
+**Self-signature** is what a root is. **Validity length** is measured in
+decades for an authority by design. **Being an authority** and holding
+`keyCertSign` are required of an issuer — the exact inverse of the leaf rules.
+
+**And the root is not graded at all.** A root is trusted because the client
+already holds a copy, not because of the signature it carries; no client
+verifies that signature, and one that did would be asking a certificate to
+vouch for itself. Grading it would raise an alarm about a risk nobody runs,
+and roots predating SHA-256 sit in every store today doing no harm. Any
+self-signed certificate in the chain is skipped, which is how a client treats
+it — and where the server sent one, the report says so and says why.
+
+The identifiers are `chain.` rather than `cert.` because a pipeline filtering
+on `cert.signature-sha1` had already fixed that identifier's meaning. A new
+identifier is additive; a widened one is a silent change.
+
+The rules are written twice — once for the leaf, once for an issuer — because
+the consequence differs and the sentences have to say so. What must not differ
+is *when* they fire, so a test drives thirteen key and signature combinations
+through both graders and fails if either fires where the other does not.
+
+*Enforced in:* `internal/policy/chain.go`, `internal/certinfo.worstAcross`
+*Guarded by:* `TestASoundIssuerRaisesNothing`, `TestWhatAnIssuerIsGradedOn`,
+`TestBothGradersFireOnTheSameCryptography`,
+`TestAnIssuerIsNotGradedOnWhatItIsNot`, `TestAWeakIssuerReachesTheVerdict`,
+`TestARootIsNotGradedAndTheReportSaysWhy`,
+`TestAnIssuerSubjectCannotRewriteTheReport`,
+`TestTheVerdictIsTheWorstAcrossTheChain`,
+`TestAFindingAboutAnIssuerReachesTheFindings`
+
 ### R14 — A chain reachable at any version is a chain reachable
 
 A server picks its certificate from what the client offered, so an old client
