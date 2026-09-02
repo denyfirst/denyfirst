@@ -232,3 +232,27 @@ func TestAnIssuerWithNoSubjectIsStillDescribed(t *testing.T) {
 		}
 	}
 }
+
+// A subject that is only whitespace is no subject.
+//
+// The sentence cannot be left with a hole in it — the certificate's own text
+// sits at the end, quoted, so an empty one would render as an empty pair of
+// quotation marks and tell a reader nothing about why. Saying plainly that
+// there was no name is better than showing two marks with air between them.
+func TestASubjectOfWhitespaceIsReportedAsNoSubject(t *testing.T) {
+	for _, subject := range []string{"", " ", "\t", "   ", "\n"} {
+		facts := soundIssuer()
+		facts.Subject = subject
+		facts.SignatureAlgorithm = "SHA1-RSA"
+
+		got := GradeIssuer(facts, chainNow)
+		if len(got.Findings) == 0 {
+			t.Fatalf("subject %q: a SHA-1 issuer was not graded", subject)
+		}
+		for _, f := range got.Findings {
+			if !strings.Contains(f.Rationale, "carries no subject") {
+				t.Errorf("subject %q: the finding does not say there was no name:\n  %s", subject, f.Rationale)
+			}
+		}
+	}
+}

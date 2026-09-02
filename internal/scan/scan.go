@@ -56,6 +56,22 @@ var AllowedPorts = []string{
 	"5061", // SIPS
 }
 
+// prober is the one this scanner probes with.
+//
+// A function rather than three lines inside Scan, so that a test can see what
+// it hands the dialer. The port was checked in Scan already, for every caller,
+// and that check is the one that holds; handing the list down puts the same
+// refusal at the dialer, which is a second lock on a different door. A guard
+// in one place is a guard somebody walks around by adding an entry point, and
+// the whole argument for running this in public is that it cannot be used to
+// reach an arbitrary port on somebody else's machine.
+func (s *Scanner) prober() *tlsprobe.Prober {
+	if s.Prober != nil {
+		return s.Prober
+	}
+	return &tlsprobe.Prober{AllowedPorts: AllowedPorts}
+}
+
 // Result is one target, measured and graded.
 type Result struct {
 	Target string `json:"target"`
@@ -213,10 +229,7 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 		return nil, ErrExcluded
 	}
 
-	prober := s.Prober
-	if prober == nil {
-		prober = &tlsprobe.Prober{}
-	}
+	prober := s.prober()
 
 	out := &Result{
 		Target: net.JoinHostPort(host, port),

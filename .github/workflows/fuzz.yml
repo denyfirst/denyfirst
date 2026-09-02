@@ -50,6 +50,12 @@ jobs:
             target: FuzzGradeCipher
           - package: ./internal/policy
             target: FuzzGradeLeaf
+          # The chain grader, added with denyfirst-v6. It builds sentences out
+          # of a certificate's subject, which is text the scanned server
+          # chooses, and the fuzzer found three ways to leave a hole in one
+          # within four minutes of first being pointed at it.
+          - package: ./internal/policy
+            target: FuzzGradeIssuer
           - package: ./internal/policy
             target: FuzzMaxValidityDays
           - package: ./internal/certinfo

@@ -90,11 +90,29 @@ type IssuerFinding struct {
 func GradeIssuer(f IssuerFacts, now time.Time) IssuerFinding {
 	out := IssuerFinding{Verdict: Strong}
 
-	subject := f.Subject
-	if subject == "" {
-		// A certificate can carry an empty subject. Saying so beats a
-		// sentence with a hole in it.
-		subject = "an issuer in this chain with no subject"
+	// Where the certificate's own text goes, and why it goes there.
+	//
+	// The subject is chosen by the server being examined and it is repeated
+	// into a sentence this report writes. Two things follow.
+	//
+	// It cannot sit at the head of the sentence. It did, and the fuzzer found
+	// the first consequence in forty seconds: a subject of one space produced
+	// "  expires in 10 days", a sentence with a hole where a name belongs.
+	// The second consequence is worse and no fuzzer would have named it — a
+	// subject is free text, so a certificate could open a sentence of ours
+	// with wording of its own and be read as this report's voice.
+	//
+	// So the report's own words are said first and completely, and the
+	// certificate's text arrives last, in a sentence of its own, inside
+	// quotation marks that show a reader exactly where it starts and ends.
+	// The value itself is never altered: an odd name is the certificate's,
+	// and correcting it here would be reporting something the server did not
+	// send.
+	named := ""
+	if strings.TrimSpace(f.Subject) != "" {
+		named = " The certificate is \u201c" + f.Subject + "\u201d."
+	} else {
+		named = " The certificate carries no subject."
 	}
 
 	add := func(id string, v Verdict, title, rationale string, refs ...Reference) {
@@ -119,23 +137,25 @@ func GradeIssuer(f IssuerFacts, now time.Time) IssuerFinding {
 	case now.After(f.NotAfter):
 		add("chain.expired", Insecure,
 			"An issuer in this chain has expired",
-			fmt.Sprintf("%s expired on %s, %d days ago. A chain is only as valid as every certificate in it, "+
-				"so this breaks verification for every client at once.",
-				subject, f.NotAfter.UTC().Format(time.DateOnly), -days),
+			fmt.Sprintf("An issuer in this chain expired on %s, %d days ago. A chain is only as valid as "+
+				"every certificate in it, so this breaks verification for every client at once.%s",
+				f.NotAfter.UTC().Format(time.DateOnly), -days, named),
 			rfc5280, cabBR)
 
 	case now.Before(f.NotBefore):
 		add("chain.not-yet-valid", Insecure,
 			"An issuer in this chain is not yet valid",
-			fmt.Sprintf("%s becomes valid on %s. Until then the chain does not verify, and a clock skew on "+
-				"either side widens the window.", subject, f.NotBefore.UTC().Format(time.DateOnly)),
+			fmt.Sprintf("An issuer in this chain becomes valid on %s. Until then the chain does not verify, "+
+				"and a clock skew on either side widens the window.%s",
+				f.NotBefore.UTC().Format(time.DateOnly), named),
 			rfc5280)
 
 	case days <= expiryWarningDays:
 		add("chain.expiring-soon", Weak,
 			"An issuer in this chain expires soon",
-			fmt.Sprintf("%s expires in %d days. An authority certificate is normally replaced years ahead; "+
-				"this margin means every certificate under it stops verifying on that date.", subject, days),
+			fmt.Sprintf("An issuer in this chain expires in %d days. An authority certificate is normally "+
+				"replaced years ahead; this margin means every certificate under it stops verifying on "+
+				"that date.%s", days, named),
 			cabBR)
 	}
 
@@ -149,25 +169,26 @@ func GradeIssuer(f IssuerFacts, now time.Time) IssuerFinding {
 	case !hasLetter(sig):
 		add("chain.signature-algorithm-unrecognised", Weak,
 			"An issuer's signature algorithm is not recognised",
-			fmt.Sprintf("The algorithm that signed %s is not one this rule set knows, so whether the hash "+
-				"behind it is sound was not established. Nothing here says it is weak; nothing here can "+
-				"say it is sound either.", subject),
+			fmt.Sprintf("The algorithm that signed an issuer in this chain is not one this rule set knows, "+
+				"so whether the hash behind it is sound was not established. Nothing here says it is weak; "+
+				"nothing here can say it is sound either.%s", named),
 			rfc5280, rfc9155)
 
 	case strings.Contains(sig, "MD2"), strings.Contains(sig, "MD5"):
 		add("chain.signature-md5", Insecure,
 			"An issuer in this chain is signed with MD5 or MD2",
-			fmt.Sprintf("%s carries a signature over a hash whose collisions are trivial to produce. A "+
-				"collision here forges an authority rather than a single certificate, and an authority "+
-				"signs for any name.", subject),
+			fmt.Sprintf("An issuer in this chain carries a signature over a hash whose collisions are "+
+				"trivial to produce. A collision here forges an authority rather than a single "+
+				"certificate, and an authority signs for any name.%s", named),
 			rfc9155, cabBR)
 
 	case strings.Contains(sig, "SHA1"):
 		add("chain.signature-sha1", Insecure,
 			"An issuer in this chain is signed with SHA-1",
-			fmt.Sprintf("%s carries a SHA-1 signature. A practical collision was demonstrated in 2017, and "+
-				"a collision against an authority's signature forges an authority: certificates for any "+
-				"name, accepted by every client that trusts this chain.", subject),
+			fmt.Sprintf("An issuer in this chain carries a SHA-1 signature. A practical collision was "+
+				"demonstrated in 2017, and a collision against an authority's signature forges an "+
+				"authority: certificates for any name, accepted by every client that trusts this "+
+				"chain.%s", named),
 			shattered, rfc9155, cabBR)
 	}
 
@@ -177,26 +198,28 @@ func GradeIssuer(f IssuerFacts, now time.Time) IssuerFinding {
 		if f.KeyFromBrokenGenerator {
 			add("chain.roca", Insecure,
 				"An issuer's key was made by a generator known to produce factorable keys",
-				fmt.Sprintf("The modulus of %s carries the fingerprint of Infineon's RSALib, which built "+
-					"primes from a small family instead of at random. Such a key can be factored from "+
-					"the public key alone. On an authority that means an attacker who does the work can "+
-					"issue certificates for any name. This is a fingerprint of how the key was "+
-					"generated; nothing here factored anything.", subject),
+				fmt.Sprintf("The modulus of an issuer in this chain carries the fingerprint of Infineon's "+
+					"RSALib, which built primes from a small family instead of at random. Such a key can "+
+					"be factored from the public key alone. On an authority that means an attacker who "+
+					"does the work can issue certificates for any name. This is a fingerprint of how the "+
+					"key was generated; nothing here factored anything.%s", named),
 				roca2017, cve201715361, cabBR)
 		}
 		if f.KeyBits < 2048 {
 			add("chain.rsa-key-too-small", Insecure,
 				fmt.Sprintf("An issuer holds an RSA key of %d bits", f.KeyBits),
-				fmt.Sprintf("%s holds a key below the 2048 bits the CA/Browser Forum has required since "+
-					"2014. Breaking it yields the power to issue, not merely to impersonate one name.", subject),
+				fmt.Sprintf("An issuer in this chain holds a key below the 2048 bits the CA/Browser Forum "+
+					"has required since 2014. Breaking it yields the power to issue, not merely to "+
+					"impersonate one name.%s", named),
 				cabBR, nist80057)
 		}
 	case "ECDSA":
 		if f.KeyBits < 256 {
 			add("chain.ec-key-too-small", Insecure,
 				fmt.Sprintf("An issuer holds an elliptic curve key of %d bits", f.KeyBits),
-				fmt.Sprintf("%s holds a curve below P-256, short of the 128-bit security level expected of "+
-					"a public certificate — and of an authority above all.", subject),
+				fmt.Sprintf("An issuer in this chain holds a curve below P-256, short of the 128-bit "+
+					"security level expected of a public certificate — and of an authority above "+
+					"all.%s", named),
 				cabBR, nist80057)
 		}
 	case "Ed25519":
@@ -204,7 +227,16 @@ func GradeIssuer(f IssuerFacts, now time.Time) IssuerFinding {
 		// left to the default so the absence of a finding is a decision.
 
 	default:
-		kind := f.KeyAlgorithm
+		// Trimmed, unlike the subject above.
+		//
+		// This name is the standard library's rendering of a key algorithm,
+		// not text the scanned server chose, so tidying it misrepresents
+		// nothing. Testing for "" alone was not enough: " " is no name and
+		// "0 " put two spaces into the sentence. The leaf grader had the
+		// identical line and the identical hole, and the fuzzer found both —
+		// three times over, each time on a slightly different shape of
+		// nothing.
+		kind := strings.TrimSpace(f.KeyAlgorithm)
 		if kind == "" {
 			kind = "of an unnamed type"
 		} else {
@@ -212,9 +244,9 @@ func GradeIssuer(f IssuerFacts, now time.Time) IssuerFinding {
 		}
 		add("chain.key-algorithm-unrecognised", Weak,
 			"An issuer's key algorithm is not recognised",
-			fmt.Sprintf("The public key of %s is %s, which this rule set does not know how to size, so its "+
-				"strength was not graded. Nothing here says it is weak; nothing here can say it is sound "+
-				"either.", subject, kind),
+			fmt.Sprintf("The public key of an issuer in this chain is %s, which this rule set does not know "+
+				"how to size, so its strength was not graded. Nothing here says it is weak; nothing here "+
+				"can say it is sound either.%s", kind, named),
 			nist80057, cabBR)
 	}
 
@@ -222,10 +254,10 @@ func GradeIssuer(f IssuerFacts, now time.Time) IssuerFinding {
 	if len(f.UnhandledCriticalExtensions) > 0 {
 		add("chain.critical-extension-unrecognised", Weak,
 			"An issuer marks an extension critical that this checker does not recognise",
-			fmt.Sprintf("%s marks %s critical, and RFC 5280 requires a client that does not recognise a "+
-				"critical extension to reject the certificate. What this scan cannot tell you is whether "+
-				"the clients you care about recognise it; what it can tell you is that this one does not.",
-				subject, named(f.UnhandledCriticalExtensions)),
+			fmt.Sprintf("An issuer in this chain marks %s critical, and RFC 5280 requires a client that "+
+				"does not recognise a critical extension to reject the certificate. What this scan cannot "+
+				"tell you is whether the clients you care about recognise it; what it can tell you is "+
+				"that this one does not.%s", listed(f.UnhandledCriticalExtensions), named),
 			rfc5280)
 	}
 
