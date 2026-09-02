@@ -1445,12 +1445,43 @@ The verdict is untouched. A company with a Cyrillic name and a Latin domain
 suffix is an ordinary customer of an ordinary authority, and grading that down
 would be this project inventing a fault.
 
+**Since 2026-09-02 the printed name is assembled here rather than by the
+standard library**, so it is worth saying which rule does which job. RFC 4514
+escaping is about the *grammar of a name*: a comma inside a value is what
+separates two attributes outside one, so an organisation called `Bank, Inc.`
+has to be escaped or the name a reader sees is not the name the certificate
+holds. `sanitise` is about the *display*, and it runs afterwards, over the
+finished string, exactly as it did when Go built it. Neither substitutes for
+the other and the order is not interchangeable.
+
+The reason for assembling it here is that Go renders an attribute type it has
+no name for as the dotted identifier and the DER bytes in hexadecimal. On an
+extended-validation certificate that is three attributes —
+`1.3.6.1.4.1.311.60.2.1.2=#130844656c6177617265` carries the word *Delaware*
+and shows none of it — and they are precisely the attributes extended
+validation exists to carry. Go had already read the values; only the rendering
+discarded them.
+
+The arrangement is Go's, deliberately: same attribute order, same separators,
+same escaping. A certificate carrying only attributes Go names renders
+character-for-character as it always has, checked against Go's own output as
+the oracle on a name that came off the wire — a hand-built `pkix.Name` has an
+empty `Names` field and never exercises the path where the two could diverge,
+which is how the first version of that check passed a change that printed
+`CN`, `O` and `C` twice.
+
 *Enforced in:* `internal/certinfo.sanitise`, applied by `trimmer.text`;
-`internal/certinfo.mixedScriptNote`, `internal/certinfo.confusableScripts`
+`internal/certinfo.mixedScriptNote`, `internal/certinfo.confusableScripts`;
+`internal/certinfo.distinguishedName`
 *Guarded by:* `TestControlCharactersInCertificateFieldsAreNeutralised`,
 `TestC1ControlsAreNeutralisedToo`, `TestTrimmingCutsOnARuneBoundary`,
 `TestNothingCanRewriteHowTheReportReads`, `TestANameInTwoAlphabetsIsSaid`,
-`TestALookalikeNameIsNotRewritten`
+`TestALookalikeNameIsNotRewritten`,
+`TestAnOrdinaryNameRendersExactlyAsItDidBefore`,
+`TestAParsedOrdinaryNameRendersExactlyAsItDidBefore`,
+`TestAnExtendedValidationNameIsReadable`,
+`TestAnExtendedValidationSubjectReachesTheReport`,
+`TestAValueThatLooksLikeTheGrammarIsEscaped`
 
 ---
 

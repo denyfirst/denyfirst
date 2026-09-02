@@ -20,13 +20,37 @@ Most days there is no release, only a change. These are here because each one
 has already gone wrong, and each costs less to do than the mistake cost to
 find.
 
-**Confirm the branch before applying a patch.** `git switch -c` fails if the
-branch already exists, and a failed switch leaves you where you were — which
-on 2026-08-23 was `main`, where the commit then landed.
+**The branch is a condition, not a line to read.** `git switch -c` fails if
+the branch already exists, and a failed switch leaves you where you were —
+which on 2026-08-23 was `main`, where the commit then landed. It happened
+again on 2026-09-01, in a block that printed the current branch one line
+before applying a patch to it: the word `main` went past on the way to the
+next command, the patch applied to `main`, and the commit landed there.
+
+Printing a fact and acting on it are different things. The patch is applied
+inside the check, so on the failure path nothing is applied and there is
+nothing to commit:
 
 ```powershell
-git switch -c topic/thing-2026-01-01 main
-git branch --show-current
+$branch = 'topic/thing-2026-01-01'
+git switch -c $branch main
+
+if ((git branch --show-current) -eq $branch) {
+  git apply "$env:USERPROFILE\Downloads\thing.patch"
+} else {
+  Write-Host 'STOP: not on the branch, nothing applied' -ForegroundColor Red
+}
+```
+
+The commit is guarded the same way, because a patch applied by hand after a
+failed switch reaches the same place:
+
+```powershell
+if ((git branch --show-current) -eq $branch) {
+  git commit -S -m "scope: what changed" -m "why"
+} else {
+  Write-Host 'STOP: not on the branch, nothing committed' -ForegroundColor Red
+}
 ```
 
 **Read the index before staging, and again after.** `git add -A` takes
@@ -46,6 +70,20 @@ git status --short
 git add docs/releasing.md internal/policy/note.go
 git status --short
 ```
+
+**A commit message carries the reason for the change, and nothing else.** No
+attribution trailers, no session, tool or account identifiers, no link a
+reader of this repository cannot follow. A message is published, permanent,
+and correctable only by rewriting `main` — which S6 and S12 forbid for far
+better reasons than a trailer is worth.
+
+The rule is here because one reached `main` on 2026-09-02 before it existed:
+`468341e` carries a `Claude-Session:` URL. Nobody but its owner can open it,
+so it tells a reader nothing; what it does carry is an identifier that links
+this repository's history to a session on a third-party service, in a public
+record, permanently. It stays where it is — force-pushing the default branch
+to remove one line would cost more than the line does — and it is not
+repeated.
 
 **Write diagnostic output somewhere other than the repository.** `gh run view
 --log` writes into the current directory, and the current directory is usually

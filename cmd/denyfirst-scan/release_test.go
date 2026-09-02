@@ -42,6 +42,9 @@ func TestTheReleaseProcedureIsWrittenDown(t *testing.T) {
 		{"git status --short", "reading the index before staging and again after is what keeps unrelated files out of a commit"},
 		{"gh pr merge --merge", "auto-merge is off here, so merging is a step somebody has to take and four pull requests were left green and unmerged in one day"},
 		{"name the tag about to be cut", "a rule set's section is written before the tag exists, so it reads Unreleased until somebody comes back for it — denyfirst-v4 said so on the page five releases after v0.4.0 shipped it"},
+		{"STOP: not on the branch, nothing applied", "the branch check has to be the condition the patch is applied under: printed on its own line it went past twice, and both times the commit landed on main"},
+		{"STOP: not on the branch, nothing committed", "a patch applied by hand after a failed switch reaches the same place, so the commit is guarded too"},
+		{"carries the reason for the change, and nothing else", "a commit message is published and permanent, and an identifier in one cannot be taken back without rewriting main"},
 	} {
 		if !strings.Contains(page, required.text) {
 			t.Errorf("docs/releasing.md no longer covers %q — %s", required.text, required.why)

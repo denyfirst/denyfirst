@@ -75,6 +75,10 @@ type leafOpts struct {
 	// authority, permitted to sign.
 	isCA     bool
 	keyUsage x509.KeyUsage
+
+	// subject replaces the default common name, for the cases where what is
+	// under test is the name itself.
+	subject *pkix.Name
 }
 
 func newLeaf(t *testing.T, root issuer, o leafOpts) *x509.Certificate {
@@ -90,9 +94,14 @@ func newLeaf(t *testing.T, root issuer, o leafOpts) *x509.Certificate {
 		o.dnsNames = []string{"example.test"}
 	}
 
+	subject := pkix.Name{CommonName: "example.test"}
+	if o.subject != nil {
+		subject = *o.subject
+	}
+
 	tmpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(time.Now().UnixNano()),
-		Subject:               pkix.Name{CommonName: "example.test"},
+		Subject:               subject,
 		NotBefore:             o.notBefore,
 		NotAfter:              o.notAfter,
 		DNSNames:              o.dnsNames,
