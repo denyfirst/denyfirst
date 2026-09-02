@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"math/big"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,9 @@ type intermediateOpts struct {
 	rsaBits    int // zero means ECDSA P-256
 	notBefore  time.Time
 	notAfter   time.Time
+
+	// constraints are the limits this authority accepts.
+	constraints constraintOpts
 }
 
 // newIntermediate signs a certificate authority with the root, so that a test
@@ -50,6 +54,20 @@ func newIntermediate(t *testing.T, root issuer, o intermediateOpts) issuerAny {
 	}
 	if o.sha1 {
 		tmpl.SignatureAlgorithm = x509.ECDSAWithSHA1
+	}
+
+	tmpl.PermittedDNSDomains = o.constraints.permittedDNS
+	tmpl.ExcludedDNSDomains = o.constraints.excludedDNS
+	for _, cidr := range o.constraints.permittedIP {
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			t.Fatalf("parsing the permitted range %q: %v", cidr, err)
+		}
+		tmpl.PermittedIPRanges = append(tmpl.PermittedIPRanges, network)
+	}
+	if o.constraints.statePathLen {
+		tmpl.MaxPathLen = o.constraints.pathLen
+		tmpl.MaxPathLenZero = o.constraints.pathLen == 0
 	}
 
 	var (
