@@ -352,6 +352,9 @@ func printCertificate(w io.Writer, r result) {
 	fmt.Fprintf(w, "\n  Certificate\n")
 	fmt.Fprintf(w, "    Subject      %s\n", leaf.Subject)
 	fmt.Fprintf(w, "    Issuer       %s\n", leaf.Issuer)
+	if leaf.Validation != "" {
+		fmt.Fprintf(w, "    Validation   %s\n", leaf.Validation)
+	}
 	fmt.Fprintf(w, "    Valid        %s to %s",
 		leaf.NotBefore.UTC().Format(time.DateOnly),
 		leaf.NotAfter.UTC().Format(time.DateOnly))

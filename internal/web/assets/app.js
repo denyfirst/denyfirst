@@ -461,6 +461,10 @@ function certificate(cert, tls, issuance, stapling, report) {
 
   pair("Subject", leaf.subject);
   pair("Issuer", leaf.issuer);
+  // What the issuer says it checked. Next to the issuer because that is whose
+  // claim it is, and above the dates because it is about how the certificate
+  // came to exist rather than about how long it lasts.
+  pair("Validation", leaf.validation);
 
   const from = (leaf.notBefore || "").slice(0, 10);
   const to = (leaf.notAfter || "").slice(0, 10);

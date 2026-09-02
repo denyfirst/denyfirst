@@ -65,6 +65,10 @@ type leafOpts struct {
 	// subject replaces the default common name, for the cases where what is
 	// under test is the name itself.
 	subject *pkix.Name
+
+	// policies are the certificate policy identifiers to carry, for the cases
+	// about what an issuer says it checked.
+	policies []x509.OID
 }
 
 func newLeaf(t *testing.T, root issuer, o leafOpts) *x509.Certificate {
@@ -97,6 +101,7 @@ func newLeaf(t *testing.T, root issuer, o leafOpts) *x509.Certificate {
 		UnknownExtKeyUsage:    o.unknownEKU,
 		BasicConstraintsValid: true,
 		IsCA:                  o.isCA,
+		Policies:              o.policies,
 	}
 	if o.keyUsage != 0 {
 		tmpl.KeyUsage = o.keyUsage

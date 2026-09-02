@@ -55,3 +55,39 @@ func TestIssuanceSitsAboveTransparency(t *testing.T) {
 		t.Error("transparency is rendered before issuance; prevention comes before detection")
 	}
 }
+
+// The validation level is on the face of the report too.
+//
+// It is the one thing about a certificate a reader cannot infer from anything
+// else on the page: whether an authority checked only that somebody controlled
+// the name, or that a company exists. Browsers stopped drawing the difference,
+// so a visitor to a bank has no way to see it — and the certificate says.
+//
+// Next to the issuer, because that is whose claim it is, and above the dates,
+// because it is about how the certificate came to exist rather than how long
+// it lasts.
+func TestTheValidationLevelIsOnTheFaceOfTheReport(t *testing.T) {
+	script, err := assets.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatalf("reading the script: %v", err)
+	}
+	source := string(script)
+
+	if !strings.Contains(source, `pair("Validation"`) {
+		t.Error("no Validation row; what an issuer says it checked reaches nobody")
+	}
+	if !strings.Contains(source, "leaf.validation") {
+		t.Error("the row does not read the field the report carries, so it is always empty")
+	}
+
+	issuer := strings.Index(source, `pair("Issuer"`)
+	validation := strings.Index(source, `pair("Validation"`)
+	valid := strings.Index(source, `pair("Valid"`)
+	if issuer < 0 || validation < 0 || valid < 0 {
+		t.Fatal("one of the three rows is missing, so their order cannot be checked")
+	}
+	if !(issuer < validation && validation < valid) {
+		t.Error("the validation level is not between the issuer and the dates, which is where it " +
+			"belongs: whose claim it is, then what it claims, then how long it lasts")
+	}
+}

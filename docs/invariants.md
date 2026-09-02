@@ -1731,6 +1731,42 @@ key it points at, which answers nothing a forger could not arrange.
 `TestFingerprintAgreesAcrossSources`, `TestTheServedKeyIsTheKeyWePublish`,
 `TestTheServedPacketIsAPublicKeyPacket`
 
+### R9a2 — What an issuer says it checked is reported and not graded
+
+A certificate names the policy it was issued under, and the CA/Browser Forum
+reserves four identifiers for the levels every public authority issues at:
+domain, individual, organisation and extended validation. They differ in what
+was verified about the applicant and in nothing else — the key, the algorithms
+and the transport are identical at every level.
+
+It is shown because it is the one thing about a certificate a reader cannot
+infer from anything else on the page, and because browsers stopped drawing the
+distinction. A visitor to a bank cannot tell from the address bar whether that
+certificate proves only that somebody controlled the name, or whether an
+authority checked the company exists. The certificate says so and nothing was
+showing it.
+
+It is never graded, for the reason R9 gives about CAA in another form: which
+level to buy is the operator's decision, and a cheaper one is not a fault. A
+domain-validated certificate protects the connection exactly as well as an
+extended-validation one, and grading the difference would be this project
+selling certificates.
+
+A certificate naming no identifier this table knows gets no row rather than
+the word *unknown*. A private authority issues under its own identifiers,
+which say nothing that can be read here, and putting a word where a
+measurement is missing is the defect this document exists to prevent. A
+certificate naming more than one is described by the strongest, which is the
+claim its issuer is standing behind.
+
+*Enforced in:* `internal/certinfo.validationLevel`, shown by
+`cmd/denyfirst-scan` and `internal/web/assets/app.js`
+*Guarded by:* `TestTheValidationLevelIsNamed`,
+`TestACertificateWithNoKnownPolicySaysNothing`,
+`TestTheStrongestPolicyIsTheOneNamed`, `TestTheValidationLevelIsNotGraded`,
+`TestTheValidationLevelIsOnTheFaceOfTheReport`,
+`TestBothFacesOfTheReportShowTheSameFacts`
+
 ### R9 — Issuance policy is reported and not graded
 
 A CAA record names the authorities allowed to issue certificates for a domain.

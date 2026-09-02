@@ -54,6 +54,15 @@ func testServer(t *testing.T, o serverOpts) string {
 	if err != nil {
 		t.Fatalf("generating a key: %v", err)
 	}
+	// The CA/Browser Forum's domain-validation policy, which every publicly
+	// issued certificate carries one of. Present here so that the report this
+	// test reads has the row a real one would, rather than a shape no
+	// certificate on the internet has.
+	dv, err := x509.OIDFromInts([]uint64{2, 23, 140, 1, 2, 1})
+	if err != nil {
+		t.Fatalf("building the validation policy identifier: %v", err)
+	}
+
 	tpl := &x509.Certificate{
 		SerialNumber: big.NewInt(0x5eed),
 		Subject:      pkix.Name{CommonName: o.names[0]},
@@ -62,6 +71,7 @@ func testServer(t *testing.T, o serverOpts) string {
 		DNSNames:     o.names,
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		Policies:     []x509.OID{dv},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &key.PublicKey, key)
 	if err != nil {
