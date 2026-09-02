@@ -29,33 +29,19 @@ type issuer struct {
 	key  *ecdsa.PrivateKey
 }
 
+// newRoot returns the root these tests trust.
+//
+// One root for the package, installed by TestMain through SSL_CERT_FILE, so a
+// chain built here verifies the way a real one does. It used to generate a
+// fresh authority per call and nothing verified at all; see main_test.go for
+// what that was hiding. A test that wants a chain which does not verify calls
+// newUntrustedRoot instead, and says so by calling it.
 func newRoot(t *testing.T) issuer {
 	t.Helper()
-
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("generating root key: %v", err)
+	if sharedRoot.cert == nil {
+		t.Fatal("the shared root is missing, so TestMain did not run")
 	}
-
-	tmpl := &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "denyfirst test root"},
-		NotBefore:             refNow.AddDate(-1, 0, 0),
-		NotAfter:              refNow.AddDate(10, 0, 0),
-		IsCA:                  true,
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		BasicConstraintsValid: true,
-	}
-
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	if err != nil {
-		t.Fatalf("creating root: %v", err)
-	}
-	cert, err := x509.ParseCertificate(der)
-	if err != nil {
-		t.Fatalf("parsing root: %v", err)
-	}
-	return issuer{cert: cert, key: key}
+	return sharedRoot
 }
 
 type leafOpts struct {
@@ -214,10 +200,14 @@ func TestDescribesTheLeaf(t *testing.T) {
 	}
 }
 
-// A certificate signed by a root the system does not know is untrusted, which
-// is the correct result: the test root is deliberately not installed.
+// A certificate signed by a root the system does not know is untrusted.
+//
+// This used to be true of every chain in this package by accident. It is now
+// asked for: newUntrustedRoot builds an authority that is in no store, while
+// newRoot returns the one TestMain installed. An assertion about untrusted
+// chains should have to say which root it means.
 func TestUnknownRootIsUntrusted(t *testing.T) {
-	root := newRoot(t)
+	root := newUntrustedRoot(t)
 	leaf := newLeaf(t, root, leafOpts{})
 
 	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)

@@ -1137,6 +1137,27 @@ the consequence differs and the sentences have to say so. What must not differ
 is *when* they fire, so a test drives thirteen key and signature combinations
 through both graders and fails if either fires where the other does not.
 
+**The tests needed a trust store before they could see any of this.** A root
+generated in a test is in no store, so every chain these tests built failed
+verification and every report came out `insecure` from `cert.chain-untrusted`
+whatever else was true. An issuer's contribution to the verdict was invisible,
+and a sabotage that replaced the fold with the leaf's own verdict passed the
+whole suite.
+
+`internal/certinfo`'s `TestMain` now writes one root to a PEM and points
+`SSL_CERT_FILE` and `SSL_CERT_DIR` at it before anything verifies — the system
+pool is built once per process, so that is the only moment early enough. A
+chain built the ordinary way verifies; a test that wants one that does not
+calls `newUntrustedRoot` and says so by calling it. Both variables are set
+because Go consults them separately and either one alone lets the machine's
+own 150-odd authorities back in, which a test asserts by counting the pool.
+
+An impeccable leaf under an issuer expiring in ten days is the shape that was
+unreachable before: the chain verifies, the leaf grades `strong`, the report
+grades `weak`. The issuer's fault is deliberately one Go's verifier tolerates
+— a SHA-1 issuer would break the chain and put the leaf back at `insecure`,
+which is the blind spot again.
+
 *Enforced in:* `internal/policy/chain.go`, `internal/certinfo.worstAcross`
 *Guarded by:* `TestASoundIssuerRaisesNothing`, `TestWhatAnIssuerIsGradedOn`,
 `TestBothGradersFireOnTheSameCryptography`,
@@ -1144,7 +1165,8 @@ through both graders and fails if either fires where the other does not.
 `TestARootIsNotGradedAndTheReportSaysWhy`,
 `TestAnIssuerSubjectCannotRewriteTheReport`,
 `TestTheVerdictIsTheWorstAcrossTheChain`,
-`TestAFindingAboutAnIssuerReachesTheFindings`
+`TestAFindingAboutAnIssuerReachesTheFindings`,
+`TestASoundLeafTakesItsIssuersVerdict`, `TestTheTestRootIsInTheStore`
 
 ### R14 — A chain reachable at any version is a chain reachable
 
