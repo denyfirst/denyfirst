@@ -561,9 +561,15 @@ func (r *Result) Findings() []policy.Finding {
 	}
 	if r.Certificate != nil {
 		collect(r.Certificate.Grade.Findings)
+		for _, issuer := range r.Certificate.IssuerGrades {
+			collect(issuer.Findings)
+		}
 	}
 	for _, alt := range r.AlternateCertificates {
 		collect(alt.Grade.Findings)
+		for _, issuer := range alt.IssuerGrades {
+			collect(issuer.Findings)
+		}
 	}
 	if r.Stapling != nil {
 		collect(r.Stapling.Findings)

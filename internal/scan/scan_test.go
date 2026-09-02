@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/denyfirst/denyfirst/internal/certinfo"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
 )
@@ -451,6 +452,40 @@ func TestPathIsOnlyDroppedFromAURL(t *testing.T) {
 	} {
 		if _, _, err := SplitTarget(in); err == nil {
 			t.Errorf("SplitTarget(%q) silently discarded everything after the slash", in)
+		}
+	}
+}
+
+// A finding about an issuer reaches the list a caller reads.
+//
+// Findings() is what the page, the terminal report and the API all walk, and
+// it collected the leaf's findings and the alternate chains' and stopped
+// there. An issuer graded insecure would have sat in the certificate section
+// and never appeared among the problems — which is the same silence, one
+// level down, that grading the chain exists to end.
+func TestAFindingAboutAnIssuerReachesTheFindings(t *testing.T) {
+	r := &Result{
+		Certificate: &certinfo.Report{
+			IssuerGrades: []policy.IssuerFinding{{
+				Verdict:  policy.Insecure,
+				Findings: []policy.Finding{{RuleID: "chain.signature-sha1", Verdict: policy.Insecure}},
+			}},
+		},
+		AlternateCertificates: []*certinfo.Report{{
+			IssuerGrades: []policy.IssuerFinding{{
+				Verdict:  policy.Weak,
+				Findings: []policy.Finding{{RuleID: "chain.expiring-soon", Verdict: policy.Weak}},
+			}},
+		}},
+	}
+
+	seen := map[string]bool{}
+	for _, f := range r.Findings() {
+		seen[f.RuleID] = true
+	}
+	for _, want := range []string{"chain.signature-sha1", "chain.expiring-soon"} {
+		if !seen[want] {
+			t.Errorf("%s was graded and does not appear among the findings a caller reads", want)
 		}
 	}
 }
