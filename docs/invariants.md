@@ -526,10 +526,39 @@ until 2026-09-01 they were printed under one heading with everything the scan
 had established. R18 is what separates them; this invariant is what requires
 them to be said at all.
 
+**The largest of them was unwritten until 2026-09-02: everything measured
+here describes one hop.** Every version, every suite, the cipher order and the
+key exchange are properties of whatever endpoint answered at the address the
+report names. Where a content delivery network, a reverse proxy or a load
+balancer terminates TLS, that endpoint is what was measured, and the link from
+it to the server behind it cannot be seen from here.
+
+The live scans of 2026-09-01 are the demonstration. `kapitalbank.az` resolved
+to `172.66.1.19` and its report carried Cloudflare's fingerprint — a CAA
+string character-for-character identical to `cloudflare.com`'s and a cipher
+list of the same shape — while stating that *the hybrid post-quantum group
+X25519MLKEM768 was accepted*. True of the edge. A reader takes it as a fact
+about the bank, and the difference matters precisely for the harvest-now
+threat that sentence exists to address, because the classical link may be the
+one behind the edge.
+
+It is a standing limit and not a note about the host, for two reasons.
+It is true of every scan this program runs, which is what `standing` means;
+and deciding which hosts sit behind an intermediary would mean publishing a
+claim no handshake establishes. The limit says the honest thing instead —
+including that a name resolving to several addresses was measured at one of
+them, which is true here whether or not this name did.
+
+It is raised only where something answered. Over a report that reached
+nothing it would describe an empty set, and a limit that bounds no measurement
+is the kind of sentence that taught readers to skip the limits.
+
 *Enforced in:* `internal/tlsprobe`, the `Notes` field
 *Guarded by:* `TestSupportedVersionsCarryTheCoverageNote`,
 `TestDescribeTransparencySeparatesTheFourSituations`,
-`TestEveryNoteInAReportCarriesAKind`
+`TestEveryNoteInAReportCarriesAKind`,
+`TestAReportSaysItMeasuredOneHop`,
+`TestAReportThatReachedNothingClaimsNoHop`
 
 ### R3a — No authority is asked, and the claim about revocation is made where the answer is known
 
@@ -1288,16 +1317,21 @@ sentence is written, by the code that knows which it is:
 
 The third is not printed. A limit that is the same on every report is one
 nobody reads by the third report, and sitting beside a host's own
-shortcomings it reads as though it were one of them. The four are declared
-once in `internal/policy/standing.go`; `/method` ranges over that declaration
-and `denyfirst-scan -limits` prints it, so the page cannot fall out of step
-with the code and somebody offline is not sent to a website.
+shortcomings it reads as though it were one of them. They are declared once
+in `internal/policy/standing.go`; `/method` ranges over that declaration and
+`denyfirst-scan -limits` prints it, so the page cannot fall out of step with
+the code and somebody offline is not sent to a website.
+
+Nothing says how many there are. Both faces count the list at render time,
+because a sentence naming a number is a sentence that goes stale the day
+another limit is written — which happened on 2026-09-02, when the first-hop
+limit made four into five.
 
 Moving them is only honest if the report still says they exist. It gives the
 count and names both places to read them, and a test fails if it stops doing
 either — or if a standing sentence is written inline rather than added to the
-declaration, which would leave a report claiming four limits while carrying a
-fifth that nothing explains.
+declaration, which would leave a report counting the limits it points at while
+carrying one more that nothing explains.
 
 Classifying afterwards by reading the finished prose was the alternative and is
 rejected for the reason R12 gives: it puts the sentence and its label in two

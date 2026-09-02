@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/denyfirst/denyfirst/internal/policy"
 )
 
 // localTLSServer starts a TLS listener on loopback and returns its host and
@@ -126,5 +128,72 @@ func TestProbeAgainstALocalServer(t *testing.T) {
 	}
 	if supported["TLS 1.0"] || supported["TLS 1.1"] {
 		t.Error("a deprecated version was reported as accepted by a Go TLS server, which does not offer them")
+	}
+}
+
+// Every report that measured anything says it measured one hop.
+//
+// This is the one sentence the report could not have done without and did not
+// have. Everything above the certificate section describes the endpoint that
+// answered at Report.Address, and where a content delivery network or a
+// reverse proxy terminates TLS that endpoint is not the server the reader has
+// in mind. A live scan of kapitalbank.az on 2026-09-01 resolved to
+// 172.66.1.19 and returned a CAA string character-for-character identical to
+// cloudflare.com's: the report described an edge, and said *the hybrid
+// post-quantum group X25519MLKEM768 was accepted* with nothing to stop a
+// reader taking that as a fact about the bank's own server.
+//
+// It is a standing limit rather than a note about this host because it is
+// true of every scan this program runs, and because deciding which hosts sit
+// behind an intermediary would mean claiming something no handshake
+// establishes.
+func TestAReportSaysItMeasuredOneHop(t *testing.T) {
+	host, port, stop := localTLSServer(t)
+	defer stop()
+
+	report, err := loopbackProber().Probe(context.Background(), host, port)
+	if err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+	if report.Address == "" {
+		t.Fatal("nothing answered, so this test proves nothing about a report that measured something")
+	}
+
+	var said bool
+	for _, note := range report.Notes {
+		if note.Kind == policy.KindStanding && note.Text == policy.LimitFirstHop.Text {
+			said = true
+		}
+	}
+	if !said {
+		t.Error("a report that reached an address does not say the measurement stops at that address, " +
+			"so everything on it reads as a fact about the server the reader named")
+	}
+}
+
+// And a report that reached nothing does not say it.
+//
+// "Everything here was measured at one hop" over an empty report describes an
+// empty set. A limit is worth printing because it bounds a measurement; with
+// no measurement it is a sentence about nothing, and a report full of those
+// is how the limits stopped being read in the first place.
+func TestAReportThatReachedNothingClaimsNoHop(t *testing.T) {
+	// A port that answered and then stopped, so the address is a real one
+	// nothing is listening on rather than a value invented for the test.
+	host, port, stop := localTLSServer(t)
+	stop()
+
+	report, err := loopbackProber().Probe(context.Background(), host, port)
+	if err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+	if report.Address != "" {
+		t.Fatalf("something answered at %s, so this test is not exercising the guard", report.Address)
+	}
+
+	for _, note := range report.Notes {
+		if note.Text == policy.LimitFirstHop.Text {
+			t.Error("a report that reached no address still says it measured one hop")
+		}
 	}
 }
