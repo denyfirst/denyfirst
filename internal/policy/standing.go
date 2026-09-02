@@ -67,6 +67,16 @@ var (
 			"choose among TLS 1.3 suites, so the rest could not be enumerated.",
 	}
 
+	LimitOneTrustStore = StandingLimit{
+		ID:    "one-trust-store",
+		Title: "Trust is decided by one root store",
+		Text: "A chain reported as trusted was verified against the root store of the machine that ran " +
+			"this scan, which is one store among several. Chrome, Apple and Microsoft each ship their " +
+			"own, remove authorities on their own timetables, and a packaged store lags the programme " +
+			"it is built from. So this says a chain verified here: not that every client will accept " +
+			"it, and not that none will.",
+	}
+
 	LimitNoAuthorityAsked = StandingLimit{
 		ID:    "no-authority-asked",
 		Title: "No certificate authority is ever asked",
@@ -93,6 +103,7 @@ func StandingLimits() []StandingLimit {
 		LimitFirstHop,
 		LimitCipherSuitesOffered,
 		LimitTLS13Suites,
+		LimitOneTrustStore,
 		LimitNoAuthorityAsked,
 		LimitTransparencyReceipts,
 	}

@@ -659,6 +659,20 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 	// stayed false through a release. The standing half — that no authority
 	// is ever asked — is said there too, on every branch.
 
+	// Whose store decided it.
+	//
+	// "trusted" here means the root store of the machine that ran the scan.
+	// Chrome, Apple and Microsoft each ship their own and remove authorities
+	// on their own timetables, and a packaged store lags the programme it is
+	// built from — so a chain trusted here can fail in a browser, and one
+	// untrusted here can be accepted. The report said "the trust store", with
+	// the definite article, as though there were one.
+	//
+	// Raised wherever a chain was checked, which is wherever there is a leaf:
+	// the word appears on the report either way, and a reader of "untrusted"
+	// needs the caveat as much as a reader of "trusted".
+	report.standing(policy.LimitOneTrustStore)
+
 	if !facts.ChainComplete {
 		if report.Trusted {
 			// Two things can produce this, and the note used to assert the
@@ -1070,18 +1084,22 @@ func parseSCTList(list []byte) (count int, logIDs []string, malformed bool) {
 	return count, logIDs, false
 }
 
-// observe and unsettled add a note of each kind this package can make.
+// observe, unsettled and standing add a note of each kind this package can
+// make.
 //
 // They exist so that writing a note means choosing what kind of claim it is,
 // at the point where that is known. A plain append would let a sentence reach
 // the report with no kind at all, and a note with no kind is filed under
 // whichever heading comes first — which is the defect these replaced.
 //
-// There is no standing helper here, and that is the shape of the package
-// rather than an omission. A standing note is one that holds for every scan,
-// and the only one this package ever made was the claim about revocation —
-// which it could not settle and should not have been making. It is now in
-// policy.GradeStapling, where the outcome is known. See R3a.
+// standing takes a limit rather than a sentence, so a standing claim cannot
+// be written here without being added to the declaration that /method and
+// `denyfirst-scan -limits` read. There was no standing helper in this package
+// between 2026-09-01 and 2026-09-02: the only one it had made was a claim
+// about revocation it could not settle, and the one it has now is about whose
+// root store decided the word "trusted".
 func (r *Report) observe(text string) { r.Notes = append(r.Notes, policy.Observed(text)) }
 
 func (r *Report) unsettled(text string) { r.Notes = append(r.Notes, policy.Unsettled(text)) }
+
+func (r *Report) standing(l policy.StandingLimit) { r.Notes = append(r.Notes, l.Note()) }
