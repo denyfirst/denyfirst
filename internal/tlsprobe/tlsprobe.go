@@ -96,6 +96,16 @@ type Report struct {
 	// with several addresses may not answer identically on each.
 	Address string `json:"address,omitempty"`
 
+	// AddressesReached is every address a handshake in this scan connected
+	// to, in the order they were first reached.
+	//
+	// A scan is thirteen connections and each one resolves the name again, so
+	// a rotating answer set can hand them to different machines. Address
+	// above names one of them; this names all of them, and where it holds
+	// more than one entry the measurements in this report were not all taken
+	// from the same server.
+	AddressesReached []string `json:"addressesReached,omitempty"`
+
 	// Policy names the rule set that produced every verdict below, so a
 	// result can be reproduced after the rules move on.
 	Policy string `json:"policy"`
@@ -311,6 +321,10 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 
 	report := &Report{Host: host, Port: port, Policy: policy.Version}
 
+	// Every handshake records the address it reached, so that the report can
+	// say whether the measurements below describe one machine.
+	reached := newAddressSet()
+
 	// Versions are independent, so probe them concurrently. Cipher
 	// enumeration within a version is inherently sequential: each round
 	// depends on what the previous one removed.
@@ -327,7 +341,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 		go func() {
 			defer wg.Done()
 
-			state, addr, err := p.handshake(ctx, host, port, version, nil, nil)
+			state, addr, err := p.handshake(ctx, host, port, version, nil, nil, reached)
 			result := VersionResult{Version: version, Name: versionName(version)}
 
 			if err != nil {
@@ -350,7 +364,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 				result.Ciphers = []CipherResult{gradeCipher(state.CipherSuite)}
 				result.CipherListComplete = true
 			} else {
-				result.Ciphers, result.CipherListComplete = p.enumerateCiphers(ctx, host, port, version)
+				result.Ciphers, result.CipherListComplete = p.enumerateCiphers(ctx, host, port, version, reached)
 			}
 
 			mu.Lock()
@@ -433,7 +447,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	if idx := slices.IndexFunc(results, func(v VersionResult) bool {
 		return v.Supported && v.Version == tls.VersionTLS13
 	}); idx >= 0 {
-		report.PostQuantum = p.postQuantum(ctx, host, port)
+		report.PostQuantum = p.postQuantum(ctx, host, port, reached)
 	} else {
 		report.PostQuantum = PostQuantum{
 			Reason: "no TLS 1.3 handshake completed, and the hybrid group is defined for TLS 1.3 alone",
@@ -444,7 +458,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	if idx := slices.IndexFunc(results, func(v VersionResult) bool {
 		return v.Supported && v.Version != tls.VersionTLS13 && len(v.Ciphers) >= 2
 	}); idx >= 0 {
-		known, prefers := p.detectServerPreference(ctx, host, port, results[idx])
+		known, prefers := p.detectServerPreference(ctx, host, port, results[idx], reached)
 		report.PreferenceKnown = known
 		report.ServerPreference = prefers
 
@@ -462,6 +476,29 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	} else {
 		report.unsettled(
 			"Cipher preference could not be determined: it requires a pre-1.3 version offering at least two suites.")
+	}
+
+	// Whether the picture is of one machine.
+	//
+	// Every handshake resolved the name again, and most recursive resolvers
+	// rotate the order of an answer set, so a name on several addresses can
+	// answer this scan from more than one. Until 2026-09-02 the report merged
+	// them: it printed the address of the newest version that answered and
+	// presented every row below as though one server had produced them all.
+	// No row was false. The report as a whole made a claim it had not
+	// checked.
+	//
+	// A note about this host rather than a limit of the method, because it is
+	// established here: these are the addresses the handshakes reached, and
+	// this scan knows whether there was more than one.
+	report.AddressesReached = reached.list()
+	if len(report.AddressesReached) > 1 {
+		report.unsettled(fmt.Sprintf(
+			"The handshakes in this scan reached more than one address (%s), because the name "+
+				"answers on several and each connection resolved it again. A name on several "+
+				"addresses need not be configured identically on each, so the versions, suites and "+
+				"certificate above may not all describe the same machine.",
+			strings.Join(report.AddressesReached, ", ")))
 	}
 
 	// What answered, before anything about what it answered.
@@ -662,7 +699,7 @@ func summarise(results []VersionResult) (policy.Verdict, []policy.Finding) {
 // suites arrive strongest first, because that is the order a Go server
 // prefers, so a truncated list drops the weak end and the verdict improves.
 // A host can do it on purpose.
-func (p *Prober) enumerateCiphers(ctx context.Context, host, port string, version uint16) (found []CipherResult, complete bool) {
+func (p *Prober) enumerateCiphers(ctx context.Context, host, port string, version uint16, reached *addressSet) (found []CipherResult, complete bool) {
 	remaining := candidateSuites(version)
 	found = make([]CipherResult, 0, len(remaining))
 
@@ -677,7 +714,7 @@ func (p *Prober) enumerateCiphers(ctx context.Context, host, port string, versio
 			return found, false
 		}
 
-		state, _, err := p.handshake(ctx, host, port, version, remaining, nil)
+		state, _, err := p.handshake(ctx, host, port, version, remaining, nil, reached)
 		if err != nil {
 			return found, isNoSharedSuite(err)
 		}
@@ -720,7 +757,7 @@ func isNoSharedSuite(err error) bool {
 // detectServerPreference offers the same suites in reversed order. A server
 // with its own preference returns the same suite regardless; one that follows
 // the client returns whichever we listed first.
-func (p *Prober) detectServerPreference(ctx context.Context, host, port string, v VersionResult) (known, prefers bool) {
+func (p *Prober) detectServerPreference(ctx context.Context, host, port string, v VersionResult, reached *addressSet) (known, prefers bool) {
 	if len(v.Ciphers) < 2 {
 		return false, false
 	}
@@ -732,11 +769,11 @@ func (p *Prober) detectServerPreference(ctx context.Context, host, port string, 
 	reversed := slices.Clone(forward)
 	slices.Reverse(reversed)
 
-	first, _, err := p.handshake(ctx, host, port, v.Version, forward, nil)
+	first, _, err := p.handshake(ctx, host, port, v.Version, forward, nil, reached)
 	if err != nil {
 		return false, false
 	}
-	second, _, err := p.handshake(ctx, host, port, v.Version, reversed, nil)
+	second, _, err := p.handshake(ctx, host, port, v.Version, reversed, nil, reached)
 	if err != nil {
 		return false, false
 	}
@@ -754,11 +791,11 @@ func (p *Prober) detectServerPreference(ctx context.Context, host, port string, 
 // HelloRetryRequest naming a group this client did not offer. All three are
 // the server answering. Anything else is the question going unanswered, and
 // the two are not reported alike.
-func (p *Prober) postQuantum(ctx context.Context, host, port string) PostQuantum {
+func (p *Prober) postQuantum(ctx context.Context, host, port string, reached *addressSet) PostQuantum {
 	const group = "X25519MLKEM768"
 
 	if _, _, err := p.handshake(ctx, host, port, tls.VersionTLS13, nil,
-		[]tls.CurveID{tls.X25519MLKEM768}); err == nil {
+		[]tls.CurveID{tls.X25519MLKEM768}, reached); err == nil {
 		return PostQuantum{Measured: true, Offered: true, Group: group}
 	} else if declinedGroup(err) {
 		return PostQuantum{Measured: true, Group: group}
@@ -779,7 +816,13 @@ func declinedGroup(err error) bool {
 
 // handshake performs one handshake at a fixed version with an optional suite
 // list, returning the connection state and the address reached.
-func (p *Prober) handshake(ctx context.Context, host, port string, version uint16, suites []uint16, groups []tls.CurveID) (*tls.ConnectionState, string, error) {
+//
+// Every address reached goes into reached, including one whose handshake then
+// failed: the connection was made, so that machine is one this scan touched
+// and one the picture below may be drawn from. The collector is a parameter
+// rather than a field on the Prober because one Prober serves every scan the
+// service runs.
+func (p *Prober) handshake(ctx context.Context, host, port string, version uint16, suites []uint16, groups []tls.CurveID, reached *addressSet) (*tls.ConnectionState, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, p.handshakeTimeout())
 	defer cancel()
 
@@ -793,6 +836,7 @@ func (p *Prober) handshake(ctx context.Context, host, port string, version uint1
 	if remote := conn.RemoteAddr(); remote != nil {
 		addr = remote.String()
 	}
+	reached.add(addr)
 
 	// Both settings gosec objects to here are the purpose of the tool rather
 	// than an oversight.

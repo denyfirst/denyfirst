@@ -91,7 +91,7 @@ func TestATruncatedSuiteListIsNotReportedAsComplete(t *testing.T) {
 	})
 
 	undisturbed := &Prober{Dial: (&net.Dialer{}).DialContext}
-	full, complete := undisturbed.enumerateCiphers(context.Background(), host, port, tls.VersionTLS12)
+	full, complete := undisturbed.enumerateCiphers(context.Background(), host, port, tls.VersionTLS12, newAddressSet())
 	if !complete {
 		t.Fatalf("an undisturbed enumeration reported itself unfinished after %d suites", len(full))
 	}
@@ -109,7 +109,7 @@ func TestATruncatedSuiteListIsNotReportedAsComplete(t *testing.T) {
 		return (&net.Dialer{}).DialContext(ctx, network, address)
 	}}
 
-	short, complete := cut.enumerateCiphers(context.Background(), host, port, tls.VersionTLS12)
+	short, complete := cut.enumerateCiphers(context.Background(), host, port, tls.VersionTLS12, newAddressSet())
 	if complete {
 		t.Errorf(`enumeration stopped after %d of %d suites and reported itself finished.
 

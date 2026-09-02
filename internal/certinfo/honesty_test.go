@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/denyfirst/denyfirst/internal/policy"
 )
 
 // An expired certificate from an authority nobody trusts must not be reported
@@ -286,5 +288,43 @@ func TestALookalikeNameIsNotRewritten(t *testing.T) {
 
 	if got != spelled {
 		t.Errorf("the subject was altered:\n  in  %q\n  out %q", spelled, got)
+	}
+}
+
+// The report says whose root store decided the word "trusted".
+//
+// It said "the trust store", with the definite article, as though there were
+// one. There is not: the store here is the one on the machine that ran the
+// scan, and Chrome, Apple and Microsoft each ship their own, remove
+// authorities on their own timetables, and a packaged store lags the
+// programme it is built from. A chain trusted here can fail in a browser and
+// one untrusted here can be accepted, and neither direction was stated.
+//
+// Raised wherever a chain was checked, because a reader of "untrusted" needs
+// the caveat as much as a reader of "trusted".
+func TestTheReportSaysWhoseRootStoreDecided(t *testing.T) {
+	root := newRoot(t)
+
+	for _, c := range []struct {
+		name  string
+		chain []*x509.Certificate
+	}{
+		{"a chain that does not reach a trusted root", []*x509.Certificate{newLeaf(t, root, leafOpts{}), root.cert}},
+		{"a self-signed certificate", []*x509.Certificate{newLeaf(t, root, leafOpts{selfSign: true})}},
+	} {
+		report, err := Analyse(c.chain, "example.test", refNow)
+		if err != nil {
+			t.Fatalf("%s: Analyse: %v", c.name, err)
+		}
+
+		var said bool
+		for _, note := range report.Notes {
+			if note.Kind == policy.KindStanding && note.Text == policy.LimitOneTrustStore.Text {
+				said = true
+			}
+		}
+		if !said {
+			t.Errorf("%s: the report uses the word trusted and does not say whose store decided it", c.name)
+		}
 	}
 }

@@ -553,12 +553,42 @@ It is raised only where something answered. Over a report that reached
 nothing it would describe an empty set, and a limit that bounds no measurement
 is the kind of sentence that taught readers to skip the limits.
 
+**Nor was it established that one hop meant one machine.** A full scan is
+thirteen separate connections and each one resolves the name again, so a
+rotating answer set — which is what most recursive resolvers return — can hand
+successive handshakes to different servers. The report recorded the address of
+the newest version that answered, printed it at the top, and presented every
+version, suite and certificate below as though one machine had produced them
+all. No row was false. The report as a whole made a claim it had never
+checked, and had thrown away the evidence that would have settled it: four of
+the five handshake call sites discarded the address they reached.
+
+Every handshake now records it, into a set held for the length of one probe —
+never on the `Prober`, which serves every scan the service runs. Where the set
+holds more than one entry the report says so and names them. This is a note
+about the host rather than a limit of the method, because it is established
+here: these are the addresses the handshakes reached, and this scan knows
+whether there was more than one.
+
+**And "trusted" is one store's opinion.** A chain verifies against the root
+store of the machine that ran the scan. Chrome, Apple and Microsoft each ship
+their own, remove authorities on their own timetables, and a packaged store
+lags the programme it is built from — so a chain trusted here can fail in a
+browser, and one untrusted here can be accepted. The report said *the* trust
+store, with the definite article, as though there were one. It is a standing
+limit, raised wherever a chain was checked, because a reader of `untrusted`
+needs the caveat as much as a reader of `trusted`.
+
 *Enforced in:* `internal/tlsprobe`, the `Notes` field
 *Guarded by:* `TestSupportedVersionsCarryTheCoverageNote`,
 `TestDescribeTransparencySeparatesTheFourSituations`,
 `TestEveryNoteInAReportCarriesAKind`,
 `TestAReportSaysItMeasuredOneHop`,
-`TestAReportThatReachedNothingClaimsNoHop`
+`TestAReportThatReachedNothingClaimsNoHop`,
+`TestAReportNamesTheAddressesItReached`,
+`TestAScanThatReachedTwoMachinesSaysSo`,
+`TestTheAddressesReachedAreRecordedOnceEach`,
+`TestTheReportSaysWhoseRootStoreDecided`
 
 ### R3a — No authority is asked, and the claim about revocation is made where the answer is known
 
