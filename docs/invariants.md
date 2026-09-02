@@ -1643,8 +1643,8 @@ which is how the first version of that check passed a change that printed
 ## The page
 
 The frontend had no entry here while it was the only part of this project a
-visitor actually runs. Two properties carry it, both load-bearing, and both
-undoable in one line by somebody with a good reason.
+visitor actually runs. The properties below carry it, all load-bearing, and
+each undoable in one line by somebody with a good reason.
 
 ### W1 — Nothing from a report reaches a markup parser
 
@@ -1690,6 +1690,71 @@ the first time the promise on the privacy page would stop being true.
 *Enforced in:* `internal/web.setHeaders`
 *Guarded by:* `TestNothingFromAnyoneElseIsEnforcedByAHeader`,
 `TestContentSecurityPolicyAllowsOnlySelf`
+
+### W3 — A table with the same columns is drawn with the same columns
+
+The cipher suites are printed one table per protocol version, one under
+another, with the same four headings each time. Each table used to size its
+own columns to its own contents, which is what a browser does when nothing
+tells it otherwise. Measured in a browser on a live report, "Key exchange"
+began 92 pixels further right under TLS 1.2 than under TLS 1.3, and "Cipher"
+68 pixels further left. Every row was correct. A table exists so that a reader
+can run an eye down a column, and down two of these nobody could.
+
+The geometry is declared on a `<colgroup>` and the layout is fixed, so the
+widths are read before any row is. The widths are written in `ch` on the
+`<col>` elements rather than on the header cells, because a fixed layout takes
+its geometry from the columns first and because the header is set in a smaller
+font than the body — a width in `ch` on a `<th>` would be measured in the
+wrong font. Each column is given its own worst case: the longest suite name
+the standard library can print is 45 characters, the longest key exchange is
+`ephemeral (TLS 1.3)`, the longest cipher is `ChaCha20-Poly1305`, the longest
+grade is `insecure`.
+
+A suite name is never broken. The column previously carried
+`word-break: break-all` so that a long name would fit a narrow screen; it fits
+by arriving as `TLS_ECDHE_RSA_W` / `ITH_AES_128_GCM` / `_SHA256`, and the name
+is the finding. A reader copying that by hand writes down a suite that does
+not exist. The table is put in a container that scrolls instead, and the
+container is shaded at whichever edge it can still travel towards — without
+that, a reader on a phone sees Grade and Suite and never learns that the key
+exchange and the mode of encryption were recorded at all. The shade is a
+colour token defined in both schemes, because a black shadow on a dark page is
+no shadow.
+
+Paper does not scroll, so the fix for the screen is a way to lose data on a
+printed page. Under `@media print` the container stops scrolling, the table
+gives up its minimum width, the columns are given shares of the sheet so that
+the two tables still agree with each other, and the identifier is allowed to
+wrap — the one place where breaking a name is better than dropping it.
+
+Measured, not inferred: 380, 794 and 1000 pixels wide, in both colour schemes,
+with the longest value in every column present. In each, the two tables' four
+headings sit at identical x positions, no name wraps, no cell is clipped, and
+the page itself never scrolls sideways.
+
+*Enforced in:* `internal/web/assets/app.js`, `internal/web/assets/style.css`
+*Guarded by:* `TestEveryCipherTableIsGivenTheSameColumns`,
+`TestASuiteNameIsNeverBrokenOnScreen`,
+`TestTheCipherTableScrollsInsideItsOwnContainer`,
+`TestNothingIsLostOffTheEdgeOnPaper`,
+`TestTheClassesTheScriptAddsAreStyled`
+
+### W4 — A shipped asset does not carry instructions for editing itself
+
+Two comments reading `Append this to internal/web/assets/style.css. Nothing
+above it changes.` and `Replace the ".prose" block near the end of style.css
+with this` were served to every visitor from the stylesheet they describe.
+They were patch instructions written for a person applying a change, left in
+the file the change was applied to.
+
+A browser ignores them and no reader is harmed. They are still a file saying
+something untrue about itself on a site whose entire claim is that it does not
+say what it cannot support, and the same slip in a file that is executed
+rather than parsed for style would not have been cosmetic.
+
+*Enforced in:* `internal/web/assets/style.css`, `internal/web/assets/app.js`
+*Guarded by:* `TestTheAssetsDoNotCarryInstructionsForEditingThemselves`
 
 ---
 

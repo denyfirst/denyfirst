@@ -37,6 +37,11 @@
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono",
           Menlo, Consolas, monospace;
 
+  /* The shading at the edge of anything that scrolls. Ink on light paper and
+     light on dark paper, because a black shadow is invisible against a dark
+     page and this edge exists to be seen. */
+  --edge: rgba(22, 24, 29, 0.20);
+
   --measure: 34rem;
   --page: 52rem;
 }
@@ -57,6 +62,8 @@
     --strong:     #6fbf92;
     --weak:       #d9a23c;
     --insecure:   #e8757e;
+
+    --edge:       rgba(232, 230, 225, 0.18);
   }
 }
 
@@ -403,6 +410,107 @@ h1 {
 
 .rows td:last-child, .rows th:last-child { padding-right: 0; }
 
+/*
+  Every cipher table has the same columns, so they are given the same columns.
+
+  One table per protocol version, each sizing itself to its own contents:
+  measured on a live report of kapitalbank.az, "Key exchange" began 92 pixels
+  further right under TLS 1.2 than under TLS 1.3, and "Cipher" 68 pixels
+  further left. Nothing was wrong with any row. A table exists so that a
+  reader can run an eye down a column, and down two of these it could not.
+
+  The widths sit on the <col> elements rather than on the header cells,
+  because a fixed layout takes its geometry from the columns first and only
+  then from the first row. That distinction matters here: the header is set
+  smaller than the body, so a width written in ch on a <th> would be measured
+  in the wrong font. A <col> inherits the table's own monospace, which is the
+  font the values are set in.
+
+  ch is the unit because every value in this table is fixed-width text of a
+  known maximum length. The longest cipher suite name the standard library
+  can print is TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, forty-five
+  characters; the longest key exchange is "ephemeral (TLS 1.3)"; the longest
+  cipher is "ChaCha20-Poly1305"; the longest grade is "insecure". Each column
+  is given room for its own worst case and no more.
+*/
+.suites {
+  table-layout: fixed;
+  /* The four columns at their worst case, plus the three gutters between
+     them. Written in ch so that it shrinks with the table on a narrow screen
+     rather than reserving desktop widths on a phone. */
+  min-width: calc(89ch + 2.4rem);
+}
+
+.suites .col-grade  { width: calc(8ch + 0.8rem); }
+.suites .col-kex    { width: calc(19ch + 0.8rem); }
+.suites .col-cipher { width: 17ch; }
+
+/* Declared rather than left out. The suite column takes whatever the other
+   three do not, and saying so is what the other three are measured against. */
+.suites .col-suite  { width: auto; }
+
+/*
+  A suite name is an identifier, and an identifier is never broken.
+
+  The column beside it used to break mid-word on a narrow screen, so
+  TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 arrived as three fragments and a
+  reader copying it by hand could produce a name that is not a cipher suite.
+  The name is the finding here. It is kept whole and the container is allowed
+  to scroll instead.
+*/
+.suites td.identifier {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+/*
+  The container scrolls, and says so.
+
+  A table wider than the screen that gives no sign of it hides its right-hand
+  columns completely: a reader on a phone would see Grade and Suite and never
+  learn that the mode of encryption was recorded at all. The two shadows are
+  painted on the box and the two paper-coloured covers travel with the
+  content, so each shadow is hidden exactly while that edge is at the end of
+  its travel and shows the moment there is something past it.
+*/
+.table-scroll {
+  overflow-x: auto;
+  background:
+    linear-gradient(to right, var(--paper), rgba(0, 0, 0, 0)) left / 1.4rem 100% no-repeat local,
+    linear-gradient(to left,  var(--paper), rgba(0, 0, 0, 0)) right / 1.4rem 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, var(--edge), rgba(0, 0, 0, 0)) left / 0.5rem 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, var(--edge), rgba(0, 0, 0, 0)) right / 0.5rem 100% no-repeat scroll;
+}
+
+/*
+  Paper does not scroll.
+
+  On a screen a table too wide for its column is scrolled to. On a sheet of
+  paper the part past the edge is simply not there, and a printed report that
+  drops the mode of encryption is worse than one that breaks a suite name
+  across two lines. So on paper the container stops scrolling, the table
+  gives up its minimum, and the identifier is allowed to wrap after all —
+  the last resort, and only where there is no other way to show it.
+*/
+@media print {
+  .table-scroll { overflow-x: visible; background: none; }
+  .suites { min-width: 0; }
+
+  /* Shares of the sheet rather than counts of characters, because the sheet
+     is what there is. Both tables are given the same shares, so the columns
+     still line up on paper; the suite column takes the remaining 42% and is
+     the only one allowed to wrap. */
+  .suites .col-grade  { width: 12%; }
+  .suites .col-kex    { width: 24%; }
+  .suites .col-cipher { width: 22%; }
+
+  /* Last resort, and only where a value cannot fit its column on its own
+     line. break-word leaves everything that does fit exactly as it is. */
+  .suites td { overflow-wrap: break-word; }
+  .suites td.identifier { white-space: normal; overflow-wrap: anywhere; }
+}
+
 .mark-strong   { color: var(--strong); }
 .mark-weak     { color: var(--weak); }
 .mark-insecure { color: var(--insecure); }
@@ -620,16 +728,6 @@ h1 {
   .rows { font-size: 0.74rem; }
   .rows th, .rows td { padding-right: 0.5rem; }
 }
-
-/*
-  Append this to internal/web/assets/style.css.
-  Nothing above it changes.
-*/
-
-/*
-  Replace the ".prose" block near the end of style.css with this, and add the
-  ".jump" rules. Everything above the prose section is unchanged.
-*/
 
 /* ── Prose pages ──────────────────────────────────────────────────────── */
 

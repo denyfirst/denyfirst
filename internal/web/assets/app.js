@@ -368,7 +368,40 @@ function ciphers(tls, report) {
         + "and suites are found strongest first, so what is missing is the weaker end."));
     }
 
-    const table = el("table", "rows");
+    // One geometry for every cipher table, and a container that scrolls.
+    //
+    // Each version gets its own table, and until 2026-09-02 each sized its own
+    // columns to its own contents: measured on a live report, "Key exchange"
+    // began 92 pixels further right under TLS 1.2 than under TLS 1.3, and
+    // "Cipher" 68 to the left. Two tables, one above the other, the same four
+    // columns, and a reader's eye could not run down one of them. Nothing was
+    // wrong with any row; the page simply could not be read the way a table
+    // exists to be read.
+    //
+    // Declared widths make the columns the same everywhere, and a scrolling
+    // container keeps them that way on a narrow screen instead of breaking a
+    // forty-five character suite name across three lines.
+    const table = el("table", "rows suites");
+
+    // The geometry is declared on the columns, not left to the contents.
+    //
+    // A <colgroup> is the one place a table can be told how wide its columns
+    // are before any row is read, and it is what makes two tables one above
+    // the other line up. The stylesheet gives three of them a width and lets
+    // the suite names take what is left.
+    //
+    // Written out one at a time rather than looped over a list, because the
+    // test that checks every class the script writes has a rule behind it
+    // reads class names out of el() calls. A class assembled from a variable
+    // is invisible to it, and a column with no rule is a column with no
+    // width.
+    const group = el("colgroup");
+    group.appendChild(el("col", "col-grade"));
+    group.appendChild(el("col", "col-suite"));
+    group.appendChild(el("col", "col-kex"));
+    group.appendChild(el("col", "col-cipher"));
+    table.appendChild(group);
+
     const head = el("tr");
     for (const label of ["Grade", "Suite", "Key exchange", "Cipher"]) {
       head.appendChild(el("th", null, label));
@@ -387,7 +420,7 @@ function ciphers(tls, report) {
       body.appendChild(row);
     }
     table.appendChild(body);
-    frag.appendChild(table);
+    frag.appendChild(el("div", "table-scroll")).appendChild(table);
   }
 
   // Labelled rather than left as prose.
