@@ -1756,6 +1756,47 @@ rather than parsed for style would not have been cosmetic.
 *Enforced in:* `internal/web/assets/style.css`, `internal/web/assets/app.js`
 *Guarded by:* `TestTheAssetsDoNotCarryInstructionsForEditingThemselves`
 
+### W5 — A colour text is set in is legible on the paper it is set on
+
+The stylesheet opens by saying that what could not be measured is set in the
+same weight as what could, "because a reader who is not told what was skipped
+will read silence as a clean result". The weight was equalised. The colour was
+not.
+
+Measured in a browser across a full report and both prose pages, in both
+colour schemes: the faint ink came to **3.11:1** against paper in the light
+scheme and 3.92:1 against the sunk paper in the dark one, against the 4.5:1 a
+reader with ordinary vision needs at the sizes this page uses — and nothing on
+the page is large enough for the 3:1 allowance. What that ink carries is not
+decoration: the coverage line, the count of what was observed and not graded,
+the pointer to the standing limits, the dash that stands for a value there
+was none of, and the words "not measured". The amber of a weak verdict came to
+3.93:1 against paper and **3.60:1** against the sunk paper a finding is drawn
+on — below the threshold on the one word the whole report exists to deliver.
+
+Both were deepened until they clear it and no further, keeping hue and
+saturation, so the palette still reads as print rather than as an alarm panel:
+`--ink-faint` `#8a8f98` → `#676c75` and `--weak` `#a6740c` → `#8f640a` in the
+light scheme, `--ink-faint` `#767b84` → `#82878f` in the dark. The ink
+hierarchy survives it — 15.6 : 7.2 : 4.6 against the worse of the two paper
+surfaces.
+
+Every colour used for text is checked against **both** paper surfaces in both
+schemes, because a colour legible on one and not the other is a colour waiting
+for the day somebody moves the element. The list of colours is read out of the
+stylesheet rather than written down, so one added later is checked without
+anybody remembering to add it. The one inversion on the page — the submit
+button, which prints paper on ink — is checked against ink instead.
+
+`--rule` is excluded and separately forbidden from being used for text: a
+hairline between rows that met the text threshold would be a bar, not a
+hairline. The exclusion is itself checked, so it cannot quietly protect a
+colour that would now pass anyway.
+
+*Enforced in:* `internal/web/assets/style.css`
+*Guarded by:* `TestEveryColourTextIsSetInIsLegible`,
+`TestTheRuleColourIsNeverUsedForText`, `TestTheContrastArithmeticIsRight`
+
 ---
 
 ## Disclosure

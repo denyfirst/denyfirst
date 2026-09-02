@@ -17,7 +17,14 @@
   --paper-sunk:  #f2f0eb;
   --ink:         #16181d;
   --ink-soft:    #4a4f59;
-  --ink-faint:   #8a8f98;
+  /* The faint ink is not decoration. It carries the coverage line, the count
+     of what was observed and not graded, the pointer to the standing limits,
+     and the words "not measured" — everything a reader has to see in order
+     not to mistake silence for a clean result. It was set at 3.11:1 against
+     this paper, below the 4.5:1 a reader with ordinary vision needs at these
+     sizes, so the page equalised the weight of what was skipped and then took
+     it back in colour. */
+  --ink-faint:   #676c75;
   --rule:        #dedbd3;
 
   --navy:        #22346b;
@@ -29,7 +36,12 @@
   --brand:       #9b1b24;
 
   --strong:      #1f5d3e;
-  --weak:        #a6740c;
+  /* A verdict is the product, so a verdict is legible. This amber sat at
+     3.93:1 against paper and 3.60:1 against the sunk paper a finding is drawn
+     on, which is below the threshold on the one word the whole report exists
+     to deliver. Deepened until it clears it, and no further: the palette is
+     meant to read as print, not as an alarm panel. */
+  --weak:        #8f640a;
   --insecure:    #9b1b24;
 
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
@@ -52,7 +64,7 @@
     --paper-sunk: #1b1e24;
     --ink:        #e8e6e1;
     --ink-soft:   #a8adb6;
-    --ink-faint:  #767b84;
+    --ink-faint:  #82878f;
     --rule:       #2b2f37;
 
     --navy:       #93a7e0;
