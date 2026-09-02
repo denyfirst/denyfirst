@@ -759,8 +759,8 @@ func describe(c *x509.Certificate, trim *trimmer) Certificate {
 	sum := sha256.Sum256(c.Raw)
 
 	out := Certificate{
-		Subject:            trim.text(c.Subject.String()),
-		Issuer:             trim.text(c.Issuer.String()),
+		Subject:            trim.text(distinguishedName(c.Subject)),
+		Issuer:             trim.text(distinguishedName(c.Issuer)),
 		SerialNumber:       trim.text(c.SerialNumber.String()),
 		NotBefore:          c.NotBefore,
 		NotAfter:           c.NotAfter,
