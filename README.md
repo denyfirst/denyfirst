@@ -85,9 +85,27 @@ an accidental start is not immediately public.
 
 ## Running your own
 
-This is a supported use rather than a workaround. The service makes a promise
-about what it keeps; running it yourself replaces that promise with a fact you
-control.
+**This is the tool. denyfirst.dev is a demonstration of it.**
+
+That deployment reaches only hosts this project owns. It used to reach
+anything anybody typed, which put this project in the worst position available
+to it: ours was the address in the scanned party's logs, and we had
+deliberately made ourselves unable to say who had asked, because recording
+that is the one thing this project undertakes not to do. Either start keeping
+records, which is not available, or stop connecting to third parties. So the
+scan runs on your machine, from your address.
+
+The hosted service says it records nothing and you have to believe it. Here
+there is nothing to believe: this project is not in the path.
+
+The restrictions that exist to stop a stranger using somebody else'"'"'s server
+through ours do not apply to your own network — private addresses, any port,
+bare addresses, whichever host you point it at.
+
+**[`docs/self-host.md`](docs/self-host.md)** has the procedure: verifying a
+release before running it, the command line, the service, and a container
+image with no base system whose trust store comes from your machine rather
+than from the image.
 
 ```sh
 git clone https://github.com/denyfirst/denyfirst

@@ -1,0 +1,47 @@
+# One service, nothing granted that is not needed.
+#
+# Read it before running it. Every line that is not a port or a path is there
+# to take something away.
+
+services:
+  denyfirst:
+    build: .
+    image: denyfirst
+
+    # 443 on the host, 8443 in the container. The container never binds a
+    # privileged port, so it needs no capability to do so.
+    ports:
+      - "443:8443"
+
+    # The trust store comes from this machine, not from the image.
+    #
+    # Not a convenience. Every verdict about a certificate chain is a verdict
+    # against some trust store, and a report should reflect the trust store of
+    # whoever is asking rather than one baked in by whoever built the image.
+    # The standing limits already say a scan consults one trust store; this is
+    # where a reader gets to choose which.
+    #
+    # The service refuses to start if it cannot find one, because an empty
+    # store does not fail — it reports every certificate as untrusted, which
+    # reads as a finding about the scanned server.
+    volumes:
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+
+    environment:
+      SSL_CERT_DIR: /etc/ssl/certs
+
+    # Nothing in the image is written to. The counter file is the only thing
+    # this program ever writes, and it is not enabled here; add a volume and
+    # -stats-file if you want one.
+    read_only: true
+
+    # A process in here cannot gain privileges it did not start with, whatever
+    # it executes — and there is nothing to execute: no shell, no package
+    # manager, no second binary.
+    security_opt:
+      - no-new-privileges:true
+
+    cap_drop:
+      - ALL
+
+    restart: unless-stopped
