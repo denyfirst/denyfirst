@@ -621,7 +621,7 @@ const NOTE_SECTIONS = [
 // shortcomings they read as though they were some. They are on one page, and
 // the report says how many there are and points at it, so moving them is not
 // hiding them.
-const METHOD_PAGE = "/method";
+const METHOD_PAGE = "/tls/method";
 
 // notes renders each kind under its own heading.
 //
@@ -722,7 +722,13 @@ function render(data) {
 // ── Submission ──────────────────────────────────────────────────────────
 
 async function check(target) {
-  const response = await fetch("/api/v1/scan", {
+  // Addressed under the check it runs, like the page it is called from.
+  //
+  // /api/v1/scan is still served and answers identically, because a path in
+  // somebody's script is not a link they can be redirected from: a redirect
+  // on a POST is followed by some clients and dropped by others, and a body
+  // that quietly goes nowhere is worse than a path that stays.
+  const response = await fetch("/api/v1/tls/scan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ target: target }),

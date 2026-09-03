@@ -121,7 +121,19 @@ type page struct {
 // with headings and a set of jump links reads better than three that each
 // tell a third of the story.
 var pages = map[string]*page{
-	"/": {
+	// The scanner has an address of its own.
+	//
+	// It was at "/", which is the project's address rather than this check's.
+	// One service and one site were the same thing while there was one
+	// service; they stop being the same thing the moment there is a second,
+	// and by then every report anybody has shared points at "/" — so the
+	// front page cannot become a front page without moving the tool out from
+	// under those links.
+	//
+	// Moved now, while nobody is hurt by it. What is at "/" today is a
+	// temporary redirect here, and when the project has a front page to put
+	// there the redirect goes and this address does not move.
+	"/tls": {
 		Title:       "denyfirst — check what a server actually negotiates",
 		Description: "Check a server's TLS configuration and certificate against cited standards. Nothing about the scan is recorded.",
 		Fragment:    "assets/index.html",
@@ -147,7 +159,12 @@ var pages = map[string]*page{
 	// report it explains, at the moment the question comes up, and it exists
 	// so that four sentences true of every scan stop being printed on every
 	// report — where they read as findings about the reader's own server.
-	"/method": {
+	//
+	// Under the service and not at the root, because the limits on it are
+	// this instrument's. What a TLS scan cannot establish is not what a mail
+	// check will not establish, and a page that tried to be both would be
+	// true of neither.
+	"/tls/method": {
 		Title:       "What this can see, and what it cannot — denyfirst",
 		Description: "How to read a report, and the limits of the method: what every scan here cannot establish, whatever server it looks at.",
 		Fragment:    "assets/method.html",
@@ -175,6 +192,27 @@ var moved = map[string]string{
 	"/scanning":     "/privacy#scans",
 	"/about":        "/privacy",
 	"/security.txt": SecurityTxtPath,
+
+	// The method page moved under the service it describes. Permanent: it is
+	// not coming back to the root, and the address is printed in reports that
+	// have already been shared.
+	"/method": "/tls/method",
+}
+
+// standingIn are addresses serving something other than what they will serve.
+//
+// "/" is the project's address. Today the project has one check, so "/" sends
+// a visitor to it; when there is a front page to put there, "/" will stop
+// redirecting and /tls will not have moved. That is the whole reason for the
+// split, and it is why this redirect is *temporary* while the one above is
+// permanent — a permanent redirect is a promise that the address is finished
+// changing, and this one is not.
+//
+// Every response here carries Cache-Control: no-store, so neither kind is
+// cached in practice. The status code is still the honest one, because it is
+// read by people and by intermediaries that ignore the header.
+var standingIn = map[string]string{
+	"/": "/tls",
 }
 
 // files are the assets served as they are.
@@ -250,6 +288,11 @@ func serve(w http.ResponseWriter, r *http.Request) {
 
 	if to, found := moved[r.URL.Path]; found {
 		http.Redirect(w, r, to, http.StatusMovedPermanently)
+		return
+	}
+
+	if to, found := standingIn[r.URL.Path]; found {
+		http.Redirect(w, r, to, http.StatusFound)
 		return
 	}
 

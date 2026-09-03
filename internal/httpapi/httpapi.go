@@ -176,6 +176,18 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 		mux:     http.NewServeMux(),
 	}
 
+	// Two paths, one handler, and deliberately not a redirect.
+	//
+	// The check is addressed under its own name now that the project expects
+	// more than one, and /api/v1/scan is what every script written against
+	// this service already says. A redirect would be the tidy answer for a
+	// page and is the wrong one here: 307 and 308 preserve a POST body, 301
+	// and 302 do not, and clients disagree about which they follow. A caller
+	// whose body is silently dropped gets an error that looks like ours.
+	//
+	// So the old path keeps working, identically, until something says
+	// otherwise in writing.
+	s.mux.HandleFunc("POST /api/v1/tls/scan", s.handleScan)
 	s.mux.HandleFunc("POST /api/v1/scan", s.handleScan)
 	s.mux.HandleFunc("GET /healthz", s.readLimited(s.handleHealth))
 	s.mux.HandleFunc("GET /api/v1/stats", s.readLimited(s.handleStats))

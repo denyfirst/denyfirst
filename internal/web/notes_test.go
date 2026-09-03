@@ -168,7 +168,7 @@ func TestTheStandingLimitsAreNamedAndLinked(t *testing.T) {
 		t.Error("the script still renders the standing limits as a section of every report")
 	}
 	for _, required := range []string{
-		`const METHOD_PAGE = "/method"`,
+		`const METHOD_PAGE = "/tls/method"`,
 		"limits of this method apply to every scan",
 		"standing.length",
 	} {
@@ -178,9 +178,9 @@ func TestTheStandingLimitsAreNamedAndLinked(t *testing.T) {
 	}
 
 	// And the page it points at has to exist and list every one of them.
-	page, ok := rendered["/method"]
+	page, ok := rendered["/tls/method"]
 	if !ok {
-		t.Fatal("the report links /method and the site does not serve it")
+		t.Fatal("the report links /tls/method and the site does not serve it")
 	}
 	// Compared against the escaped form. The page is a template and
 	// html/template escapes what it interpolates, so "Go's" arrives as

@@ -98,7 +98,7 @@ func TestEachPageHasItsOwnTitle(t *testing.T) {
 // Only the page that needs a script should load one. The fewer routes that
 // execute code, the smaller the question of what that code does.
 func TestOnlyTheScannerLoadsAScript(t *testing.T) {
-	if !strings.Contains(get(t, "/").Body.String(), `src="/app.js"`) {
+	if !strings.Contains(get(t, "/tls").Body.String(), `src="/app.js"`) {
 		t.Error("the scanner page does not load its script")
 	}
 
@@ -254,7 +254,7 @@ func TestOnlyReadMethodsAreServed(t *testing.T) {
 // The page has to explain itself to a reader whose browser runs no script,
 // rather than presenting a form that silently does nothing.
 func TestPageWorksWithoutScript(t *testing.T) {
-	page := get(t, "/").Body.String()
+	page := get(t, "/tls").Body.String()
 
 	if !strings.Contains(page, "<noscript>") {
 		t.Error("the page has no noscript block; without one the form appears to work and does not")
@@ -264,14 +264,14 @@ func TestPageWorksWithoutScript(t *testing.T) {
 	}
 }
 
-// The home page carries the tool and a link, and the explanation lives on the
-// page written for it. A paragraph that repeats a link is a paragraph the
+// The scanner page carries the tool and a link, and the explanation lives on
+// the page written for it. A paragraph that repeats a link is a paragraph the
 // reader learns to skip, and the skipping generalises.
-func TestHomePageDoesNotRepeatThePrivacyPage(t *testing.T) {
-	page := get(t, "/").Body.String()
+func TestTheScannerPageDoesNotRepeatThePrivacyPage(t *testing.T) {
+	page := get(t, "/tls").Body.String()
 
 	if !strings.Contains(page, `href="/privacy#scans"`) {
-		t.Error("the home page does not link to the explanation of what a scan sends")
+		t.Error("the scanner page does not link to the explanation of what a scan sends")
 	}
 
 	// Wording that used to be duplicated here and is now only on /privacy.
@@ -281,7 +281,7 @@ func TestHomePageDoesNotRepeatThePrivacyPage(t *testing.T) {
 		"written down at this end",
 	} {
 		if strings.Contains(page, moved) {
-			t.Errorf("the home page still repeats %q, which the privacy page says at length", moved)
+			t.Errorf("the scanner page still repeats %q, which the privacy page says at length", moved)
 		}
 	}
 
@@ -291,7 +291,7 @@ func TestHomePageDoesNotRepeatThePrivacyPage(t *testing.T) {
 	// now and lost its capital when it moved there. What matters is that the
 	// claim is still made, not where the sentence happens to break.
 	if !strings.Contains(strings.ToLower(page), "not what it advertises") {
-		t.Error("the home page no longer says what it is for")
+		t.Error("the scanner page no longer says what it is for")
 	}
 }
 
