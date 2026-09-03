@@ -83,6 +83,20 @@ jobs:
       - name: Build
         run: go build -trimpath ./...
 
+      # The build that runs on denyfirst.dev, which reaches only the hosts
+      # this project owns. It is the same program with one list compiled in,
+      # and the way to keep it the same program is to build and test it here
+      # rather than to discover on a release evening that it does not compile.
+      #
+      # The whole suite is not run under the tag: what the tag changes is
+      # which hosts may be reached, so the tests that scan a host the list
+      # does not cover skip themselves and say so. The tool is covered by the
+      # run above; the list is covered here.
+      - name: Build and test the demonstration deployment
+        run: |
+          go build -trimpath -tags demo ./...
+          go test -race -shuffle=on -tags demo ./internal/scan/
+
   vulncheck:
     name: Known vulnerabilities
     runs-on: ubuntu-latest

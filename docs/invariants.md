@@ -125,6 +125,67 @@ caller's deadline is never extended.
 
 ---
 
+### N6 — The public deployment connects only to hosts this project owns
+
+Until 2026-09-03 anybody could point denyfirst.dev at any host on the internet
+and this server opened the connections. That arrangement put the project in the
+worst position available to it: **ours was the address in the scanned party's
+logs, and we had deliberately made ourselves unable to say who had asked**,
+because recording that is the one thing this project undertakes not to do.
+
+Each half is a correct decision on its own. Together they are the worst of both
+worlds — the visible party and the unattributable one at the same time, which
+is not a position to argue from. The Hetzner abuse ticket of 2026-08 is that
+shape, not an accident.
+
+There are two ways out. Start keeping records, which is not available: the
+promise is the point. Or stop connecting to third parties at all.
+
+So the tool is run by the person who wants the answer, on their own machine,
+from their own address, under their own responsibility. The public deployment
+scans only hosts this project owns, as a demonstration that the instrument
+works and that its verdicts can be reproduced by anyone who runs it.
+
+**Compiled in, not configured.** A configuration difference is a security
+boundary, and those are the boundaries that rot: a flag can be omitted, a file
+can be edited, an environment variable can be missing and nothing looks wrong.
+Under the `demo` build tag the list is in the binary and there is no way to
+widen it without building a different binary. Without the tag there is no
+restriction at all, which is what the tool is for — a default that restricted
+anything would quietly limit somebody scanning their own network.
+
+**The gate is the tag, not the length of the list.** Written the other way —
+refuse only when a list is non-empty — a list emptied by a bad merge would open
+the deployment to the whole internet and every test would still pass. This way
+an emptied list refuses everything, which fails in the safe direction and is
+caught by a test that says the demonstration has nothing to demonstrate on.
+
+**The list matches at label boundaries.** The exclusion list (D-series) matches
+that way too, and there a mistake keeps a host out that should be in. Here a
+mistake lets a host in that should be out, which is how somebody would arrange
+to have us scan them: register `denyfirst.dev.example.com` and a plain suffix
+match hands them our address.
+
+**Checked in `Scanner.Scan`**, not in the HTTP handler, so it holds for the
+command line built with the same tag and for anything written later — a guard
+in one entry point disappears the moment a second one is added.
+
+**The tag gates the list and nothing else.** Two builds of one program is a
+boundary drawn by a build tag, and it is only as narrow as the files carrying
+that tag. A test walks the tree and fails if a third file ever appears under
+it: the demonstration build has to stay the tool with a list rather than
+becoming a different program nobody tests. CI builds and tests it on every
+change for the same reason.
+
+*Enforced in:* `internal/scan/demo.go`, `internal/scan/demo_on.go`,
+`internal/scan/demo_off.go`, `internal/scan.Scanner.Scan`
+*Guarded by:* `TestTheOrdinaryBuildIsNotADemonstration`,
+`TestTheDemonstrationListMatchesAtLabelBoundaries`,
+`TestABlankEntryAdmitsNothing`, `TestTheBuildTagTouchesNothingElse`,
+`TestTheDemonstrationBuildRefusesAHostItDoesNotOwn`,
+`TestTheDemonstrationRefusalNamesNoHost`,
+`TestTheDemonstrationListIsNotEmpty`, `TestTheTagIsWhatSwitchesIt`
+
 ## Input
 
 Every bug found in this project so far has been here. Six of them: an empty
