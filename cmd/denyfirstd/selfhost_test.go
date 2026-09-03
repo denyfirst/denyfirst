@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/denyfirst/denyfirst/internal/scan"
 )
 
 // The files somebody runs this from, and what they are allowed to say.
@@ -227,4 +229,94 @@ func selfSignedPEM(t *testing.T) []byte {
 		t.Fatalf("creating a certificate: %v", err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+}
+
+// A binary says which hosts it will connect to.
+//
+// The two builds are indistinguishable from outside until one of them refuses
+// something. A deploy that installed the wrong one would look entirely
+// correct — the file is in place, the service answers, the version matches —
+// and the only symptom would be a public scanner nobody meant to run. So the
+// binary says, and the deploy procedure reads what it says rather than
+// trusting a filename.
+func TestAVersionSaysWhichHostsTheBinaryWillReach(t *testing.T) {
+	line := reach()
+
+	if strings.TrimSpace(line) == "" {
+		t.Fatal("a binary says nothing about which hosts it will reach")
+	}
+	if strings.HasSuffix(line, ".") {
+		t.Error("the line ends in a full stop; the deploy procedure matches on its start and shape")
+	}
+
+	if scan.Demo {
+		if !strings.HasPrefix(line, "demonstration: ") {
+			t.Errorf("a demonstration build says %q, which the deploy check does not match", line)
+		}
+		// Read from the list the scanner enforces, so a binary cannot say one
+		// thing and do another.
+		for _, host := range scan.DemoTargets() {
+			if !strings.Contains(line, host) {
+				t.Errorf("the binary reaches %s and does not say so: %q", host, line)
+			}
+		}
+		return
+	}
+
+	if strings.HasPrefix(line, "demonstration") {
+		t.Errorf("the ordinary build calls itself a demonstration: %q", line)
+	}
+	if !strings.Contains(line, "whatever it is pointed at") {
+		t.Errorf("the ordinary build does not say it is unrestricted: %q", line)
+	}
+}
+
+// And -version prints it.
+//
+// A line nothing prints is a line the deploy check greps for and never finds,
+// which fails in the direction of refusing a correct deploy — but it would
+// also pass silently if somebody replaced the grep. Read from the source,
+// because -version calls os.Exit's neighbour and a test that drove it would
+// be testing the harness.
+func TestTheVersionOutputCarriesTheReachLine(t *testing.T) {
+	source := repoFile(t, "cmd/denyfirstd/main.go")
+
+	block := source[strings.Index(source, "if *showVersion {"):]
+	block = block[:strings.Index(block, "return 0")]
+
+	if !strings.Contains(block, "reach()") {
+		t.Error("-version does not say which hosts the binary will reach, so the deploy check " +
+			"has nothing to read and the two builds stay indistinguishable")
+	}
+}
+
+// The demonstration build is released, and the deploy installs that one.
+//
+// A property compiled into a binary is worth nothing until the binary
+// carrying it is the binary that runs — and a binary that runs here is one
+// that was released: signed, listed in SHA256SUMS, and rebuilt by the
+// reproduction workflow like every other artifact.
+func TestTheDemonstrationBuildIsReleasedAndDeployed(t *testing.T) {
+	build := repoFile(t, "scripts/build.sh")
+
+	if !strings.Contains(build, "-tags demo") {
+		t.Fatal("the release does not build the demonstration binary, so there is nothing signed to deploy")
+	}
+	if !strings.Contains(build, "denyfirstd-demonstration_${tag}_linux_amd64") {
+		t.Error("the demonstration artifact is not named as the deploy procedure expects")
+	}
+
+	releasing := repoFile(t, "docs/releasing.md")
+
+	if !strings.Contains(releasing, "denyfirstd-demonstration_${V}_linux_amd64") {
+		t.Error("the deploy procedure does not install the demonstration binary")
+	}
+	if strings.Contains(releasing, "~/deploy/denyfirstd_${V}_linux_amd64") {
+		t.Error("the deploy procedure still installs the unrestricted binary")
+	}
+
+	// And it reads what the binary says rather than trusting the filename.
+	if !strings.Contains(releasing, "grep -q '^demonstration: '") {
+		t.Error("the deploy procedure does not check which build it just installed")
+	}
 }

@@ -364,8 +364,15 @@ set -euo pipefail
 V=v0.4.0
 base=https://github.com/denyfirst/denyfirst/releases/download/${V}
 
+# The demonstration build, and not denyfirstd.
+#
+# This server connects only to hosts this project owns (N6). That property is
+# compiled in, so it is a property of the file rather than of anything on this
+# machine: install the ordinary binary here and the public deployment silently
+# becomes a scanner for the whole internet again, with nothing in the unit
+# file, the flags or the logs to say so. The name is long for that reason.
 mkdir -p ~/deploy && cd ~/deploy
-curl -fsSLO "${base}/denyfirstd_${V}_linux_amd64"
+curl -fsSLO "${base}/denyfirstd-demonstration_${V}_linux_amd64"
 curl -fsSLO "${base}/SHA256SUMS"
 curl -fsSLO "${base}/SHA256SUMS.sig"
 curl -fsSLO https://raw.githubusercontent.com/denyfirst/denyfirst/main/.allowed_signers
@@ -400,7 +407,7 @@ where it lands.
 /opt/denyfirst/denyfirstd -version
 
 sudo install -o root -g root -m 0755 \
-  ~/deploy/denyfirstd_${V}_linux_amd64 /opt/denyfirst/denyfirstd.new
+  ~/deploy/denyfirstd-demonstration_${V}_linux_amd64 /opt/denyfirst/denyfirstd.new
 sudo cp -a /opt/denyfirst/denyfirstd /opt/denyfirst/denyfirstd.rollback-v0.3.2
 sudo mv /opt/denyfirst/denyfirstd.new /opt/denyfirst/denyfirstd
 sudo systemctl restart denyfirstd
@@ -451,10 +458,19 @@ rather than assumed.
 ### Confirm the service, not the file
 
 ```sh
+/opt/denyfirst/denyfirstd -version | grep -q '^demonstration: ' \
+  || echo 'STOP: this is not the demonstration build'
 /opt/denyfirst/denyfirstd -version
 sudo readlink /proc/$(systemctl show -p MainPID --value denyfirstd)/exe
 curl -s https://denyfirst.dev/healthz
 ```
+
+The first line is the one that cannot be inferred from anything else. The two
+builds are indistinguishable from outside until one of them refuses something:
+the file is in place, the service answers, the version matches, and the only
+symptom of the wrong one is a public scanner nobody meant to run. `-version`
+says which hosts the binary will connect to, read from the same list the
+scanner enforces, so a binary cannot say one thing and do another.
 
 The first runs the file on disk and says what was installed. It does not say
 what is serving: a restart that failed leaves the previous process alive on

@@ -209,9 +209,29 @@ deployment restriction would be the restriction dictating to the tool — so CI
 names and drives the demonstration's own test instead, and greps the log for
 it, because a `-run` pattern that matches nothing passes silently.
 
+**The binary carrying the property is the binary that is released and
+deployed.** A restriction compiled into a build is worth nothing until that
+build is the one running, and a build that runs here is one that was released:
+signed, listed in `SHA256SUMS`, and rebuilt by the reproduction workflow like
+every other artifact. `scripts/build.sh` produces
+`denyfirstd-demonstration_<tag>_linux_amd64` — Linux and amd64 only, because
+this is not a thing to download and use but a thing one server runs, and
+offering it for five platforms would invite somebody to install a crippled
+scanner by mistake.
+
+**A binary says which hosts it will connect to, and the deploy reads what it
+says.** The two builds are indistinguishable from outside until one of them
+refuses something: install the wrong one and the file is in place, the service
+answers, the version matches, and the only symptom is a public scanner nobody
+meant to run. So `-version` carries a third line, composed from the same list
+the scanner enforces rather than from a constant of its own — a binary cannot
+say one thing and do another — and the deploy procedure greps for it rather
+than trusting a filename.
+
 *Enforced in:* `internal/scan/demo.go`, `internal/scan/demo_on.go`,
 `internal/scan/demo_off.go`, `internal/scan.Scanner.Scan`,
-`internal/httpapi.Server.handleScan`, `internal/web/assets/index.html`
+`internal/httpapi.Server.handleScan`, `internal/web/assets/index.html`,
+`scripts/build.sh`, `docs/releasing.md`
 *Guarded by:* `TestTheOrdinaryBuildIsNotADemonstration`,
 `TestTheDemonstrationListMatchesAtLabelBoundaries`,
 `TestABlankEntryAdmitsNothing`, `TestTheBuildTagTouchesNothingElse`,
@@ -222,7 +242,10 @@ it, because a `-run` pattern that matches nothing passes silently.
 `TestTheDemonstrationPageOffersWhatItCanScan`,
 `TestTheDemonstrationPageSaysWhatItIsAndWhereTheToolIs`,
 `TestTheDemonstrationRefusalIsAnsweredAndCounted`,
-`TestEveryRefusalCodeCanBeProduced`
+`TestEveryRefusalCodeCanBeProduced`,
+`TestAVersionSaysWhichHostsTheBinaryWillReach`,
+`TestTheVersionOutputCarriesTheReachLine`,
+`TestTheDemonstrationBuildIsReleasedAndDeployed`
 
 ## Input
 
