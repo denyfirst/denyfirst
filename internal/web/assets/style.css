@@ -223,7 +223,24 @@ h1 {
 }
 
 .submit:hover:not(:disabled) { background: var(--navy); border-color: var(--navy); }
-.submit:disabled { cursor: progress; opacity: 0.55; }
+/*
+  A button that is working says so in words and in colour, never by fading.
+
+  This carried opacity: 0.55, which fades the label and the ink under it
+  together against the page. Measured in a browser: 2.29:1 in the light scheme
+  and 2.54:1 in the dark, on the only thing the page shows for the several
+  seconds a scan takes — thirteen to fifty handshakes, each of them a real
+  connection to somebody's server. Reading the word "Checking" is the whole
+  purpose of the state, and it was the least legible thing on the site.
+
+  The ink is softened instead. It says the same thing, and the word on it
+  stays at 7.9:1.
+*/
+.submit:disabled {
+  cursor: progress;
+  background: var(--ink-soft);
+  border-color: var(--ink-soft);
+}
 
 .field-help,
 .promise,
