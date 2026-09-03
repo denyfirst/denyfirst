@@ -205,7 +205,7 @@ func DescribeCipher(name string) CipherProperties {
 		// one sets AEAD for every TLS 1.3 suite, and these are the exception
 		// the naming scheme gives no way to spot.
 		p.ForwardSecret = true
-		p.KeyExchange = "ephemeral (TLS 1.3)"
+		p.KeyExchange = "ephemeral"
 	case isTLS13Suite(name):
 		// RFC 9846 removed static key exchange, so an ephemeral one holds for
 		// every TLS 1.3 suite that encrypts.
@@ -218,7 +218,14 @@ func DescribeCipher(name string) CipherProperties {
 		// qualifying if that ever stopped being so.
 		p.ForwardSecret = true
 		p.AEAD = true
-		p.KeyExchange = "ephemeral (TLS 1.3)"
+		//
+		// Named without the version it belongs to. Both faces print these
+		// under a heading that already says "TLS 1.3", and a value that
+		// repeats its own heading on every row is not an explanation of the
+		// value — it is the heading again. Where the ephemerality comes from
+		// is the paragraph above, and /method, and not a parenthesis on each
+		// of the six rows of a table.
+		p.KeyExchange = "ephemeral"
 	case strings.Contains(name, "_ECDHE_"):
 		p.ForwardSecret = true
 		p.KeyExchange = "ECDHE"

@@ -121,7 +121,24 @@ a:hover { text-decoration-thickness: 2px; }
   border-bottom: 1px solid var(--rule);
 }
 
+/*
+  The mark is a link home, and a link home is a target.
+
+  Measured at 106 by 26 pixels, which clears the 24 a pointer needs — by two
+  pixels, and by accident: the height was the line box of a 1rem word, and
+  nothing said it had to stay that. A font-size trimmed by a tenth of a rem
+  one afternoon would have taken the target under the floor with it and
+  changed nothing anybody would notice.
+
+  min-height says it instead. It costs nothing today, because the line box is
+  already taller; it holds the floor on the day the type shrinks. The
+  inline-block is what lets a min-height apply at all, and an inline-block
+  takes its baseline from its last line box, so the mark still sits on the
+  same baseline as the note beside it.
+*/
 .wordmark {
+  display: inline-block;
+  min-height: 24px;
   font-family: var(--mono);
   font-size: 1rem;
   font-weight: 600;
@@ -243,7 +260,6 @@ h1 {
 }
 
 .field-help,
-.promise,
 .noscript {
   max-width: var(--measure);
   font-size: 0.82rem;
@@ -251,7 +267,6 @@ h1 {
 }
 
 .field-help { margin: 0.6rem 0 0; }
-.promise { margin: 2rem 0 0; }
 
 .noscript {
   margin: 1.4rem 0 0;
@@ -728,7 +743,22 @@ h1 {
   color: var(--ink-faint);
 }
 
-.colophon p { max-width: var(--measure); margin: 0 0 0.9rem; }
+/*
+  The measure is for the colophon's prose, and the row of links is not prose.
+
+  This was `.colophon p`, and the link row is written as a paragraph, so it
+  inherited a 34rem measure — the width running text can be read at. The five
+  links come to 677 pixels. They broke onto a second line inside a footer 884
+  pixels wide, with 207 to spare, because a constraint on reading sentences
+  had been applied to a row of links.
+
+  Excluded here rather than overridden below: `.colophon p` beats a bare
+  `.colophon-links` on specificity whatever the order, so an override there
+  would have had to be written stronger than it looks, and the next person to
+  read it would not know why.
+*/
+.colophon p:not(.colophon-links) { max-width: var(--measure); }
+.colophon p { margin: 0 0 0.9rem; }
 /*
   The counter is set in the same monospace as the data above it, because it is
   data: the only record this service keeps, shown rather than described.
@@ -742,6 +772,7 @@ h1 {
   margin-bottom: 1.1rem !important;
 }
 
+/* They still wrap on a phone, where wrapping is the right answer. */
 .colophon-links {
   display: flex;
   gap: 1.3rem;

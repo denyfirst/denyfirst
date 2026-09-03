@@ -1638,6 +1638,34 @@ which is how the first version of that check passed a change that printed
 `TestAnExtendedValidationSubjectReachesTheReport`,
 `TestAValueThatLooksLikeTheGrammarIsEscaped`
 
+### R20 — A value does not repeat the heading it is printed under
+
+Every suite in a report is printed under the protocol version it was accepted
+at: the page groups by version, the command line groups by version, and the
+JSON nests the suites inside the version. The key exchange for a TLS 1.3 suite
+read `ephemeral (TLS 1.3)`, so a table headed **TLS 1.3** printed the words
+"TLS 1.3" again on every one of its rows.
+
+The parenthesis looks like the reason for the value and is not. It is the
+heading a second time. Where the ephemerality actually comes from — the suite
+name in TLS 1.3 carries an AEAD and a hash and nothing else, the group is
+chosen in an extension, and RFC 9846 removed static exchange from the protocol
+— is a paragraph, and it belongs on `/method`, not in a parenthesis repeated
+six times down a column.
+
+Enforced where the name is made rather than in either of the two places it is
+shown, so both faces agree without either being asked to. Checked across every
+suite the standard library names, plus the two RFC 9150 suites it does not,
+plus a name it has no entry for.
+
+A second rule falls out of the same fact: every TLS 1.3 suite has to report the
+same key exchange, because none of them measures one. A row that said
+something different would be claiming a measurement nobody made.
+
+*Enforced in:* `internal/policy.DescribeCipher`
+*Guarded by:* `TestACipherDescriptionDoesNotRepeatItsProtocolVersion`,
+`TestEveryTLS13SuiteReportsTheSameKeyExchange`
+
 ---
 
 ## The page
@@ -1823,6 +1851,52 @@ will be faded for the same reason this one was.
 
 *Enforced in:* `internal/web/assets/style.css`
 *Guarded by:* `TestNoRestingStateIsFadedOut`, `TestTheWorkingStateIsLegible`
+
+### W7 — The furniture is the right size and there is not too much of it
+
+Three measurements on the parts of the page that are not the report.
+
+**The footer wrapped with room to spare.** `.colophon p` carried
+`max-width: var(--measure)` — 34rem, the width running text can be read at —
+and the row of links is written as a paragraph, so it inherited it. The five
+links come to 677 pixels against a 578 pixel measure, and they broke onto a
+second line inside a footer 884 pixels wide. A measure is a constraint on
+reading sentences; applied to a row of links it is only a narrower box. The
+measure now excludes the row at the selector rather than being overridden
+below it, because `.colophon p` beats a bare `.colophon-links` on specificity
+whatever the order — an override there has to be written stronger than it
+looks, and the next reader would not know why. The row still wraps on a phone,
+where there is no width at which five links fit and wrapping is the answer.
+
+**Two notices stood under one field.** The link to what a scan sends had a
+paragraph to itself beneath the paragraph about the terms. A page papered with
+notices is a page whose notices are skipped, and the skipping generalises to
+the next one. The link joined the sentence above it — the sentence a reader is
+already reading before pressing the button, which already carried the link to
+the terms. Nothing was removed: the home page still links `/privacy#scans`,
+and the test that has always required it still passes.
+
+It is also the better target there. A link alone in a paragraph is a control
+16 pixels high, under the 24 a pointer needs; the same link inside a sentence
+is an inline link, exempt because the sentence around it is what makes it
+findable.
+
+**The mark cleared the floor by accident.** The wordmark measures 106 by 26
+pixels, which passes the 24 a pointer needs — by two pixels, and because 26 is
+what a 1rem line box happens to be. A font-size trimmed by a tenth of a rem
+one afternoon would have taken the target under the floor and changed nothing
+anybody would notice. `min-height` says it instead: it costs nothing today and
+holds on the day the type shrinks. The `inline-block` is what lets a height
+apply at all, and an inline-block takes its baseline from its last line box,
+so the mark still sits on the same baseline as the note beside it — measured
+before and after, unchanged.
+
+*Enforced in:* `internal/web/assets/style.css`,
+`internal/web/assets/index.html`
+*Guarded by:* `TestTheFooterLinksAreNotHeldToAProseMeasure`,
+`TestTheLandingPageDoesNotStackNoticesUnderTheField`,
+`TestTheWordmarkDeclaresATargetFloor`,
+`TestHomePageDoesNotRepeatThePrivacyPage`
 
 ---
 
