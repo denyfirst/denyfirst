@@ -209,3 +209,83 @@ func TestTheContrastArithmeticIsRight(t *testing.T) {
 		t.Error("contrast is not symmetric")
 	}
 }
+
+// Nothing on this page is faded out of legibility.
+//
+// The submit button carried opacity: 0.55 while a scan ran, which fades the
+// label and the ink under it together against the page: 2.29:1 in the light
+// scheme and 2.54:1 in the dark, measured in a browser. That is the only
+// thing the page shows for the several seconds a scan takes, and reading the
+// word "Checking" is the entire purpose of the state.
+//
+// Opacity is allowed inside @keyframes, where it is a transition rather than
+// a resting state and where a reader is not asked to read anything mid-fade.
+// Everywhere else a state is said in words and in colour.
+func TestNoRestingStateIsFadedOut(t *testing.T) {
+	sheet := stylesheet(t)
+
+	// Cut out the keyframe blocks, braces and all.
+	stripped := sheet
+	for {
+		start := strings.Index(stripped, "@keyframes")
+		if start < 0 {
+			break
+		}
+		depth, end := 0, -1
+		for i := start; i < len(stripped); i++ {
+			switch stripped[i] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+				if depth == 0 {
+					end = i + 1
+				}
+			}
+			if end >= 0 {
+				break
+			}
+		}
+		if end < 0 {
+			t.Fatal("a @keyframes block is not closed")
+		}
+		stripped = stripped[:start] + stripped[end:]
+	}
+
+	faded := regexp.MustCompile(`opacity:\s*(0(?:\.\d+)?)\s*[;}]`)
+	for _, m := range faded.FindAllStringSubmatch(stripped, -1) {
+		t.Errorf("a resting state is faded to opacity %s; say the state in words and colour instead", m[1])
+	}
+}
+
+// The working state is legible on the ink it is printed on.
+//
+// The button prints the paper colour, so whatever the disabled rule puts
+// behind it has to hold the same threshold as everything else.
+func TestTheWorkingStateIsLegible(t *testing.T) {
+	sheet := stylesheet(t)
+	tables := schemes(t, sheet)
+
+	body := cssRule(t, sheet, ".submit:disabled")
+	m := regexp.MustCompile(`background:\s*var\(--([a-z-]+)\)`).FindStringSubmatch(body)
+	if m == nil {
+		t.Fatal("the working state does not set a background of its own, so it cannot be told from the resting one")
+	}
+
+	for _, scheme := range []string{"light", "dark"} {
+		tokens := tables[scheme]
+		behind, ok := tokens[m[1]]
+		if !ok {
+			t.Errorf("%s: the working state is drawn on --%s, which is not defined", scheme, m[1])
+			continue
+		}
+		if got := contrast(tokens["paper"], behind); got < readableContrast {
+			t.Errorf("%s: the word on a working button is %.2f:1 against --%s, below %.1f:1",
+				scheme, got, m[1], readableContrast)
+		}
+		// And it has to differ from the resting ink, or the state is invisible.
+		if behind == tokens["ink"] {
+			t.Errorf("%s: the working state is drawn on the same ink as the resting one", scheme)
+		}
+	}
+}

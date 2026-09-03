@@ -1797,6 +1797,33 @@ colour that would now pass anyway.
 *Guarded by:* `TestEveryColourTextIsSetInIsLegible`,
 `TestTheRuleColourIsNeverUsedForText`, `TestTheContrastArithmeticIsRight`
 
+### W6 — A state is said in words and in colour, never by fading
+
+The submit button carried `opacity: 0.55` while a scan ran. Opacity fades an
+element's text and its own background together against the page, so the label
+and the ink under it lose contrast at the same rate: measured in a browser,
+**2.29:1** in the light scheme and **2.54:1** in the dark — below even the 3:1
+a non-text control needs, let alone the 4.5:1 for the word on it.
+
+That is the only thing the page shows for the several seconds a scan takes,
+and a scan is thirteen to fifty handshakes, each a real connection to
+somebody's server. A visitor who cannot tell whether anything is happening
+presses the button again, and the cost of that is paid by the scanned host,
+not by us. Reading the word "Checking" is the entire purpose of the state.
+
+The ink is softened instead — `--ink-soft` behind the same paper-coloured
+label, 7.9:1 — which says the same thing and can be read while it says it.
+The label already changes from "Check" to "Checking"; the colour now agrees
+with it rather than arguing.
+
+Opacity below 1 is allowed inside `@keyframes`, where it is a transition
+rather than a resting state and nobody is asked to read anything mid-fade.
+Everywhere else it is refused outright, because the next state somebody fades
+will be faded for the same reason this one was.
+
+*Enforced in:* `internal/web/assets/style.css`
+*Guarded by:* `TestNoRestingStateIsFadedOut`, `TestTheWorkingStateIsLegible`
+
 ---
 
 ## Disclosure
