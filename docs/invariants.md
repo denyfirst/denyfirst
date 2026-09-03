@@ -2435,7 +2435,22 @@ had — `denyfirst-v4` was still marked unreleased five releases and three weeks
 after v0.4.0 shipped it. So a rule set that is no longer the one in force must
 name its release, and the procedure stops on the word before a tag is cut.
 
-*Enforced in:* `docs/policy-changes.md`, `docs/releasing.md`
+**The name carries the check as well as the number.** A number on its own
+stops meaning one thing the moment this project runs a second check:
+`denyfirst-v7` over a mail report and `denyfirst-v7` over a TLS report would be
+the same name over two different rule sets, which is exactly the confusion the
+name is printed to prevent. So `denyfirst-v6` became `denyfirst-tls-v6` while
+there was one rule set to rename — **renamed, not renumbered**: no rule moved
+with the name, the change log says so, and the two names are comparable.
+
+The older names in the record stay as they were. Reports carrying
+`denyfirst-v4` exist, and the page is a record of what shipped rather than of
+what it would be called today. The test that reads the page therefore accepts
+both shapes and keys its sections by the whole name, because a rename
+introduces a new name for a number that already had one.
+
+*Enforced in:* `internal/policy.Version`, `docs/policy-changes.md`,
+`docs/releasing.md`
 *Guarded by:* `TestTheChangeLogCoversTheCurrentPolicy`,
 `TestTheChangeLogNamesRulesThatExist`,
 `TestEveryRuleSetThatShippedNamesItsRelease`

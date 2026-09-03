@@ -14,6 +14,32 @@ free to improve without breaking that.
 
 ---
 
+## `denyfirst-v6` → `denyfirst-tls-v6`
+
+Unreleased. **No rule changed.** A report graded
+`denyfirst-v6` and a report graded `denyfirst-tls-v6` are comparable in every
+respect: the same twenty-four certificate rules, the same chain grading, the
+same cipher and protocol verdicts, from the same source. Only the name of the
+rule set is different, and this section exists so that a reader who notices
+the change does not go looking for the rules behind it.
+
+The name now carries the check as well as the number. This project has one
+check and expects more — the first of them looks at how a domain publishes its
+mail policy — and a number on its own stops meaning one thing the moment there
+is a second rule set. `denyfirst-v7` over a mail report and `denyfirst-v7`
+over a TLS report would be the same name over two different rule sets, which
+is precisely the confusion the name is printed to prevent.
+
+Renamed while there is one rule set to rename, for the same reason the check
+moved to its own address in the same release: it costs nothing today and
+cannot be undone cheaply once reports carrying the ambiguous name are in
+somebody's pipeline.
+
+Nothing else about a report changed. The rule identifiers are unchanged, so
+anything tracking or suppressing a finding by its identifier is unaffected.
+
+---
+
 ## `denyfirst-v5` → `denyfirst-v6`
 
 Released in v0.11.0, 2026-09. **The rest of the chain is graded.** Until now
