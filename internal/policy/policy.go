@@ -41,7 +41,18 @@ import (
 // secrecy they have. A rule change is a version change, because a user who
 // scans an unchanged server twice and gets two grades has been given a reason
 // to distrust both.
-const Version = "denyfirst-v6"
+//
+// The name carries the check as well as the number, because a number on its
+// own stops meaning one thing the moment this project runs a second check. A
+// report says which rule set graded it so that two reports can be compared;
+// "denyfirst-v7" over a mail report and "denyfirst-v7" over a TLS report
+// would be the same name over two different rule sets, which is the exact
+// confusion the name exists to prevent.
+//
+// Renamed and not renumbered. No rule moved with the name, so a report graded
+// denyfirst-v6 and a report graded denyfirst-tls-v6 are comparable, and
+// docs/policy-changes.md says so rather than leaving a reader to guess.
+const Version = "denyfirst-tls-v6"
 
 // ReviewBy is when these rules should next be read against their sources.
 //

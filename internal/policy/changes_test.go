@@ -1,9 +1,9 @@
 package policy
 
 import (
-	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -100,50 +100,76 @@ func TestEveryRuleSetThatShippedNamesItsRelease(t *testing.T) {
 	}
 	page := string(body)
 
-	current := 0
-	if _, err := fmt.Sscanf(Version, "denyfirst-v%d", &current); err != nil || current < 1 {
-		t.Fatalf("policy version %q is not denyfirst-vN, so this test cannot tell "+
+	// A rule set is named "denyfirst-v6" or "denyfirst-tls-v6": the check
+	// segment appeared when this project stopped having exactly one check,
+	// and the older names stay as they were because reports carrying them
+	// exist and the page is a record of what shipped, not of what it would be
+	// called today.
+	number := regexp.MustCompile(`-v([0-9]+)$`)
+
+	numberOf := func(name string) int {
+		m := number.FindStringSubmatch(name)
+		if m == nil {
+			return 0
+		}
+		n, err := strconv.Atoi(m[1])
+		if err != nil {
+			return 0
+		}
+		return n
+	}
+
+	current := numberOf(Version)
+	if current < 1 {
+		t.Fatalf("policy version %q does not end in -vN, so this test cannot tell "+
 			"a shipped rule set from the one in force", Version)
 	}
 
-	heading := regexp.MustCompile("(?m)^## `denyfirst-v[0-9]+` → `denyfirst-v([0-9]+)`")
+	heading := regexp.MustCompile("(?m)^## `denyfirst-(?:[a-z]+-)?v[0-9]+` → `(denyfirst-(?:[a-z]+-)?v[0-9]+)`")
 	found := heading.FindAllStringSubmatchIndex(page, -1)
 
-	// Which rule set each section introduces, and the prose under it.
-	section := map[int]string{}
+	// The name each section introduces, and the prose under it. Keyed by the
+	// whole name rather than by the number, because a rename introduces a new
+	// name for a number that already had one.
+	section := map[string]string{}
 	for i, m := range found {
-		introduced := 0
-		if _, err := fmt.Sscanf(page[m[2]:m[3]], "%d", &introduced); err != nil {
-			continue
-		}
-		// A section runs to the next heading, or to the end of the page.
+		name := page[m[2]:m[3]]
 		end := len(page)
 		if i+1 < len(found) {
 			end = found[i+1][0]
 		}
-		section[introduced] = page[m[1]:end]
+		section[name] = page[m[1]:end]
 	}
 
 	// A check that parses nothing passes everything. Every rule set from the
 	// second to the one in force has a section, or the headings have drifted
 	// out of the shape this test reads and it has stopped checking.
+	covered := map[int]bool{}
+	for name := range section {
+		covered[numberOf(name)] = true
+	}
 	for v := 2; v <= current; v++ {
-		if _, ok := section[v]; !ok {
+		if !covered[v] {
 			t.Fatalf("docs/policy-changes.md has no section introducing denyfirst-v%d, so either a "+
 				"rule set moved without a record or the headings no longer match what this test reads", v)
 		}
 	}
 
-	for v := 2; v < current; v++ {
-		text := section[v]
+	for name, text := range section {
+		// The section for the name in force may say either: it is written
+		// before the tag it names exists, which is the whole reason the stale
+		// line this test was written for survived.
+		if name == Version {
+			continue
+		}
 		if strings.Contains(text, "Unreleased") {
-			t.Errorf("docs/policy-changes.md still calls denyfirst-v%d unreleased. It is not the rule "+
-				"set in force (%s is), so it shipped, and a reader asking which upgrade moved their "+
-				"verdicts is told it never happened.", v, Version)
+			t.Errorf("docs/policy-changes.md still calls %s unreleased. It is not the rule set in "+
+				"force (%s is), so it shipped, and a reader asking which upgrade moved their verdicts "+
+				"is told it never happened.", name, Version)
 		}
 		if !strings.Contains(text, "Released in v") {
-			t.Errorf("the denyfirst-v%d section names no release. Which upgrade moved the rule set is "+
-				"the first thing a reader comparing two reports needs.", v)
+			t.Errorf("the %s section names no release. Which upgrade moved the rule set is the first "+
+				"thing a reader comparing two reports needs.", name)
 		}
 	}
 }
