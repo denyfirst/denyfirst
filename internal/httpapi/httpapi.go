@@ -371,6 +371,19 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// This deployment connects only to hosts this project owns.
+	//
+	// Scanner.Scan refuses the same host, and that is where the property
+	// lives — this is here so a visitor gets a sentence and a way forward
+	// rather than a scan that failed, and so the refusal is counted as what
+	// it is rather than as a host that could not be reached.
+	if scan.DemoRefusal(host) {
+		s.refuse(w, http.StatusForbidden, "not_demonstrated",
+			"This deployment scans only hosts this project owns. Run the tool on your "+
+				"own machine to scan anything else: github.com/denyfirst/denyfirst")
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), s.limits.RequestTimeout)
 	defer cancel()
 

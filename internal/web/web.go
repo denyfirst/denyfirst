@@ -25,6 +25,7 @@ import (
 	"strconv"
 
 	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/denyfirst/internal/scan"
 )
 
 //go:embed assets
@@ -138,6 +139,12 @@ var pages = map[string]*page{
 		Description: "Check a server's TLS configuration and certificate against cited standards. Nothing about the scan is recorded.",
 		Fragment:    "assets/index.html",
 		Script:      true,
+
+		// The page has to say which deployment it is, because the two answer
+		// differently and a visitor who cannot tell them apart will read a
+		// refusal as a fault. One template, branching once, rather than two
+		// pages that drift.
+		Data: scanPage{Demo: scan.Demo, Hosts: scan.DemoHosts()},
 	},
 	"/privacy": {
 		Title:       "Privacy, and what a scan does — denyfirst",
@@ -170,6 +177,15 @@ var pages = map[string]*page{
 		Fragment:    "assets/method.html",
 		Data:        methodPage{Limits: policy.StandingLimits()},
 	},
+}
+
+// scanPage is what assets/index.html branches on.
+type scanPage struct {
+	// Demo is true in the build that runs on denyfirst.dev.
+	Demo bool
+
+	// Hosts is what that build offers, and is empty in the other one.
+	Hosts []scan.DemoHost
 }
 
 // methodPage is what assets/method.html ranges over.

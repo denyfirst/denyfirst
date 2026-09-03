@@ -8,7 +8,34 @@
     <h1>Check what a server<br>actually negotiates,<br>not what it advertises.</h1>
 
     <form class="ask-form" id="scan-form" autocomplete="off">
-      <label class="field-label" for="target">Hostname</label>
+      <!--
+        The label names the control, and the control is different in the two
+        deployments: one takes a hostname, the other offers a choice between
+        the hosts this project owns. A label that said "Hostname" over a menu
+        would be describing the control it replaced.
+      -->
+      <label class="field-label" for="target">{{if .Demo}}Host{{else}}Hostname{{end}}</label>
+      {{if .Demo}}
+      <!--
+        A menu, not a field.
+
+        This deployment connects only to hosts this project owns, so a field
+        that accepts any hostname would be a field that mostly answers no. The
+        control offers what there is. It keeps the id the script reads, because
+        a select answers .value exactly as an input does — one script, two
+        deployments, and no branch in it to go stale.
+      -->
+      <div class="field-row">
+        <select
+          class="field"
+          id="target"
+          name="target"
+          aria-describedby="field-help">
+          {{range .Hosts}}<option value="{{.Host}}">{{.Host}} &mdash; {{.Shows}}</option>{{end}}
+        </select>
+        <button class="submit" type="submit" id="submit">Check</button>
+      </div>
+      {{else}}
       <div class="field-row">
         <input
           class="field"
@@ -23,6 +50,21 @@
           aria-describedby="field-help">
         <button class="submit" type="submit" id="submit">Check</button>
       </div>
+      {{end}}
+      {{if .Demo}}
+      <p class="field-help" id="field-help">
+        This deployment scans only hosts this project owns. It is here so that
+        you can watch the instrument work and check its verdicts against your
+        own run of it &mdash; not so that it opens connections to somebody
+        else's server on a stranger's behalf, and the
+        <a href="/terms">terms</a> say so plainly.
+        <a href="https://github.com/denyfirst/denyfirst">Run it yourself</a> to
+        scan anything else: the scan then leaves your machine, from your
+        address, and nothing about it passes through here.
+        <a href="/privacy#scans">What a scan sends, and what this keeps</a> is
+        written out in full.
+      </p>
+      {{else}}
       <p class="field-help" id="field-help">
         Port 443 unless you name another. Public hosts only. Scan only what you
         own, administer, or have permission to scan &mdash; the decision is
@@ -30,6 +72,7 @@
         <a href="/privacy#scans">What a scan sends, and what this keeps</a> is
         written out in full.
       </p>
+      {{end}}
     </form>
 
     <!--

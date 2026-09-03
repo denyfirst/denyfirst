@@ -82,3 +82,27 @@ func DemoTargets() []string {
 	copy(out, demoTargets)
 	return out
 }
+
+// DemoHost is one entry on the demonstration menu.
+//
+// The menu and the boundary are different things and are kept apart. The
+// boundary is a list of domains and it decides what may be connected to; the
+// menu is a list of particular hosts with a sentence each, and it decides what
+// a visitor is offered. A menu entry outside the boundary would be an offer
+// the scanner refuses, which a test prevents.
+type DemoHost struct {
+	// Host is scanned as written.
+	Host string
+
+	// Shows is what this host is here to demonstrate, in a few words.
+	Shows string
+}
+
+// DemoHosts returns the menu a demonstration build offers.
+//
+// Empty in the ordinary build, where the person running the tool chooses.
+func DemoHosts() []DemoHost {
+	out := make([]DemoHost, len(demoHosts))
+	copy(out, demoHosts)
+	return out
+}

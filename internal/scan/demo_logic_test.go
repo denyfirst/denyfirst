@@ -63,15 +63,18 @@ func TestABlankEntryAdmitsNothing(t *testing.T) {
 // The build tag says which hosts may be reached and nothing else.
 //
 // Two builds of one program is a security boundary, and a boundary drawn by a
-// build tag is only as narrow as the files carrying it. If the tag ever gates
-// a third file, the demonstration build stops being the tool with a list and
-// starts being a different program that nobody tests.
+// build tag is only as narrow as the files carrying it. So two rules hold it.
+//
+// Every file under the tag is named demo_*.go, which makes the whole boundary
+// greppable: somebody asking what the demonstration build changes can list it
+// without reading the tree. And outside tests, the tag gates exactly the two
+// files that declare the list — if it ever gates a third, the demonstration
+// build has stopped being the tool with a list and become a different program
+// that nobody runs the suite against.
 func TestTheBuildTagTouchesNothingElse(t *testing.T) {
-	expected := map[string]bool{
-		filepath.Join("internal", "scan", "demo_on.go"):         true,
-		filepath.Join("internal", "scan", "demo_off.go"):        true,
-		filepath.Join("internal", "scan", "demo_guard_test.go"): true,
-		filepath.Join("internal", "scan", "demo_off_test.go"):   true,
+	declaring := map[string]bool{
+		filepath.Join("internal", "scan", "demo_on.go"):  true,
+		filepath.Join("internal", "scan", "demo_off.go"): true,
 	}
 
 	found := map[string]bool{}
@@ -113,11 +116,19 @@ func TestTheBuildTagTouchesNothingElse(t *testing.T) {
 	}
 
 	for path := range found {
-		if !expected[path] {
-			t.Errorf("%s is gated on the demo build tag, and only the list may be", path)
+		if name := filepath.Base(path); !strings.HasPrefix(name, "demo_") {
+			t.Errorf("%s is gated on the demo build tag and is not named demo_*, so the "+
+				"boundary can no longer be found by looking", path)
+		}
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		if !declaring[path] {
+			t.Errorf("%s is gated on the demo build tag, and outside tests only the two files "+
+				"that declare the list may be", path)
 		}
 	}
-	for path := range expected {
+	for path := range declaring {
 		if !found[path] {
 			t.Errorf("%s no longer carries the demo build tag, so the two builds may have merged", path)
 		}

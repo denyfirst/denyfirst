@@ -76,3 +76,32 @@ func TestTheTagIsWhatSwitchesIt(t *testing.T) {
 		t.Error("a demonstration build refuses a host it does own")
 	}
 }
+
+// Nothing is offered that the scanner then refuses.
+//
+// The menu and the boundary are separate: one decides what a visitor is
+// shown, the other decides what may be connected to. Kept apart because they
+// are different questions, and checked against each other because an offer
+// the server refuses is a page arguing with its own scanner — and the visitor
+// is the one who loses the argument.
+func TestEveryHostOfferedIsOneTheScannerWillReach(t *testing.T) {
+	hosts := DemoHosts()
+	if len(hosts) == 0 {
+		t.Fatal("the demonstration build offers nothing")
+	}
+
+	for _, h := range hosts {
+		if !isDemoTarget(h.Host) {
+			t.Errorf("%q is offered and is outside the list the scanner will reach", h.Host)
+		}
+		if DemoRefusal(h.Host) {
+			t.Errorf("%q is offered and would be refused", h.Host)
+		}
+		if strings.TrimSpace(h.Shows) == "" {
+			t.Errorf("%q is offered with nothing said about what it shows", h.Host)
+		}
+		if _, err := (&Scanner{}).Scan(context.Background(), h.Host); errors.Is(err, ErrNotADemoTarget) {
+			t.Errorf("%q is offered and Scan refuses it", h.Host)
+		}
+	}
+}
