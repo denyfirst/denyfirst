@@ -56,4 +56,22 @@ for target in $targets; do
     done
 done
 
+# The build that runs on denyfirst.dev.
+#
+# It is the same program with one list compiled in: it connects only to hosts
+# this project owns, so that the public deployment stops opening connections
+# to third parties on a stranger's behalf. The property is worth nothing until
+# the binary carrying it is the binary that runs, and a binary that runs is one
+# that was released — signed, listed in SHA256SUMS, and rebuilt by the
+# reproduction workflow like every other artifact here.
+#
+# Linux and amd64 only, deliberately. This is not a thing to download and use;
+# it is a thing one server runs, and offering it for five platforms would
+# invite somebody to install a crippled scanner by mistake. The name says what
+# it is for the same reason.
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -trimpath -buildvcs=false -tags demo \
+        -ldflags "-s -w -X main.version=${tag}" \
+        -o "${out}/denyfirstd-demonstration_${tag}_linux_amd64" "./cmd/denyfirstd"
+
 ls -la "$out"

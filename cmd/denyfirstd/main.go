@@ -28,6 +28,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -140,7 +141,19 @@ func run() int {
 		// this build; the policy names the rules it grades by, and a verdict
 		// from one policy version is not comparable with a verdict from
 		// another.
-		fmt.Printf("denyfirstd %s\npolicy %s\n", version, policy.Version)
+		// Three lines, because they answer three questions. The release
+		// names this build; the policy names the rules it grades by, and a
+		// verdict from one policy version is not comparable with a verdict
+		// from another; and the third says which hosts this binary will
+		// connect to at all.
+		//
+		// The third line exists because the two builds are indistinguishable
+		// from the outside until one refuses something. A deploy that
+		// installed the wrong one would look entirely correct — the file is
+		// in place, the service answers, the version matches — and the only
+		// symptom would be a public scanner nobody meant to run. The deploy
+		// procedure reads this line rather than trusting the filename.
+		fmt.Printf("denyfirstd %s\npolicy %s\n%s\n", version, policy.Version, reach())
 		return 0
 	}
 
@@ -614,4 +627,19 @@ func trustStoreUsable(pool *x509.CertPool, err error) error {
 			"as untrusted; mount a trust store, or point SSL_CERT_FILE or SSL_CERT_DIR at one")
 	}
 	return nil
+}
+
+// reach says which hosts this binary will connect to.
+//
+// Written from the same list the scanner enforces rather than from a constant
+// of its own, so a binary cannot say one thing and do another.
+func reach() string {
+	if !scan.Demo {
+		return "scans whatever it is pointed at"
+	}
+	hosts := scan.DemoTargets()
+	if len(hosts) == 0 {
+		return "scans nothing: this is a demonstration build with an empty list"
+	}
+	return "demonstration: scans " + strings.Join(hosts, ", ") + " and nothing else"
 }
