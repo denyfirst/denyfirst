@@ -183,6 +183,12 @@ func TestEveryRefusalCodeCanBeProduced(t *testing.T) {
 	// scan_failed becomes reachable, drive it above and take it out.
 	defensive := map[string]string{
 		"scan_failed": "scan.Scan cannot fail once the handler has validated the target",
+
+		// Not unreachable — reached only in the other build. The ordinary
+		// build has no list for a host to be outside of, so this test cannot
+		// drive it; TestTheDemonstrationRefusalIsAnsweredAndCounted does,
+		// under the tag, and CI runs it.
+		"not_demonstrated": "only a demonstration build has a list for a host to be outside of",
 	}
 
 	for _, code := range refusalCodes {

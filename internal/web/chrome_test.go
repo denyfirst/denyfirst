@@ -71,7 +71,12 @@ func TestTheLandingPageDoesNotStackNoticesUnderTheField(t *testing.T) {
 
 	// The disclosure did not go away; it joined the sentence a reader is
 	// already reading before pressing the button.
-	help := regexp.MustCompile(`(?s)<p class="field-help".*?</p>`).FindString(page)
+	//
+	// Read from the rendered page rather than from the template, because the
+	// template now carries two paragraphs — one for this deployment and one
+	// for the demonstration — and what matters is the one a visitor is
+	// actually given.
+	help := regexp.MustCompile(`(?s)<p class="field-help".*?</p>`).FindString(get(t, "/tls").Body.String())
 	if help == "" {
 		t.Fatal("the field's help paragraph could not be found")
 	}

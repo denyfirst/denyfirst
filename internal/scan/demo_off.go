@@ -10,3 +10,7 @@ const Demo = false
 // it. It exists so that the two builds share one set of functions rather than
 // one build carrying code the other cannot compile.
 var demoTargets []string
+
+// demoHosts is empty for the same reason: there is no menu, because there is
+// no restriction to build one from.
+var demoHosts []DemoHost

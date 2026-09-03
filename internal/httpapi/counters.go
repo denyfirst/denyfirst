@@ -37,6 +37,13 @@ var refusalCodes = []string{
 	"excluded",            // a name this service will not scan
 	"timeout",             // the scan outlasted its budget
 	"scan_failed",         // the target could not be reached
+
+	// Only a demonstration build can produce this one: the ordinary build has
+	// no list to be outside of. It is counted rather than left silent because
+	// a figure that rises here says visitors are asking for something this
+	// deployment does not do, which is the sentence that would tell us the
+	// page is not explaining itself.
+	"not_demonstrated", // a host outside what this deployment demonstrates
 }
 
 // Snapshot is everything this service counts.

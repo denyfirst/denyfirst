@@ -177,14 +177,52 @@ it: the demonstration build has to stay the tool with a list rather than
 becoming a different program nobody tests. CI builds and tests it on every
 change for the same reason.
 
+**The page offers what there is, and says what it is.** A field that accepts
+any hostname on a deployment that answers for a few is a control arguing with
+its own server, and the visitor loses the argument. So the demonstration build
+renders a menu rather than a field — keeping the id the script reads, because
+a `<select>` answers `.value` exactly as an `<input>` does, and one script
+serving both deployments has no branch in it to go stale. Beside it, at the
+control rather than in the footer, the page says that this deployment scans
+only hosts this project owns and where the tool is.
+
+**The menu and the boundary are separate, and checked against each other.**
+The boundary is a list of domains and decides what may be connected to; the
+menu is a list of particular hosts with a sentence each and decides what a
+visitor is offered. An entry on the menu that the scanner would refuse is the
+page arguing with itself, so a test scans every offered host and fails if any
+is refused.
+
+**A refusal is answered in words and counted.** `Scanner.Scan` refuses the
+host and that is where the property lives; the handler refuses it first so a
+caller gets a sentence and somewhere to go rather than a scan that failed, and
+so it is counted as `not_demonstrated` rather than as a host that could not be
+reached. A figure rising there would say visitors are asking for something
+this deployment does not do — which is how we would learn that the page is not
+explaining itself.
+
+**Two rules hold the build tag.** Every file gated on it is named `demo_*.go`,
+so the whole boundary can be listed without reading the tree; and outside
+tests the tag gates exactly the two files that declare the list. Most of the
+HTTP tests scan hosts the list does not cover, and bending forty of them to a
+deployment restriction would be the restriction dictating to the tool — so CI
+names and drives the demonstration's own test instead, and greps the log for
+it, because a `-run` pattern that matches nothing passes silently.
+
 *Enforced in:* `internal/scan/demo.go`, `internal/scan/demo_on.go`,
-`internal/scan/demo_off.go`, `internal/scan.Scanner.Scan`
+`internal/scan/demo_off.go`, `internal/scan.Scanner.Scan`,
+`internal/httpapi.Server.handleScan`, `internal/web/assets/index.html`
 *Guarded by:* `TestTheOrdinaryBuildIsNotADemonstration`,
 `TestTheDemonstrationListMatchesAtLabelBoundaries`,
 `TestABlankEntryAdmitsNothing`, `TestTheBuildTagTouchesNothingElse`,
 `TestTheDemonstrationBuildRefusesAHostItDoesNotOwn`,
 `TestTheDemonstrationRefusalNamesNoHost`,
-`TestTheDemonstrationListIsNotEmpty`, `TestTheTagIsWhatSwitchesIt`
+`TestTheDemonstrationListIsNotEmpty`, `TestTheTagIsWhatSwitchesIt`,
+`TestEveryHostOfferedIsOneTheScannerWillReach`,
+`TestTheDemonstrationPageOffersWhatItCanScan`,
+`TestTheDemonstrationPageSaysWhatItIsAndWhereTheToolIs`,
+`TestTheDemonstrationRefusalIsAnsweredAndCounted`,
+`TestEveryRefusalCodeCanBeProduced`
 
 ## Input
 

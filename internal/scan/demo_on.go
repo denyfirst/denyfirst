@@ -20,3 +20,16 @@ const Demo = true
 var demoTargets = []string{
 	"denyfirst.dev",
 }
+
+// demoHosts is what the page offers, in the order it offers them.
+//
+// Every entry has to be inside demoTargets above, and a test says so: an offer
+// the scanner then refuses would be this project failing at the one thing it
+// is for.
+//
+// The list is short because the hosts that demonstrate a weak configuration
+// have to be built and kept broken on purpose, and each of them is a running
+// server somebody has to maintain. They arrive one at a time.
+var demoHosts = []DemoHost{
+	{Host: "denyfirst.dev", Shows: "this server"},
+}
