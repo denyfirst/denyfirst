@@ -16,7 +16,7 @@ free to improve without breaking that.
 
 ## `denyfirst-v6` → `denyfirst-tls-v6`
 
-Unreleased. **No rule changed.** A report graded
+Released in v0.13.0, 2026-09. **No rule changed.** A report graded
 `denyfirst-v6` and a report graded `denyfirst-tls-v6` are comparable in every
 respect: the same twenty-four certificate rules, the same chain grading, the
 same cipher and protocol verdicts, from the same source. Only the name of the
