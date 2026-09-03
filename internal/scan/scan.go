@@ -229,6 +229,14 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 		return nil, ErrExcluded
 	}
 
+	// The same reasoning, one line further: a demonstration build reaches
+	// only the hosts this project owns, and it reaches them from here rather
+	// than from the HTTP handler so that the command line built with the same
+	// tag cannot go anywhere the service cannot.
+	if DemoRefusal(host) {
+		return nil, ErrNotADemoTarget
+	}
+
 	prober := s.prober()
 
 	out := &Result{

@@ -30,6 +30,14 @@ import (
 // reachable at any version is a chain reachable, and the worse of the two has
 // to set the verdict.
 func TestAWeakCertificateBehindAnOldVersionIsGraded(t *testing.T) {
+	// A demonstration build reaches only the hosts this project owns, and
+	// this test scans one it does not. What is under test here is the tool,
+	// and the demonstration build is the tool with a list — the list is
+	// covered by its own tests under the same tag.
+	if Demo {
+		t.Skip("a demonstration build does not scan this host")
+	}
+
 	modern := selfSignedECDSA(t)
 	legacy := selfSignedSmallRSA(t)
 

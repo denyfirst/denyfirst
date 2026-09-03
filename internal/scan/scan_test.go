@@ -175,6 +175,14 @@ func TestZeroScannerRefusesPrivateTargets(t *testing.T) {
 // Nothing measured must not read as passing, and the policy version must be
 // stated whatever the outcome.
 func TestUnreachableTargetIsUngraded(t *testing.T) {
+	// A demonstration build reaches only the hosts this project owns, and
+	// this test scans one it does not. What is under test here is the tool,
+	// and the demonstration build is the tool with a list — the list is
+	// covered by its own tests under the same tag.
+	if Demo {
+		t.Skip("a demonstration build does not scan this host")
+	}
+
 	s := &Scanner{
 		Prober: &tlsprobe.Prober{
 			Dial: func(_ context.Context, _, _ string) (net.Conn, error) {
