@@ -2722,6 +2722,60 @@ alternative looks like a week later.
 *Guarded by:* `TestTheDeployProcedureIsWrittenDown`,
 `TestTheServiceIsNamedByThePathItIsAt`
 
+### S16 — What somebody runs is what they verified
+
+The tool is now the thing people run, and denyfirst.dev is a demonstration of
+it (N6). That moves the weight of every supply-chain property in this file: a
+compromised release used to reach one server we operate, and now it reaches
+whoever ran it.
+
+**The image has no base system and builds nothing.** `FROM scratch`, one
+stage, no `RUN`. A container built on alpine or debian carries several hundred
+packages this project does not audit and cannot reproduce, which would put a
+supply chain underneath a program that deliberately has none — `go.mod` has no
+`require` block. And a builder stage would produce bytes nobody has checked:
+the argument here is that the release is signed and reproduced by a machine
+the maintainer does not control, so the image is a wrapper around **the binary
+from that release**, verified before it goes in. A second distribution channel
+with weaker guarantees than the first would become the real security level.
+
+**The trust store comes from the machine running it, not from the image.** Not
+a convenience. Every verdict about a chain is a verdict against some trust
+store, and a report should reflect the reader's rather than one baked in by
+whoever built an image. The standing limits already say a scan consults one
+trust store; the compose file is where somebody chooses which, mounted
+read-only.
+
+**An empty trust store stops the service starting.** This is the failure that
+does not look like one: a machine with no store does not fail to verify
+chains, it verifies them all as untrusted, and every report then says the
+scanned server's certificate does not reach a trusted root — a finding about
+the container, printed as a finding about somebody else's server. A container
+built `FROM scratch` with nothing mounted is the ordinary way to arrive there.
+
+The check takes the pool rather than fetching it, because the standard library
+builds the system pool once per process: a test that arranged an empty store
+would get whatever the first caller in the test binary had cached and would
+pass or fail on test order. The decision is the testable part, so the decision
+is what is separable — and a second assertion reads the source to confirm
+something still calls it before anything is served, because removing the call
+left every assertion about the decision green.
+
+**The self-hosting page points at the verification procedure rather than
+restating it.** Two copies drift, and the copy nobody is reading is the one
+that goes wrong — the same rule `docs/releasing.md` follows about the build
+command.
+
+*Enforced in:* `Dockerfile`, `docker-compose.yml`, `docs/self-host.md`,
+`cmd/denyfirstd.trustStoreUsable`
+*Guarded by:* `TestTheImageHasNoBaseSystem`,
+`TestTheComposeFileTakesAwayWhatItSays`,
+`TestAnEmptyTrustStoreStopsTheServiceStarting`,
+`TestSelfHostPointsAtTheVerificationProcedureRatherThanRestatingIt`,
+`TestTheSelfHostingPageIsReachableAndItsLinksResolve`
+
+---
+
 ## Known gaps
 
 Listed rather than hidden. An unnamed gap is a surprise; a named one is work.

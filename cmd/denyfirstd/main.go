@@ -18,6 +18,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -141,6 +142,24 @@ func run() int {
 		// another.
 		fmt.Printf("denyfirstd %s\npolicy %s\n", version, policy.Version)
 		return 0
+	}
+
+	// An empty trust store is not a configuration, it is a wrong answer.
+	//
+	// Every chain a scan reads is judged against the trust store of the
+	// machine this runs on. A machine with none — a container built FROM
+	// scratch with nothing mounted is the ordinary way to get one — does not
+	// fail to verify: it verifies everything as untrusted. The reports still
+	// arrive, they are still confident, and every one of them says the
+	// scanned server's certificate does not reach a trusted root.
+	//
+	// That is a finding about this machine printed as a finding about
+	// somebody else's server, which is the exact failure this project exists
+	// to avoid. So it refuses to start, and says where the store is looked
+	// for rather than leaving the reader to guess.
+	if err := trustStoreUsable(x509.SystemCertPool()); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
 	}
 
 	if (*tlsCert == "") != (*tlsKey == "") {
@@ -570,5 +589,29 @@ func (r *certReloader) reload() error {
 	r.certMod = certInfo.ModTime()
 	r.keyMod = keyInfo.ModTime()
 	r.lastStat = time.Now()
+	return nil
+}
+
+// trustStoreUsable reports whether chains can be judged against anything.
+//
+// Written to take what x509.SystemCertPool returns rather than to call it,
+// because the standard library builds that pool once per process: a test that
+// arranged an empty store would get whatever the first caller in the test
+// binary had already cached, and would pass or fail on the order the tests ran
+// in. The decision is the part worth testing, so the decision is the part that
+// is separable.
+func trustStoreUsable(pool *x509.CertPool, err error) error {
+	if err != nil {
+		return fmt.Errorf("the system trust store could not be read: %w", err)
+	}
+	if pool == nil || pool.Equal(x509.NewCertPool()) {
+		// One line, lower case, no full stop. An error string is a fragment
+		// that callers wrap and print in sentences of their own, which is why
+		// staticcheck refuses a capital or a newline in one (ST1005) — and
+		// why the guidance is joined on with a semicolon rather than set on a
+		// second line.
+		return errors.New("the system trust store is empty, so every certificate would be reported " +
+			"as untrusted; mount a trust store, or point SSL_CERT_FILE or SSL_CERT_DIR at one")
+	}
 	return nil
 }

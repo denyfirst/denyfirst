@@ -57,7 +57,7 @@ func TestTheDemonstrationPageSaysWhatItIsAndWhereTheToolIs(t *testing.T) {
 	for _, want := range []string{
 		"scans only hosts this project owns",
 		"Run it yourself",
-		"github.com/denyfirst/denyfirst",
+		"docs/self-host.md",
 		"leaves your machine",
 	} {
 		if !strings.Contains(page, want) {
