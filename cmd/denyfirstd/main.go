@@ -177,6 +177,7 @@ func run() int {
 	// through one policy would mean the API inherits permission it never
 	// needed, which is the usual way a strict header becomes a loose one.
 	root := http.NewServeMux()
+	root.Handle("/api/v1/tls/scan", api)
 	root.Handle("/api/v1/scan", api)
 	root.Handle("/api/v1/stats", api)
 	root.Handle("/healthz", api)

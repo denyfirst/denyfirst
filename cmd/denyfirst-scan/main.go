@@ -451,7 +451,7 @@ var noteSections = []struct {
 // and under a heading beside a host's own shortcomings they read as though
 // they were some. They are named here and printed in full by -limits, which
 // needs no network and no page.
-const methodPage = "https://denyfirst.dev/method"
+const methodPage = "https://denyfirst.dev/tls/method"
 
 func printNotes(w io.Writer, r result) {
 	notes := r.Notes()

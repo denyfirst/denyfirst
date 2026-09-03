@@ -1896,7 +1896,63 @@ before and after, unchanged.
 *Guarded by:* `TestTheFooterLinksAreNotHeldToAProseMeasure`,
 `TestTheLandingPageDoesNotStackNoticesUnderTheField`,
 `TestTheWordmarkDeclaresATargetFloor`,
-`TestHomePageDoesNotRepeatThePrivacyPage`
+`TestTheScannerPageDoesNotRepeatThePrivacyPage`
+
+### W8 — The project's addresses and a check's addresses are different addresses
+
+This project has one check and expects more. A site with one service and a
+service with one site are the same thing right up until the second service —
+and by then every report anybody has shared points at `/`, so the front page
+cannot become a front page without moving the tool out from under those links.
+
+The check was therefore given an address of its own while moving it costs
+nothing:
+
+| | |
+|---|---|
+| `/tls` | the check |
+| `/tls/method` | what *this* check cannot establish |
+| `POST /api/v1/tls/scan` | the check's API |
+| `/privacy`, `/terms` | the project's promises |
+| `/.well-known/security.txt`, `/pgp-key.txt` | how a person is reached |
+| `GET /api/v1/stats` | the project's counter |
+
+Privacy and terms are promises about everything this project runs, not about
+one scan, and a copy under each check would be several copies of a promise to
+keep in step. The standing limits are the opposite: what a TLS scan cannot
+establish is not what a mail check will not establish, and a page trying to be
+both would be true of neither.
+
+**The two redirects are deliberately different kinds.** `/method` → `/tls/method`
+is **301**: it is not coming back to the root, and the address is printed in
+reports that have already been shared. `/` → `/tls` is **302**, because `/` is
+going to stop redirecting the day there is a front page to put there. A
+permanent redirect is a promise that an address has finished changing, and that
+one has not. Nothing may appear in both tables: an address has either finished
+moving or it has not. (Every response carries `Cache-Control: no-store`, so
+neither is cached in practice; the status code is still the honest one, because
+it is read by people and by intermediaries that ignore the header.)
+
+**The API path is aliased, not redirected.** A page can be redirected because a
+browser follows a redirect on a `GET` and nothing is lost. A `POST` cannot: 307
+and 308 preserve the body, 301 and 302 do not, and clients disagree about which
+they follow. A caller whose body is silently dropped receives an error that
+looks like it came from the scan rather than from the move. So
+`/api/v1/scan` is served by the same handler as `/api/v1/tls/scan` and answers
+identically, and both refuse a `GET` — a target in a URL is a target in a
+browser history, in a `Referer` header, and in every proxy log on the path.
+
+Every internal link on every page is followed against the routing tables, so a
+page that moves cannot leave a dead `href` behind — and the footer is on every
+page, which means one stale link is stale everywhere at once.
+
+*Enforced in:* `internal/web.pages`, `internal/web.moved`,
+`internal/web.standingIn`, `internal/httpapi.New`
+*Guarded by:* `TestTheProjectsPagesStayAtTheRootAndTheChecksDoNot`,
+`TestTheRootStandsInAndSaysSoInTheStatusCode`,
+`TestEveryInternalLinkResolves`, `TestTheScriptCallsTheChecksOwnPath`,
+`TestBothScanPathsAreServedAndNeitherRedirects`,
+`TestNeitherScanPathAnswersAGet`, `TestOldPathsRedirect`
 
 ---
 
