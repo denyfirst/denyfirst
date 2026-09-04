@@ -3,6 +3,7 @@ package policy
 import (
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -127,7 +128,15 @@ func TestEveryRuleSetThatShippedNamesItsRelease(t *testing.T) {
 			"a shipped rule set from the one in force", TLSVersion)
 	}
 
-	heading := regexp.MustCompile("(?m)^## `denyfirst-(?:[a-z]+-)?v[0-9]+` → `(denyfirst-(?:[a-z]+-)?v[0-9]+)`")
+	// Two shapes of heading, because there are two ways a rule set arrives.
+	// One replaces another: "`denyfirst-v5` → `denyfirst-v6`". One is the
+	// first of its kind: "`denyfirst-web-v1` — a new rule set", which is what
+	// a second check produces and what this test could not see until
+	// 2026-09-04. A section it cannot see is a section nothing checks, and
+	// the whole reason this test exists is that such a section had gone stale
+	// for five releases.
+	heading := regexp.MustCompile("(?m)^## `denyfirst-(?:[a-z]+-)?v[0-9]+` → `(denyfirst-(?:[a-z]+-)?v[0-9]+)`|" +
+		"(?m)^## `(denyfirst-(?:[a-z]+-)?v[0-9]+)` — ")
 	found := heading.FindAllStringSubmatchIndex(page, -1)
 
 	// The name each section introduces, and the prose under it. Keyed by the
@@ -135,7 +144,13 @@ func TestEveryRuleSetThatShippedNamesItsRelease(t *testing.T) {
 	// name for a number that already had one.
 	section := map[string]string{}
 	for i, m := range found {
-		name := page[m[2]:m[3]]
+		// Whichever of the two alternatives matched.
+		name := ""
+		if m[2] >= 0 {
+			name = page[m[2]:m[3]]
+		} else {
+			name = page[m[4]:m[5]]
+		}
 		end := len(page)
 		if i+1 < len(found) {
 			end = found[i+1][0]
@@ -157,11 +172,53 @@ func TestEveryRuleSetThatShippedNamesItsRelease(t *testing.T) {
 		}
 	}
 
+	inForce := map[string]bool{TLSVersion: true, WebVersion: true}
+
+	// Every rule set in force has a section this test can see.
+	//
+	// Not a formality: a check that parses nothing passes everything, and the
+	// way to make this one parse nothing is to rewrite a heading. A sabotage
+	// on 2026-09-04 renamed "`denyfirst-web-v1` — a new rule set" to "The web
+	// rule set", and every assertion below went on passing over a page that
+	// no longer said which release carried the check.
+	for name := range inForce {
+		if _, ok := section[name]; !ok {
+			t.Fatalf("docs/policy-changes.md has no section this test can find for %s. Either the rule "+
+				"set arrived without a record, or a heading no longer matches the shape read here and "+
+				"this test has quietly stopped checking anything.", name)
+		}
+	}
+
+	// At most one section may say a release has not carried it yet: the one
+	// being prepared. Two is either a section that shipped and was reverted
+	// to "Unreleased", or two rule sets being prepared at once with no way to
+	// tell which tag will carry which.
+	unreleased := []string{}
 	for name, text := range section {
-		// The section for the name in force may say either: it is written
+		if strings.Contains(text, "Unreleased") {
+			unreleased = append(unreleased, name)
+		}
+	}
+	if len(unreleased) > 1 {
+		sort.Strings(unreleased)
+		t.Errorf("%d sections say they are unreleased (%s). Only the one being prepared may.",
+			len(unreleased), strings.Join(unreleased, ", "))
+	}
+
+	for name, text := range section {
+		// Every section says which release carried it, or says it has not
+		// shipped yet. Neither is the failure this catches: a section with no
+		// release line at all answers "which upgrade moved my verdicts?" with
+		// silence, and the release procedure's own check for the word
+		// "Unreleased" never fires on it.
+		if !strings.Contains(text, "Released in v") && !strings.Contains(text, "Unreleased") {
+			t.Errorf("the %s section says neither which release carried it nor that it is unreleased.", name)
+		}
+
+		// A rule set in force may say "Unreleased": its section is written
 		// before the tag it names exists, which is the whole reason the stale
 		// line this test was written for survived.
-		if name == TLSVersion {
+		if inForce[name] {
 			continue
 		}
 		if strings.Contains(text, "Unreleased") {
