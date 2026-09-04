@@ -16,8 +16,7 @@ free to improve without breaking that.
 
 ## `denyfirst-web-v1` — a new rule set
 
-**Unreleased.** This line is replaced with the tag that carries it when one is
-cut; the release procedure refuses to go on while the word is still here.
+Released in v0.15.0, 2026-09.
 
 A second rule set, for a second check: how a name answers on each scheme, and
 what it says about coming back over TLS. **No TLS verdict changed and no TLS
