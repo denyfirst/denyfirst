@@ -68,6 +68,37 @@ The exit status is the worst verdict found — `0` strong, `1` weak, `2`
 insecure, `3` the scan could not be completed — so it gates a pipeline without
 anything having to parse the output.
 
+### Two checks
+
+`-check` selects which one runs, and the default is the one that has always
+run. A default that quietly started running a second check would change the
+exit status of a pipeline nobody touched.
+
+```sh
+./denyfirst-scan example.com                 # the transport and its certificates
+./denyfirst-scan -check web example.com      # how the site is reached over HTTP
+```
+
+The web check answers what a TLS report cannot: whether the site is *also*
+served in the clear, whether the plaintext address sends a visitor to the
+secure one, and whether anything tells a browser to come back over TLS. A host
+can negotiate TLS 1.3 with an immaculate certificate and still hand every
+visitor's first request to whoever is on the path.
+
+It sends **one `GET` of `/`** over each scheme, reads the headers, closes the
+body unread, and follows only the addresses a `Location` header names. It
+never requests a path of its own choosing. `docs/invariants.md` N7 has the
+whole discipline.
+
+The two rule sets are separate and never comparable with each other:
+`denyfirst-tls-v6` grades a handshake, `denyfirst-web-v1` grades an HTTP
+response. `-version` prints both, and every report names the one that produced
+it.
+
+```sh
+./denyfirst-scan -check web -limits          # what a header check cannot establish
+```
+
 ## The service
 
 ```sh

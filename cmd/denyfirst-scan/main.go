@@ -84,6 +84,16 @@ func run() int {
 		allowPrivate = flag.Bool("allow-private", false,
 			"permit private, loopback and link-local addresses; off by default so a\n"+
 				"\tmistyped or attacker-supplied name cannot be aimed at internal hosts")
+
+		// Which check runs, and the default is the one that has always run.
+		//
+		// A default that quietly started running a second check would change
+		// the exit status of a pipeline nobody touched: the status is the
+		// worst verdict found, and a new check can find something. That is
+		// the same argument as versioning the rules, one level up.
+		check = flag.String("check", checkTLS,
+			"which check to run: `tls` for the transport and its certificates,\n"+
+				"\tor web for how the site is reached over HTTP")
 	)
 
 	showVersion := flag.Bool("version", false, "print the release and policy versions, then exit")
@@ -94,7 +104,7 @@ func run() int {
 		"print the limits of this method — true of every scan — then exit")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "denyfirst-scan inspects TLS configuration and certificates.\n\n")
+		fmt.Fprintf(os.Stderr, "denyfirst-scan inspects how a host is reached: its TLS configuration\nand certificates, or the way a website answers over HTTP.\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n  %s [flags] host[:port] ...\n\nFlags:\n", os.Args[0])
 		flag.PrintDefaults()
 	}
@@ -105,12 +115,21 @@ func run() int {
 	// which rules produced a verdict, and a verdict from one policy is not
 	// comparable with a verdict from another.
 	if *showVersion {
-		fmt.Printf("denyfirst-scan %s\npolicy %s\n", version, policy.TLSVersion)
+		// Both rule sets, because this binary carries both and a reader
+		// holding one report cannot tell which produced it from the release
+		// number alone.
+		fmt.Print(versionLine())
 		return exitOK
 	}
 
+	if err := checkKnown(*check); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return exitError
+	}
+
 	if *showLimits {
-		printLimits(os.Stdout)
+		limits, page := limitsFor(*check)
+		printLimits(os.Stdout, limits, page)
 		return exitOK
 	}
 
@@ -123,6 +142,10 @@ func run() int {
 	// Ctrl-C cancels in flight rather than leaving half-open connections.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if *check == checkWeb {
+		return runWeb(ctx, targets, *timeout, *allowPrivate, *asJSON)
+	}
 
 	scanner := &scan.Scanner{
 		Prober: &tlsprobe.Prober{TotalTimeout: *timeout},
@@ -166,7 +189,27 @@ func run() int {
 		}
 	}
 
-	return exitCode(results)
+	return exitCode(outcomes(results))
+}
+
+// outcome is what a status is decided from: a verdict, and whether the scan
+// ran at all.
+//
+// Both checks produce these, so there is one copy of the decision rather than
+// one per check. A second copy of this function is a second place for
+// "ungraded is not a pass" to be got wrong, and it was got wrong once already
+// in the first.
+type outcome struct {
+	Verdict policy.Verdict
+	Failed  bool
+}
+
+func outcomes(results []result) []outcome {
+	out := make([]outcome, 0, len(results))
+	for _, r := range results {
+		out = append(out, outcome{Verdict: r.Verdict, Failed: r.Error != ""})
+	}
+	return out
 }
 
 // exitCode turns a run into a status a shell can act on.
@@ -180,16 +223,26 @@ func run() int {
 // not grades — so a run of two targets, one strong and one ungraded, comes out
 // of it as strong. Reading the status off that alone published a pass for a
 // target nobody measured, and hid it behind one that was fine.
-func exitCode(results []result) int {
+// versionLine is what -version prints.
+//
+// A function so a test can read it. Printed inline it was untestable, and
+// what a binary says it is happens to be the one thing an operator holding it
+// has to be able to check.
+func versionLine() string {
+	return fmt.Sprintf("denyfirst-scan %s\npolicy %s\npolicy %s\n",
+		version, policy.TLSVersion, policy.WebVersion)
+}
+
+func exitCode(outcomes []outcome) int {
 	worst := policy.Ungraded
 	ungraded := false
 
-	for _, r := range results {
-		if r.Error != "" {
+	for _, o := range outcomes {
+		if o.Failed {
 			return exitError
 		}
-		worst = policy.Worst(worst, r.Verdict)
-		if r.Verdict == policy.Ungraded {
+		worst = policy.Worst(worst, o.Verdict)
+		if o.Verdict == policy.Ungraded {
 			ungraded = true
 		}
 	}
@@ -259,8 +312,8 @@ func printReport(w io.Writer, r result) {
 	}
 
 	printCertificate(w, r)
-	printFindings(w, r)
-	printNotes(w, r)
+	printFindings(w, r.Findings())
+	printNotes(w, r.Notes(), tlsMethodPage)
 
 	if r.TLS != nil {
 		fmt.Fprintf(w, "\n  Completed in %s\n", r.TLS.Duration.Round(time.Millisecond))
@@ -413,8 +466,10 @@ func printCertificate(w io.Writer, r result) {
 	}
 }
 
-func printFindings(w io.Writer, r result) {
-	findings := r.Findings()
+// The findings and the notes are rendered from slices rather than from a
+// result, so that one renderer serves both checks. Two renderers composing
+// one claim from the same facts is how the two faces of this report drift.
+func printFindings(w io.Writer, findings []policy.Finding) {
 	if len(findings) == 0 {
 		fmt.Fprintf(w, "\n  No findings.\n")
 		return
@@ -451,10 +506,12 @@ var noteSections = []struct {
 // and under a heading beside a host's own shortcomings they read as though
 // they were some. They are named here and printed in full by -limits, which
 // needs no network and no page.
-const methodPage = "https://denyfirst.dev/tls/method"
+const (
+	tlsMethodPage = "https://denyfirst.dev/tls/method"
+	webMethodPage = "https://denyfirst.dev/web/method"
+)
 
-func printNotes(w io.Writer, r result) {
-	notes := r.Notes()
+func printNotes(w io.Writer, notes []policy.Note, page string) {
 	for _, section := range noteSections {
 		chosen := policy.NotesOfKind(notes, section.kind)
 		if len(chosen) == 0 {
@@ -472,7 +529,7 @@ func printNotes(w io.Writer, r result) {
 	if standing := policy.NotesOfKind(notes, policy.KindStanding); len(standing) > 0 {
 		fmt.Fprintf(w, "\n  Limits of this method\n")
 		fmt.Fprintf(w, "    · %s\n", limitsLine(len(standing)))
-		fmt.Fprintf(w, "      denyfirst-scan -limits, or %s\n", methodPage)
+		fmt.Fprintf(w, "      denyfirst-scan -limits, or %s\n", page)
 	}
 }
 
@@ -490,13 +547,13 @@ func limitsLine(n int) string {
 
 // printLimits answers -limits: the standing limits in full, from the same
 // declaration the reports and the page read.
-func printLimits(w io.Writer) {
+func printLimits(w io.Writer, limits []policy.StandingLimit, page string) {
 	fmt.Fprintf(w, "\nLimits of this method\n")
 	fmt.Fprintf(w, "=====================\n\n")
 	fmt.Fprintf(w, "  True of every scan this program runs, whatever server it looks at.\n")
-	fmt.Fprintf(w, "  Read alongside %s\n", methodPage)
+	fmt.Fprintf(w, "  Read alongside %s\n", page)
 
-	for _, limit := range policy.StandingLimits() {
+	for _, limit := range limits {
 		fmt.Fprintf(w, "\n  %s\n", limit.Title)
 		fmt.Fprintf(w, "    %s\n", wrap(limit.Text, 70, "    "))
 	}
