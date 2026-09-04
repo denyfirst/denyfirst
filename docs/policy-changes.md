@@ -16,8 +16,7 @@ free to improve without breaking that.
 
 ## `denyfirst-web-v1` → `denyfirst-web-v2`
 
-**Unreleased.** This line is replaced with the tag that carries it when one is
-cut; the release procedure refuses to go on while the word is still here.
+Released in v0.15.1, 2026-09.
 
 **Two verdicts change, in the same direction and for the same reason: v1 said
 nothing where it had measured something.** No rule was added, removed, or made
