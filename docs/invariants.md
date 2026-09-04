@@ -1966,13 +1966,31 @@ no network calls it rather than reimplementing it; a reimplementation keeps
 passing after the original stops doing what it copied, which is the shape of
 every drifted second copy this repository has caught.
 
+**Silence is not a verdict, in either direction.** This is the same rule read
+twice, and `denyfirst-web-v1` broke it both ways on the day it shipped.
+
+A sound arrangement was reported as `ungraded`, which means *nothing was
+established* and is what an unreachable host gets. The check had established a
+great deal, and on a command line whose exit status is the whole product the
+two came out as the same number — so a pipeline gated on it failed on every
+host that passed. Where the secure address answered over TLS and nothing was
+wrong, the verdict is `strong`.
+
+And a host that answered nothing at all was graded `weak` for declaring no
+policy, which is a claim about a server this program never spoke to: an empty
+list of headers is what both a silent host and a bare response produce, so the
+rules are told which it was rather than left to guess. Both directions are R4
+and R17 applied to a rule set that was written the day before them.
+
 *Enforced in:* `internal/webscan` (`securePolicy`, `plaintextPolicy`, `hops`,
-`Grade`)
+`answered`, `Grade`); `internal/policy/web.go` (`GradeReach`, `GradeHSTS`)
 *Guarded by:* `TestThePolicyReadIsTheOneABrowserWouldHold`,
 `TestAPolicySentOverPlaintextIsFoundSoItCanBeReported`,
 `TestAFailedHopIsNotAResponseWithNoHeaders`,
 `TestAWholeScanIsGradedAndCarriesItsEvidence`,
-`TestACorrectlyReachedSiteIsNotGraded`,
+`TestACorrectlyReachedSiteIsStrongAndNotSilent`,
+`TestAHostThatAnsweredNothingIsNotGradedForItsPolicy`,
+`TestAChainEndingOnPlaintextIsNeverSound`,
 `TestEveryReportCarriesTheLimitsOfTheMethod`,
 `TestNoTLSLimitIsCarriedByAWebReport`,
 `TestTheReportSerialisesWithoutItsSecrets`,
