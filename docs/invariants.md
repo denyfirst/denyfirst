@@ -1935,6 +1935,52 @@ without a record is the first one's problem repeated.
 
 ---
 
+### R23 — The policy read is the one a browser would hold
+
+A browser applies `Strict-Transport-Security` from **every** response that
+arrives over a secure transport, and discards it from every response that
+arrives any other way. A chain of three redirects therefore has three chances
+to set a policy, a later one replaces an earlier one, and the response a
+visitor finally lands on may set none at all while the browser still holds one.
+
+So the value graded is **the last one carried by a hop that was made over
+TLS**. Reading the last hop describes a policy no browser holds the moment a
+site downgrades to plaintext at the end of its chain; reading the first
+describes one a later hop replaced. Both are wrong in the same way: they are
+answers to a question about the server that were actually decided by which
+line of code was easiest to write.
+
+**A hop that failed is not a response with no headers.** A refused connection
+says nothing about what a server declares, and the difference decides a
+verdict rather than a detail: a host answering `200` in the clear is insecure,
+and a host with nothing listening on port 80 is the safest arrangement there
+is. One boolean separates them.
+
+**A policy sent only over plaintext is looked for on purpose.** It is a common
+arrangement and one nothing else in a report would show — the site is
+configured and unprotected at the same time — so the plaintext chain is read
+for the header the rules then grade as having no effect.
+
+**There is one copy of the grading.** `Grade` is exported so that a test with
+no network calls it rather than reimplementing it; a reimplementation keeps
+passing after the original stops doing what it copied, which is the shape of
+every drifted second copy this repository has caught.
+
+*Enforced in:* `internal/webscan` (`securePolicy`, `plaintextPolicy`, `hops`,
+`Grade`)
+*Guarded by:* `TestThePolicyReadIsTheOneABrowserWouldHold`,
+`TestAPolicySentOverPlaintextIsFoundSoItCanBeReported`,
+`TestAFailedHopIsNotAResponseWithNoHeaders`,
+`TestAWholeScanIsGradedAndCarriesItsEvidence`,
+`TestACorrectlyReachedSiteIsNotGraded`,
+`TestEveryReportCarriesTheLimitsOfTheMethod`,
+`TestNoTLSLimitIsCarriedByAWebReport`,
+`TestTheReportSerialisesWithoutItsSecrets`,
+`TestScanAndGradeAgreeOnTheHost`,
+`TestATargetThatIsNotAHostnameIsRefusedBeforeAnythingIsAttempted`
+
+---
+
 ## The page
 
 The frontend had no entry here while it was the only part of this project a
