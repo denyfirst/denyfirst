@@ -43,14 +43,14 @@ func TestReachGradesHowAVisitorArrives(t *testing.T) {
 			secure:  secureOK,
 			plain:   []WebHop{answered(false, 301), answered(true, 200)},
 			want:    nil,
-			verdict: Ungraded,
+			verdict: Strong,
 		},
 		{
 			name:    "nothing on port 80 at all",
 			secure:  secureOK,
 			plain:   []WebHop{dead(false)},
 			want:    nil,
-			verdict: Ungraded,
+			verdict: Strong,
 		},
 		{
 			name:    "a page is served in the clear",
@@ -166,6 +166,22 @@ func TestAPermanentRedirectIsNotCalledTemporary(t *testing.T) {
 	}
 }
 
+func TestAChainEndingOnPlaintextIsNeverSound(t *testing.T) {
+	// The worst answer this rule set could give. Pinned directly rather than
+	// left to depend on reach.downgrades-to-plaintext continuing to fire,
+	// which is what makes it true today.
+	got := GradeReach(
+		[]WebHop{answered(true, 302), answered(false, 200)},
+		[]WebHop{answered(false, 200)},
+	)
+	if got.Verdict == Strong {
+		t.Fatal("a site whose secure address ends on a plaintext one was called sound")
+	}
+	if got.Verdict != Insecure {
+		t.Errorf("verdict %q, want insecure", got.Verdict)
+	}
+}
+
 func TestParseHSTS(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -212,15 +228,18 @@ func TestGradeHSTS(t *testing.T) {
 			"hsts.preload-ineffective", Weak},
 		{"preload asked for without subdomains", []string{"max-age=63072000; preload"}, nil,
 			"hsts.preload-ineffective", Weak},
-		{"a working policy", []string{"max-age=63072000; includeSubDomains"}, nil, "", Ungraded},
+		{"a working policy", []string{"max-age=63072000; includeSubDomains"}, nil, "", Strong},
 		{"a working policy that is preloadable", []string{"max-age=31536000; includeSubDomains; preload"}, nil,
-			"", Ungraded},
+			"", Strong},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := GradeHSTS(tc.secure, tc.plain)
+			got := GradeHSTS(tc.secure, tc.plain, true)
 			if tc.want == "" {
 				if len(got.Findings) != 0 {
 					t.Fatalf("graded a correct policy: %v", webRuleIDs(got))
+				}
+				if got.Verdict != tc.verdict {
+					t.Errorf("a working policy is %q, want %q", got.Verdict, tc.verdict)
 				}
 				return
 			}
@@ -238,7 +257,7 @@ func TestAShortMaxAgeIsDescribedAndNotGraded(t *testing.T) {
 	// No standards body publishes a minimum, and OWASP recommends a short one
 	// during a rollout. A rule failing anything under a year would be this
 	// project inventing a threshold and then penalising a correct choice.
-	got := GradeHSTS([]string{"max-age=86400; includeSubDomains"}, nil)
+	got := GradeHSTS([]string{"max-age=86400; includeSubDomains"}, nil, true)
 	if len(got.Findings) != 0 {
 		t.Fatalf("a short max-age was graded: %v", webRuleIDs(got))
 	}
@@ -259,7 +278,7 @@ func TestIncludeSubDomainsIsDescribedAndNotGraded(t *testing.T) {
 	// A host with nothing beneath it needs no subdomain clause, and a scan of
 	// one host cannot see what is beneath it. R6: correct configuration is
 	// not penalised.
-	got := GradeHSTS([]string{"max-age=63072000"}, nil)
+	got := GradeHSTS([]string{"max-age=63072000"}, nil, true)
 	if len(got.Findings) != 0 {
 		t.Fatalf("the absence of includeSubDomains was graded: %v", webRuleIDs(got))
 	}
@@ -272,7 +291,7 @@ func TestOnlyTheFirstHSTSHeaderIsGraded(t *testing.T) {
 	// RFC 6797 section 8.1: a user agent processes only the first. Grading
 	// the most generous of several would describe a policy no browser
 	// applies.
-	got := GradeHSTS([]string{"max-age=0", "max-age=63072000; includeSubDomains"}, nil)
+	got := GradeHSTS([]string{"max-age=0", "max-age=63072000; includeSubDomains"}, nil, true)
 	if !webHas(got, "hsts.disabled") {
 		t.Fatalf("the second header was graded instead of the first: %v", webRuleIDs(got))
 	}
@@ -291,11 +310,11 @@ func TestEveryWebFindingIsUsableOnItsOwn(t *testing.T) {
 		GradeReach([]WebHop{answered(true, 200)}, []WebHop{answered(false, 404)}),
 		GradeReach([]WebHop{answered(true, 200)}, []WebHop{answered(false, 301), answered(false, 301), answered(true, 200)}),
 		GradeReach([]WebHop{answered(true, 200)}, []WebHop{answered(false, 301), answered(false, 302)}),
-		GradeHSTS(nil, nil),
-		GradeHSTS(nil, []string{"max-age=1"}),
-		GradeHSTS([]string{"includeSubDomains"}, nil),
-		GradeHSTS([]string{"max-age=0"}, nil),
-		GradeHSTS([]string{"max-age=1; preload"}, nil),
+		GradeHSTS(nil, nil, true),
+		GradeHSTS(nil, []string{"max-age=1"}, true),
+		GradeHSTS([]string{"includeSubDomains"}, nil, true),
+		GradeHSTS([]string{"max-age=0"}, nil, true),
+		GradeHSTS([]string{"max-age=1; preload"}, nil, true),
 	} {
 		all = append(all, r.Findings...)
 	}
