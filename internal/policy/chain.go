@@ -122,7 +122,7 @@ func GradeIssuer(f IssuerFacts, now time.Time) IssuerFinding {
 			Title:      title,
 			Rationale:  rationale,
 			References: refs,
-			Policy:     Version,
+			Policy:     TLSVersion,
 		})
 	}
 

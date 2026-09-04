@@ -333,7 +333,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	ctx, cancel := context.WithTimeout(ctx, p.totalTimeout())
 	defer cancel()
 
-	report := &Report{Host: host, Port: port, Policy: policy.Version}
+	report := &Report{Host: host, Port: port, Policy: policy.TLSVersion}
 
 	// Every handshake records the address it reached, so that the report can
 	// say whether the measurements below describe one machine.

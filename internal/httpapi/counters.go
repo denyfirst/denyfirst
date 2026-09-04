@@ -274,6 +274,6 @@ type statsResponse struct {
 func (s *Server) handleStats(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, statsResponse{
 		Snapshot: s.counts.publicSnapshot(),
-		Policy:   policy.Version,
+		Policy:   policy.TLSVersion,
 	})
 }

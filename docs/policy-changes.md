@@ -14,6 +14,67 @@ free to improve without breaking that.
 
 ---
 
+## `denyfirst-web-v1` — a new rule set
+
+A second rule set, for a second check: how a name answers on each scheme, and
+what it says about coming back over TLS. **No TLS verdict changed and no TLS
+rule moved.** `denyfirst-tls-v6` grades a handshake and a certificate;
+`denyfirst-web-v1` grades an HTTP response, which most of the ports this
+project scans do not have. A report carries the rule set that graded it, and
+these two are never the same one.
+
+The check exists because a TLS report can be entirely correct and still leave
+its reader with the wrong impression. A host can negotiate TLS 1.3 with an
+immaculate certificate while serving the same site in the clear on port 80 and
+declaring no policy at all — and every visitor who types the name without a
+scheme hands their first request to whoever is on the path. Nothing in a TLS
+report says so, because nothing in a handshake shows it.
+
+### What it grades
+
+| rule | verdict | when |
+|---|---|---|
+| `reach.plaintext-served` | insecure | port 80 returns a page instead of redirecting |
+| `reach.never-reaches-tls` | insecure | the redirects from port 80 end while still on plaintext |
+| `reach.downgrades-to-plaintext` | insecure | the https address ends on an http one |
+| `reach.plaintext-not-redirected` | weak | port 80 answers, and does not send the visitor to TLS |
+| `reach.redirect-via-plaintext` | weak | TLS is reached, but only after a second cleartext request |
+| `hsts.absent` | weak | no `Strict-Transport-Security` on the secure response |
+| `hsts.plaintext-only` | weak | the header is sent only where RFC 6797 requires a browser to ignore it |
+| `hsts.unparseable` | weak | the header has no `max-age` a browser can read, so the whole header is discarded |
+| `hsts.disabled` | weak | `max-age=0`, which tells a browser to forget the policy |
+| `hsts.preload-ineffective` | weak | `preload` is requested without the year and `includeSubDomains` the list requires |
+
+### What it deliberately does not grade
+
+**The length of `max-age`.** No standards body publishes a minimum, and
+OWASP's cheat sheet explicitly recommends a short one during a rollout. A rule
+failing anything under a year would be this project inventing a threshold and
+then reporting a deliberate, correct choice as a fault. The value is described
+instead — in years or days, with what a browser does when it lapses — and the
+one-year figure appears only as what it is: the bar for one browser
+programme's list.
+
+**The absence of `includeSubDomains`.** A host with nothing beneath it needs
+no subdomain clause, and a scan of one host cannot see what is beneath it.
+
+**A temporary redirect from plaintext.** A 302 to the secure address works. It
+is described, because a browser may repeat the cleartext request where a
+permanent one would not, but it is not a fault on its own.
+
+Three of the four checks this project has now declined to invent a threshold
+for. That is the intended direction: a verdict rests on a document somebody
+can read, and where no document exists the measurement is reported rather than
+graded.
+
+### `policy.Version` is now `policy.TLSVersion`
+
+An identifier, not a value. `policy.Version` beside `policy.WebVersion` reads
+as *the* version and the web one, which is the confusion renaming the value to
+`denyfirst-tls-v6` was meant to end. Nothing a report says changed.
+
+---
+
 ## `denyfirst-v6` → `denyfirst-tls-v6`
 
 Released in v0.13.0, 2026-09. **No rule changed.** A report graded

@@ -199,8 +199,8 @@ func TestUnreachableTargetIsUngraded(t *testing.T) {
 	if result.Verdict != policy.Ungraded {
 		t.Errorf("Verdict = %q, want it ungraded", result.Verdict)
 	}
-	if result.Policy != policy.Version {
-		t.Errorf("Policy = %q, want %q", result.Policy, policy.Version)
+	if result.Policy != policy.TLSVersion {
+		t.Errorf("Policy = %q, want %q", result.Policy, policy.TLSVersion)
 	}
 	if result.Certificate != nil {
 		t.Error("a certificate report was produced although nothing connected")

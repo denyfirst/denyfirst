@@ -250,8 +250,8 @@ func TestReportNamesThePolicy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Probe returned %v", err)
 	}
-	if report.Policy != policy.Version {
-		t.Errorf("Policy = %q, want %q", report.Policy, policy.Version)
+	if report.Policy != policy.TLSVersion {
+		t.Errorf("Policy = %q, want %q", report.Policy, policy.TLSVersion)
 	}
 	if report.Verdict != policy.Ungraded {
 		t.Errorf("Verdict = %q, want it ungraded when nothing connected", report.Verdict)

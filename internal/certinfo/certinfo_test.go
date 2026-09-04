@@ -213,8 +213,8 @@ func TestDescribesTheLeaf(t *testing.T) {
 	// Against the constant rather than a literal. A hardcoded "denyfirst-v1"
 	// here is a second copy of the version, and the rule set changed under it
 	// on 2026-08-22 while this test went on asserting the old number.
-	if report.Policy != policy.Version {
-		t.Errorf("Policy = %q, want %q", report.Policy, policy.Version)
+	if report.Policy != policy.TLSVersion {
+		t.Errorf("Policy = %q, want %q", report.Policy, policy.TLSVersion)
 	}
 }
 

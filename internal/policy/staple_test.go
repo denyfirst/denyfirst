@@ -146,8 +146,8 @@ func TestMustStapleFindingCitesItsSources(t *testing.T) {
 	if f.RuleID != "cert.must-staple-not-stapled" {
 		t.Errorf("RuleID = %q", f.RuleID)
 	}
-	if f.Policy != Version {
-		t.Errorf("Policy = %q, want %q", f.Policy, Version)
+	if f.Policy != TLSVersion {
+		t.Errorf("Policy = %q, want %q", f.Policy, TLSVersion)
 	}
 	if len(f.References) == 0 {
 		t.Fatal("the finding cites nothing")

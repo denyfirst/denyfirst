@@ -241,7 +241,7 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 
 	out := &Result{
 		Target: net.JoinHostPort(host, port),
-		Policy: policy.Version,
+		Policy: policy.TLSVersion,
 	}
 
 	tlsReport, err := prober.Probe(ctx, host, port)

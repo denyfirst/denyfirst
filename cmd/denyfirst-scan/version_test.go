@@ -63,7 +63,7 @@ func TestAnUnstampedBinaryDoesNotClaimAVersion(t *testing.T) {
 // graded by one policy version is not comparable with a report graded by
 // another, so the rule set is named beside the build.
 func TestThePolicyVersionIsNotTheReleaseVersion(t *testing.T) {
-	if policy.Version == version {
+	if policy.TLSVersion == version {
 		t.Error("the policy version and the release version are the same string; one of them is not being reported")
 	}
 }
