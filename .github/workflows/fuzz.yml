@@ -70,6 +70,14 @@ jobs:
           # it is the only cryptographic parser this project owns.
           - package: ./internal/ocsp
             target: FuzzCheck
+          # Both of these read what the scanned server sends. The first
+          # decides where this program connects next, which makes it the only
+          # place in the web probe where a hostile string chooses an action
+          # rather than a value.
+          - package: ./internal/webprobe
+            target: FuzzNextURL
+          - package: ./internal/webprobe
+            target: FuzzCookies
           - package: ./internal/httpapi
             target: FuzzScanHandler
 

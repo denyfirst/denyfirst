@@ -247,6 +247,81 @@ than trusting a filename.
 `TestTheVersionOutputCarriesTheReachLine`,
 `TestTheDemonstrationBuildIsReleasedAndDeployed`
 
+---
+
+### N7 — An HTTP request is one GET of the root, and no path is ever invented
+
+A TLS handshake stops at the transport. An HTTP request enters the
+application: it lands in an access log with a path, it reaches whatever sits
+in front of the origin, and on a badly built application a GET can change
+state. That difference is why the web check is a separate package with its own
+rules rather than a few more fields on the TLS probe, and why the discipline
+is compiled in rather than left to whoever calls it.
+
+**One `GET` of `/`, over HTTPS and over plaintext.** Nothing else is
+requested. After the first request the only addresses fetched are the ones a
+`Location` header named, resolved against the address that sent them exactly
+as a browser resolves them. **No path is constructed by this program.** There
+is no probing of `/admin`, no guessing under `/.well-known`, and no second
+guess of any kind: this reads what a server volunteers to every visitor.
+
+**The body is never read.** Headers are taken and the body is closed unread,
+so a large or slow response costs a header's worth of traffic. It is also the
+part the scanned server pays for.
+
+**Only headers this check grades are kept.** An allow list, not a deny list.
+A response carries whatever the server chose to send — internal host names,
+software versions, request identifiers — and a report built from a deny list
+holds all of it until somebody thinks of the next entry. Adding a rule that
+reads a new header means adding the header to that list, which is a line a
+reviewer sees.
+
+**A cookie's value is never recorded, and there is nowhere to put one.**
+`webprobe.Cookie` carries the name and the attributes that decide whether a
+cookie is safe. It has no value field at all: a value is a session identifier
+as often as not, a report is a thing people paste into issue trackers, and a
+struct with nowhere to hold a secret cannot leak one through a later change
+that looked harmless. The value is discarded where the header is parsed, not
+where the report is rendered.
+
+**The chain is bounded and the boundary is recorded.** Five redirects, an
+overlong `Location` refused, a `Location` in another scheme refused, and
+credentials stripped from one before it is followed. Each refusal is written
+into the chain, because a reader who cannot tell *it stopped here* from *it
+was not followed* cannot interpret the chain at all.
+
+**The guard is under the transport, not in front of the first request.** The
+first address is one the operator chose; every address after it was chosen by
+the server that answered. So the dialler is `safedial`, and it is given the
+two ports a website is reached on — a redirect naming port 22 is this program
+being aimed by the host it is measuring. No proxy is read from the
+environment: one would put a third party in the path and the measurement would
+then describe the proxy.
+
+**The client says who it is.** The user agent names the tool and an address
+that explains exactly what is sent. There is a field for saying who you are
+and none for saying nothing: a probe that hides is one an administrator can
+only be alarmed by, where one that identifies itself is one they can make a
+decision about.
+
+*Enforced in:* `internal/webprobe`
+*Guarded by:* `TestOnlyTheRootIsRequestedUnlessTheServerSaysOtherwise`,
+`TestARedirectChainIsRecordedInOrder`,
+`TestTheRedirectLimitStopsTheChainAndSaysSo`,
+`TestARelativeLocationIsResolvedAgainstTheAddressThatSentIt`,
+`TestALocationWithAnotherSchemeIsNotFollowed`,
+`TestALocationCarryingCredentialsIsStrippedBeforeItIsFollowed`,
+`TestAnOverlongLocationIsNotFollowed`,
+`TestOnlyTheGradedHeadersAreRecorded`, `TestACookieValueIsNeverRecorded`,
+`TestCookieAttributesAreRead`, `TestTheBodyIsNotRead`,
+`TestTheUserAgentIdentifiesTheToolAndWhereToReadAboutIt`,
+`TestAnEmptyUserAgentIsNotAvailable`, `TestABareHostnameIsRequired`,
+`TestTheDefaultDiallerRefusesPrivateAddresses`,
+`TestTheDefaultDiallerRefusesPortsOtherThanEightyAndFourFourThree`,
+`TestTheClientFollowsNothingByItself`,
+`TestNoProxyStandsBetweenThisAndTheHost`,
+`TestTheTwoChainsAreIndependent`
+
 ## Input
 
 Every bug found in this project so far has been here. Six of them: an empty
