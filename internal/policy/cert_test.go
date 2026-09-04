@@ -277,8 +277,8 @@ func TestEveryCertificateFindingCitesASource(t *testing.T) {
 		if f.Rationale == "" {
 			t.Errorf("rule %s has no rationale", f.RuleID)
 		}
-		if f.Policy != Version {
-			t.Errorf("rule %s reports policy %q, want %q", f.RuleID, f.Policy, Version)
+		if f.Policy != TLSVersion {
+			t.Errorf("rule %s reports policy %q, want %q", f.RuleID, f.Policy, TLSVersion)
 		}
 	}
 }

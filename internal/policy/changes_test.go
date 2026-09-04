@@ -26,9 +26,11 @@ func TestTheChangeLogCoversTheCurrentPolicy(t *testing.T) {
 		t.Fatalf("reading docs/policy-changes.md: %v", err)
 	}
 
-	if !strings.Contains(string(body), Version) {
-		t.Errorf("docs/policy-changes.md does not mention %q. The rules moved and the page describing "+
-			"what moved did not, so a reader comparing two reports is told the wrong thing.", Version)
+	for _, version := range []string{TLSVersion, WebVersion} {
+		if !strings.Contains(string(body), version) {
+			t.Errorf("docs/policy-changes.md does not mention %q. The rules moved and the page describing "+
+				"what moved did not, so a reader comparing two reports is told the wrong thing.", version)
+		}
 	}
 }
 
@@ -119,10 +121,10 @@ func TestEveryRuleSetThatShippedNamesItsRelease(t *testing.T) {
 		return n
 	}
 
-	current := numberOf(Version)
+	current := numberOf(TLSVersion)
 	if current < 1 {
 		t.Fatalf("policy version %q does not end in -vN, so this test cannot tell "+
-			"a shipped rule set from the one in force", Version)
+			"a shipped rule set from the one in force", TLSVersion)
 	}
 
 	heading := regexp.MustCompile("(?m)^## `denyfirst-(?:[a-z]+-)?v[0-9]+` → `(denyfirst-(?:[a-z]+-)?v[0-9]+)`")
@@ -159,13 +161,13 @@ func TestEveryRuleSetThatShippedNamesItsRelease(t *testing.T) {
 		// The section for the name in force may say either: it is written
 		// before the tag it names exists, which is the whole reason the stale
 		// line this test was written for survived.
-		if name == Version {
+		if name == TLSVersion {
 			continue
 		}
 		if strings.Contains(text, "Unreleased") {
 			t.Errorf("docs/policy-changes.md still calls %s unreleased. It is not the rule set in "+
 				"force (%s is), so it shipped, and a reader asking which upgrade moved their verdicts "+
-				"is told it never happened.", name, Version)
+				"is told it never happened.", name, TLSVersion)
 		}
 		if !strings.Contains(text, "Released in v") {
 			t.Errorf("the %s section names no release. Which upgrade moved the rule set is the first "+

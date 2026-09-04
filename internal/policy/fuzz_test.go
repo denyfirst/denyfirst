@@ -63,9 +63,9 @@ func FuzzGradeCipher(f *testing.F) {
 			if finding.RuleID == "" {
 				t.Fatalf("GradeCipher(%q): a finding has no rule identifier", name)
 			}
-			if finding.Policy != Version {
+			if finding.Policy != TLSVersion {
 				t.Fatalf("GradeCipher(%q): rule %s reports policy %q, want %q",
-					name, finding.RuleID, finding.Policy, Version)
+					name, finding.RuleID, finding.Policy, TLSVersion)
 			}
 			for _, ref := range finding.References {
 				if !strings.HasPrefix(ref.URL, "https://") {

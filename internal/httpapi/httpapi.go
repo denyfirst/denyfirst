@@ -487,7 +487,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{
 		"status": "ok",
-		"policy": policy.Version,
+		"policy": policy.TLSVersion,
 	})
 }
 

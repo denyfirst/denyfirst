@@ -147,7 +147,7 @@ func GradeStapling(f StapleFacts) StapleFinding {
 			Title:      title,
 			Rationale:  rationale,
 			References: refs,
-			Policy:     Version,
+			Policy:     TLSVersion,
 		})
 	}
 

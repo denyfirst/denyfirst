@@ -30,7 +30,7 @@ import (
 	"unicode"
 )
 
-// Version identifies this rule set. Every report states which version graded
+// TLSVersion identifies this rule set. Every report states which version graded
 // it, so a verdict can be reproduced later even after the rules move on.
 //
 // v2, 2026-08-22. Two suites change verdict and one changes its reason:
@@ -52,7 +52,13 @@ import (
 // Renamed and not renumbered. No rule moved with the name, so a report graded
 // denyfirst-v6 and a report graded denyfirst-tls-v6 are comparable, and
 // docs/policy-changes.md says so rather than leaving a reader to guess.
-const Version = "denyfirst-tls-v6"
+//
+// The identifier followed the value on 2026-09-04, when WebVersion arrived.
+// The argument is the same one, applied one level up: `policy.Version` beside
+// `policy.WebVersion` reads as the general version and the web one, which is
+// exactly the confusion renaming the value was meant to end. No rule moved
+// with this either; it is a name, and every value it names is unchanged.
+const TLSVersion = "denyfirst-tls-v6"
 
 // ReviewBy is when these rules should next be read against their sources.
 //
@@ -476,7 +482,7 @@ func GradeCipher(name string) CipherFinding {
 			Title:      rule.title,
 			Rationale:  rule.rationale,
 			References: rule.refs,
-			Policy:     Version,
+			Policy:     TLSVersion,
 		})
 		out.Verdict = rule.verdict
 		break
@@ -493,7 +499,7 @@ func GradeCipher(name string) CipherFinding {
 			Title:      "Does not meet current practice",
 			Rationale:  "Current guidance is AEAD encryption with an ephemeral key exchange; this suite provides one or neither.",
 			References: []Reference{rfc9325, mozillaTLS},
-			Policy:     Version,
+			Policy:     TLSVersion,
 		})
 	}
 
@@ -536,7 +542,7 @@ func GradeVersion(version uint16) VersionFinding {
 				Title:      "SSL 3.0 or earlier",
 				Rationale:  "SSL 3.0 is broken by POODLE and was deprecated by the IETF in 2015.",
 				References: []Reference{rfc7568, rfc9325},
-				Policy:     Version,
+				Policy:     TLSVersion,
 			}},
 		}
 
@@ -553,7 +559,7 @@ func GradeVersion(version uint16) VersionFinding {
 				Title:      name + " is deprecated",
 				Rationale:  "RFC 8996 states that this version MUST NOT be used and MUST NOT be negotiated. It relies on SHA-1 and MD5 and offers no AEAD suites.",
 				References: []Reference{rfc8996, nist80052, bsiTR02102},
-				Policy:     Version,
+				Policy:     TLSVersion,
 			}},
 		}
 
@@ -574,7 +580,7 @@ func GradeVersion(version uint16) VersionFinding {
 				Title:      "Unrecognised protocol version",
 				Rationale:  "This version is not covered by the rule set and was not graded.",
 				References: []Reference{rfc9325},
-				Policy:     Version,
+				Policy:     TLSVersion,
 			}},
 		}
 	}

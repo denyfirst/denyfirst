@@ -215,7 +215,7 @@ func GradeLeaf(f LeafFacts, now time.Time) LeafFinding {
 			Title:      title,
 			Rationale:  rationale,
 			References: refs,
-			Policy:     Version,
+			Policy:     TLSVersion,
 		})
 	}
 

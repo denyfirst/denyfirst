@@ -153,7 +153,7 @@ func run() int {
 		// in place, the service answers, the version matches — and the only
 		// symptom would be a public scanner nobody meant to run. The deploy
 		// procedure reads this line rather than trusting the filename.
-		fmt.Printf("denyfirstd %s\npolicy %s\n%s\n", version, policy.Version, reach())
+		fmt.Printf("denyfirstd %s\npolicy %s\n%s\n", version, policy.TLSVersion, reach())
 		return 0
 	}
 
@@ -352,7 +352,7 @@ func run() int {
 	// The only line this process prints in normal operation. It names the
 	// service, not a request.
 	fmt.Fprintf(os.Stderr, "denyfirstd listening on %s://%s, policy %s\n",
-		scheme, *listen, policy.Version)
+		scheme, *listen, policy.TLSVersion)
 
 	select {
 	case err := <-errc:

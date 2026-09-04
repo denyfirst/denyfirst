@@ -145,8 +145,8 @@ func TestEveryFindingCitesASource(t *testing.T) {
 					t.Errorf("%s: rule %s cites %q, which is not an https URL", name, f.RuleID, ref.URL)
 				}
 			}
-			if f.Policy != Version {
-				t.Errorf("%s: rule %s reports policy %q, want %q", name, f.RuleID, f.Policy, Version)
+			if f.Policy != TLSVersion {
+				t.Errorf("%s: rule %s reports policy %q, want %q", name, f.RuleID, f.Policy, TLSVersion)
 			}
 			if f.Rationale == "" {
 				t.Errorf("%s: rule %s has no rationale", name, f.RuleID)
@@ -228,7 +228,7 @@ func TestCrossCheckAgainstGo(t *testing.T) {
 	for _, cs := range tls.InsecureCipherSuites() {
 		if got := GradeCipher(cs.Name); got.Verdict != Insecure {
 			disagreements++
-			t.Logf("Go marks %s insecure; policy %s grades it %q", cs.Name, Version, got.Verdict)
+			t.Logf("Go marks %s insecure; policy %s grades it %q", cs.Name, TLSVersion, got.Verdict)
 		}
 	}
 
@@ -236,14 +236,14 @@ func TestCrossCheckAgainstGo(t *testing.T) {
 		if got := GradeCipher(cs.Name); got.Verdict == Insecure {
 			disagreements++
 			t.Logf("Go considers %s acceptable; policy %s grades it insecure (%s)",
-				cs.Name, Version, got.Findings[0].RuleID)
+				cs.Name, TLSVersion, got.Findings[0].RuleID)
 		}
 	}
 
 	if disagreements > 0 {
 		t.Logf("%d suite(s) graded differently by policy %s and this build of Go. "+
 			"Expected: the policy follows RFC 9325 and BSI TR-02102-2, which are "+
-			"stricter than Go on suites without forward secrecy.", disagreements, Version)
+			"stricter than Go on suites without forward secrecy.", disagreements, TLSVersion)
 	}
 }
 

@@ -1865,6 +1865,76 @@ something different would be claiming a measurement nobody made.
 
 ---
 
+### R21 — Where no document sets a threshold, the measurement is reported and not graded
+
+A verdict here rests on something a reader can open. Where nothing publishes a
+line, the honest output is the number and what it means, not a number this
+project made up and then failed a server for missing.
+
+`denyfirst-web-v1` leans on this three times in its first ten rules, and each
+one was a rule that could have been written and was not:
+
+- **The length of an HSTS `max-age`.** No standards body publishes a minimum,
+  and OWASP's cheat sheet explicitly recommends a short one during a rollout.
+  So the value is described — in years or days, with what a browser does when
+  it lapses — and the one-year figure appears only as what it is: the entry
+  requirement for one browser programme's list.
+- **The absence of `includeSubDomains`.** A host with nothing beneath it needs
+  no subdomain clause, and a scan of one host cannot see what is beneath it.
+- **A temporary redirect from the plaintext address.** A 302 to the secure
+  address works. It is described, because a browser may repeat the cleartext
+  request where a permanent one would not, but it is not a fault on its own.
+
+This is R6 and R9 pointed at a new rule set rather than a new idea: R6 says
+correct configuration is not penalised, R9 says issuance policy is reported
+and not graded, and both exist because a scanner that invents thresholds
+teaches its readers to ignore it. The failure mode is specific and cheap to
+reach: a threshold with no source behind it is one nobody can argue with,
+which means nobody can correct it either, and it survives into a report that
+tells somebody their correct decision is a fault.
+
+Where a rule *does* fire, the opposite obligation holds: it cites a document,
+and a test refuses a finding that cites nothing.
+
+*Enforced in:* `internal/policy/web.go`
+*Guarded by:* `TestAShortMaxAgeIsDescribedAndNotGraded`,
+`TestIncludeSubDomainsIsDescribedAndNotGraded`,
+`TestATemporaryRedirectIsDescribedNotGraded`,
+`TestAPermanentRedirectIsNotCalledTemporary`,
+`TestNothingOnPortEightyIsObservedRatherThanGraded`,
+`TestEveryWebFindingIsUsableOnItsOwn`
+
+---
+
+### R22 — One rule set grades one check, and every verdict names its own
+
+A number on its own stopped meaning one thing the moment a second check
+existed, which it now does. `denyfirst-tls-v6` grades a handshake and a
+certificate; `denyfirst-web-v1` grades an HTTP response, which most of the
+ports this project dials do not have.
+
+**The identifier follows the value.** `policy.Version` beside
+`policy.WebVersion` reads as *the* version and the web one, which is exactly
+the confusion renaming the value to `denyfirst-tls-v6` in v0.13.0 was meant to
+end. It is `policy.TLSVersion` now. No rule moved with either rename.
+
+**Each rule set has its own standing limits.** What a TLS scan cannot
+establish and what a header check cannot establish are different lists, and
+one list read under both headings is a list nobody reads. A web limit must not
+even be mistakable for a TLS one: `IsStandingLimit` answers for the TLS set,
+and a test fails if it answers true for a web limit, because a report could
+then carry it under the wrong heading with every existing guard still green.
+
+**Both rule sets appear on the change log.** A second rule set that can move
+without a record is the first one's problem repeated.
+
+*Enforced in:* `internal/policy` (`TLSVersion`, `WebVersion`,
+`WebStandingLimits`)
+*Guarded by:* `TestTheWebRuleSetIsNamedForItsCheck`, `TestTheWebLimitsAreItsOwn`,
+`TestEveryWebFindingIsUsableOnItsOwn`, `TestTheChangeLogCoversTheCurrentPolicy`
+
+---
+
 ## The page
 
 The frontend had no entry here while it was the only part of this project a

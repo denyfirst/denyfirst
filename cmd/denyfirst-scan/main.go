@@ -105,7 +105,7 @@ func run() int {
 	// which rules produced a verdict, and a verdict from one policy is not
 	// comparable with a verdict from another.
 	if *showVersion {
-		fmt.Printf("denyfirst-scan %s\npolicy %s\n", version, policy.Version)
+		fmt.Printf("denyfirst-scan %s\npolicy %s\n", version, policy.TLSVersion)
 		return exitOK
 	}
 

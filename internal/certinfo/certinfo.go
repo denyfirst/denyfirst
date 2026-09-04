@@ -444,7 +444,7 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 	leaf := chain[0]
 
 	report := &Report{
-		Policy:   policy.Version,
+		Policy:   policy.TLSVersion,
 		Hostname: hostname,
 		// UTC is forced rather than inherited from the host. A local zone in
 		// a response is a geographic fingerprint of wherever this runs, and a
