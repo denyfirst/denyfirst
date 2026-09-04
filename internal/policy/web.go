@@ -16,9 +16,22 @@ import (
 // reports of the same host becoming incomparable for a reason that has
 // nothing to do with what changed.
 //
+// v2, 2026-09-05. Two verdicts change, in the same direction and for the
+// same reason: this rule set said nothing where it had measured something.
+//
+// A correctly reached site was graded ungraded, which means "nothing was
+// established" and is what an unreachable host gets. The check had in fact
+// established a great deal — that the policy is sound, that nothing answers
+// in the clear — and reporting that as an absence made a correct site
+// indistinguishable from one that never answered, on a command line where
+// the exit status is the whole product.
+//
+// And a host that answered nothing over TLS was graded weak for declaring no
+// policy, which is a claim about a server this program never spoke to.
+//
 // v1, 2026-09-04. The first rule set for this check: how a name answers on
 // each scheme, and what it says about coming back over TLS.
-const WebVersion = "denyfirst-web-v1"
+const WebVersion = "denyfirst-web-v2"
 
 // WebReviewBy is when these rules are read against their references again.
 //
@@ -128,6 +141,19 @@ func GradeReach(secure, plain []WebHop) WebResult {
 		})
 	}
 
+	// Whether anything was measured at all. Everything below can add a
+	// finding; only this decides whether silence means "sound" or "unknown".
+	//
+	// The second half is a lock on a door that is already shut: a chain that
+	// landed on a plaintext hop always raises reach.downgrades-to-plaintext
+	// above, so the verdict is never silent there and the Strong below cannot
+	// be reached anyway. A sabotage removing it changed no test, and it is
+	// kept rather than simplified because the thing it guards - a site that
+	// ends on plaintext being called sound - is the worst answer this rule
+	// set could give, and it should not depend on a finding elsewhere staying
+	// where it is.
+	measured := secureLanded != nil && secureLanded.TLS
+
 	// The plaintext side.
 	switch {
 	case plainLanded == nil:
@@ -180,6 +206,19 @@ func GradeReach(secure, plain []WebHop) WebResult {
 			Rationale:  fmt.Sprintf("Port 80 answered %d rather than redirecting. Nothing is served in the clear, but nothing moves a visitor who typed the name without a scheme to the secure address either, and the request that revealed which site they wanted was already sent in the clear.", plainLanded.Status),
 			References: []Reference{rfc6797},
 		})
+	}
+
+	// Silence is not a verdict on its own. Where the secure address answered
+	// over TLS and nothing above was wrong, this rule set has established
+	// that a visitor reaches the site the way they should - which is a
+	// finding of soundness and has to be said as one.
+	//
+	// Until 2026-09-05 it was not. A correctly configured site came back
+	// ungraded, which is what a host that never answered comes back as, and
+	// on a command line whose exit status is the whole product the two were
+	// the same number.
+	if measured && out.Verdict == Ungraded {
+		out.Verdict = Strong
 	}
 
 	return out
@@ -238,8 +277,21 @@ func ParseHSTS(value string) HSTS {
 // visitor lands on over TLS, and plain those of the response on port 80. Both
 // are needed because sending the header only where a browser ignores it is a
 // distinct and common mistake, and one nothing else in a report would show.
-func GradeHSTS(secure, plain []string) WebResult {
+//
+// secureAnswered says whether any response arrived over TLS at all, and it is
+// a separate argument because no list of headers can carry the difference. A
+// host that answered nothing and a host that answered without the header both
+// produce an empty slice, and until 2026-09-05 both were graded weak for
+// declaring no policy - a claim about a server this program had never spoken
+// to.
+func GradeHSTS(secure, plain []string, secureAnswered bool) WebResult {
 	var out WebResult
+
+	if !secureAnswered {
+		out.unsettled("Nothing answered over TLS, so what this host declares about coming back " +
+			"over TLS was not established here. That is different from declaring nothing.")
+		return out
+	}
 
 	if len(secure) == 0 {
 		if len(plain) > 0 {
@@ -305,6 +357,10 @@ func GradeHSTS(secure, plain []string) WebResult {
 			"exists beneath this name, which a scan of one host cannot see: an attacker able to answer " +
 			"for any name under it can serve plaintext there and set cookies that this host will send.")
 	}
+
+	// A policy was read and it works. Said rather than left as silence, for
+	// the reason given in GradeReach.
+	out.Verdict = Worst(out.Verdict, Strong)
 
 	if p.Preload && (p.MaxAge < preloadMinAge || !p.IncludeSubDomains) {
 		out.add(Finding{

@@ -14,6 +14,58 @@ free to improve without breaking that.
 
 ---
 
+## `denyfirst-web-v1` → `denyfirst-web-v2`
+
+**Unreleased.** This line is replaced with the tag that carries it when one is
+cut; the release procedure refuses to go on while the word is still here.
+
+**Two verdicts change, in the same direction and for the same reason: v1 said
+nothing where it had measured something.** No rule was added, removed, or made
+stricter, and no site that was reported as having a problem stops having one.
+
+### A correctly reached site is now `strong`, not `ungraded`
+
+`ungraded` means *nothing was established*. It is what a host that never
+answered comes back as, and it exists so that silence about something untested
+cannot read as approval.
+
+A site whose plaintext address redirects straight to TLS, or answers nothing at
+all, and whose policy is sound, has had a great deal established about it. v1
+reported that as an absence, which made a correct site indistinguishable from
+an unreachable one — and on the command line, where the exit status is the
+whole product, they were the same number: `4`.
+
+| | v1 | v2 |
+|---|---|---|
+| sound arrangement, sound policy | `ungraded`, exit 4 | `strong`, exit 0 |
+| nothing answered over TLS | `ungraded`, exit 4 | `ungraded`, exit 4 |
+
+If you gated a pipeline on `denyfirst-scan -check web` under v0.15.0, it failed
+on every host that passed. That is the defect, and this is the fix.
+
+### A host that answered nothing is no longer graded for its policy
+
+v1 read the `Strict-Transport-Security` headers of the secure chain, found an
+empty list, and raised `hsts.absent`: **weak, no policy tells a browser to come
+back over TLS.** A host that answered without the header and a host that
+answered nothing at all both produce an empty list, and v1 could not tell them
+apart, so it made a claim about a server it had never spoken to.
+
+`GradeHSTS` is now told whether any response arrived over TLS. Where none did,
+the report says so as something not established, and raises nothing.
+
+That is R17 — *a finding claims what was measured, not what it implies* — and
+R4 — *nothing measured is not the same as passing, or as failing*. Both were
+already written down. Neither was applied to the rule set added the day before.
+
+### Nothing else moved
+
+The ten rule identifiers are unchanged, and so is every verdict they produce.
+Anything tracking or suppressing a finding by its identifier is unaffected.
+`denyfirst-tls-v6` is untouched.
+
+---
+
 ## `denyfirst-web-v1` — a new rule set
 
 Released in v0.15.0, 2026-09.

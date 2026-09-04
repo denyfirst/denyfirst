@@ -149,7 +149,13 @@ func TestAWholeScanIsGradedAndCarriesItsEvidence(t *testing.T) {
 	}
 }
 
-func TestACorrectlyReachedSiteIsNotGraded(t *testing.T) {
+func TestACorrectlyReachedSiteIsStrongAndNotSilent(t *testing.T) {
+	// "ungraded" means nothing was established, and it is what a host that
+	// never answered comes back as. A site whose plaintext address sends
+	// visitors straight to TLS and whose policy is sound has had a great deal
+	// established about it, and saying nothing made a correct site
+	// indistinguishable from an unreachable one - the same exit status, on a
+	// command line where the exit status is the whole product.
 	observed := &webprobe.Report{
 		Host:   "example.test",
 		Secure: chain(hop(true, 200, hsts("max-age=63072000; includeSubDomains"))),
@@ -159,12 +165,39 @@ func TestACorrectlyReachedSiteIsNotGraded(t *testing.T) {
 	if len(out.Findings) != 0 {
 		t.Fatalf("a correct arrangement was graded: %v", rules(out))
 	}
-	if out.Verdict != policy.Ungraded {
-		t.Errorf("verdict %q, want ungraded", out.Verdict)
+	if out.Verdict != policy.Strong {
+		t.Errorf("verdict %q, want strong", out.Verdict)
 	}
 	// And it still says what it could not establish.
 	if len(out.Notes) == 0 {
 		t.Error("no notes at all, so the report claims more than it measured")
+	}
+}
+
+func TestAHostThatAnsweredNothingIsNotGradedForItsPolicy(t *testing.T) {
+	// Both a host that answered without the header and a host that answered
+	// nothing produce an empty list of headers. Grading the second "weak: no
+	// policy tells a browser to come back over TLS" is a claim about a server
+	// this program never spoke to.
+	out := Grade(&webprobe.Report{
+		Host:   "example.test",
+		Secure: chain(failed(true)),
+		Plain:  chain(failed(false)),
+	})
+	if hasRule(out, "hsts.absent") {
+		t.Errorf("a host that never answered was graded for declaring no policy: %v", rules(out))
+	}
+	if out.Verdict != policy.Ungraded {
+		t.Errorf("verdict %q, want ungraded: nothing was established", out.Verdict)
+	}
+	unsettled := 0
+	for _, n := range out.Notes {
+		if n.Kind == policy.KindUnsettled {
+			unsettled++
+		}
+	}
+	if unsettled < 2 {
+		t.Errorf("got %d unsettled notes; both the reach and the policy were left unestablished", unsettled)
 	}
 }
 

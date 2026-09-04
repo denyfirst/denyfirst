@@ -103,7 +103,8 @@ func Grade(observed *webprobe.Report) *Result {
 	}
 
 	reach := policy.GradeReach(hops(observed.Secure), hops(observed.Plain))
-	hsts := policy.GradeHSTS(securePolicy(observed.Secure), plaintextPolicy(observed.Plain))
+	hsts := policy.GradeHSTS(securePolicy(observed.Secure), plaintextPolicy(observed.Plain),
+		answered(observed.Secure))
 
 	// Worst case across the checks, for the reason it is worst case within
 	// one: a site reached in the clear is reached in the clear however sound
@@ -193,6 +194,24 @@ func plaintextPolicy(c *webprobe.Chain) []string {
 		}
 	}
 	return nil
+}
+
+// answered reports whether any hop in a chain produced a response.
+//
+// No list of headers can carry the difference between a host that answered
+// without a header and a host that answered nothing: both are empty. The
+// rules are told which it was, because grading the second as "declares no
+// policy" is a claim about a server nothing here ever spoke to.
+func answered(c *webprobe.Chain) bool {
+	if c == nil {
+		return false
+	}
+	for _, h := range c.Hops {
+		if h.Err == "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Scanner) now() time.Time {
