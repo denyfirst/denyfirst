@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/scan"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
 )
 
@@ -20,7 +19,7 @@ import (
 // protection ended at the shell: answer twice, go quiet, and the pipeline
 // went green.
 func TestUngradedIsNotAPass(t *testing.T) {
-	got := exitCode([]result{{Result: &scan.Result{Target: "example.com:443", Verdict: policy.Ungraded}}})
+	got := exitCode([]outcome{{Verdict: policy.Ungraded}})
 	if got == exitOK {
 		t.Fatal("a scan that graded nothing exited zero; a gate that cannot tell a pass from an absent result is not a gate")
 	}
@@ -34,9 +33,9 @@ func TestUngradedIsNotAPass(t *testing.T) {
 // it alone therefore published a pass for a target nobody measured, hidden
 // behind one that was fine.
 func TestAnUngradedTargetIsNotHiddenByAGoodOne(t *testing.T) {
-	got := exitCode([]result{
-		{Result: &scan.Result{Target: "measured.example:443", Verdict: policy.Strong}},
-		{Result: &scan.Result{Target: "quiet.example:443", Verdict: policy.Ungraded}},
+	got := exitCode([]outcome{
+		{Verdict: policy.Strong},
+		{Verdict: policy.Ungraded},
 	})
 	if got != exitUngraded {
 		t.Errorf("exitCode = %d, want %d; the ungraded target vanished from the status", got, exitUngraded)
@@ -47,29 +46,29 @@ func TestAnUngradedTargetIsNotHiddenByAGoodOne(t *testing.T) {
 // one has to be sent to the insecure one first.
 func TestSeverityOutranksAnAbsentResult(t *testing.T) {
 	cases := map[string]struct {
-		results []result
-		want    int
+		outcomes []outcome
+		want     int
 	}{
-		"insecure and ungraded": {[]result{
-			{Result: &scan.Result{Verdict: policy.Insecure}},
-			{Result: &scan.Result{Verdict: policy.Ungraded}},
+		"insecure and ungraded": {[]outcome{
+			{Verdict: policy.Insecure},
+			{Verdict: policy.Ungraded},
 		}, exitInsecure},
-		"weak and ungraded": {[]result{
-			{Result: &scan.Result{Verdict: policy.Weak}},
-			{Result: &scan.Result{Verdict: policy.Ungraded}},
+		"weak and ungraded": {[]outcome{
+			{Verdict: policy.Weak},
+			{Verdict: policy.Ungraded},
 		}, exitWeak},
-		"all strong": {[]result{
-			{Result: &scan.Result{Verdict: policy.Strong}},
-			{Result: &scan.Result{Verdict: policy.Strong}},
+		"all strong": {[]outcome{
+			{Verdict: policy.Strong},
+			{Verdict: policy.Strong},
 		}, exitOK},
-		"a failure outranks everything": {[]result{
-			{Result: &scan.Result{Verdict: policy.Strong}},
-			{Result: &scan.Result{Verdict: policy.Ungraded}, Error: "probing: dial tcp: i/o timeout"},
+		"a failure outranks everything": {[]outcome{
+			{Verdict: policy.Strong},
+			{Verdict: policy.Ungraded, Failed: true},
 		}, exitError},
 	}
 
 	for name, tc := range cases {
-		if got := exitCode(tc.results); got != tc.want {
+		if got := exitCode(tc.outcomes); got != tc.want {
 			t.Errorf("%s: exitCode = %d, want %d", name, got, tc.want)
 		}
 	}

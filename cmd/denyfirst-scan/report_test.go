@@ -439,7 +439,7 @@ func TestTheReportPointsAtTheLimitsItDoesNotPrint(t *testing.T) {
 		"Limits of this method",
 		fmt.Sprintf("%d apply to every scan", len(standing)),
 		"denyfirst-scan -limits",
-		methodPage,
+		tlsMethodPage,
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the report does not carry %q:\n%s", want, text)
