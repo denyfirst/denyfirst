@@ -24,8 +24,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/scan"
 )
 
 //go:embed assets
@@ -144,7 +144,7 @@ var pages = map[string]*page{
 		// differently and a visitor who cannot tell them apart will read a
 		// refusal as a fault. One template, branching once, rather than two
 		// pages that drift.
-		Data: scanPage{Demo: scan.Demo, Hosts: scan.DemoHosts()},
+		Data: scanPage{Demo: demo.Enabled, Hosts: demo.Hosts()},
 	},
 	"/privacy": {
 		Title:       "Privacy, and what a scan does — denyfirst",
@@ -185,7 +185,7 @@ type scanPage struct {
 	Demo bool
 
 	// Hosts is what that build offers, and is empty in the other one.
-	Hosts []scan.DemoHost
+	Hosts []demo.Host
 }
 
 // methodPage is what assets/method.html ranges over.

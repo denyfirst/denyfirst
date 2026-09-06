@@ -201,6 +201,13 @@ reached. A figure rising there would say visitors are asking for something
 this deployment does not do — which is how we would learn that the page is not
 explaining itself.
 
+**The list is not part of any check.** What this deployment may reach is a
+property of the deployment, and every check asks the same question of it. It
+lived inside the TLS scanner until 2026-09-05, which meant the web check would
+have imported the TLS scanner to find out what it may connect to, and a mail
+check after it — the shape that gets worse with every check added. It is
+`internal/demo` now, and each check's own scanner asks it.
+
 **Two rules hold the build tag.** Every file gated on it is named `demo_*.go`,
 so the whole boundary can be listed without reading the tree; and outside
 tests the tag gates exactly the two files that declare the list. Most of the
@@ -228,10 +235,9 @@ the scanner enforces rather than from a constant of its own — a binary cannot
 say one thing and do another — and the deploy procedure greps for it rather
 than trusting a filename.
 
-*Enforced in:* `internal/scan/demo.go`, `internal/scan/demo_on.go`,
-`internal/scan/demo_off.go`, `internal/scan.Scanner.Scan`,
-`internal/httpapi.Server.handleScan`, `internal/web/assets/index.html`,
-`scripts/build.sh`, `docs/releasing.md`
+*Enforced in:* `internal/demo` (`demo.go`, `demo_on.go`, `demo_off.go`),
+`internal/scan.Scanner.Scan`, `internal/httpapi.Server.handleScan`,
+`internal/web/assets/index.html`, `scripts/build.sh`, `docs/releasing.md`
 *Guarded by:* `TestTheOrdinaryBuildIsNotADemonstration`,
 `TestTheDemonstrationListMatchesAtLabelBoundaries`,
 `TestABlankEntryAdmitsNothing`, `TestTheBuildTagTouchesNothingElse`,

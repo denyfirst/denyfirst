@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/scan"
+	"github.com/denyfirst/denyfirst/internal/demo"
 )
 
 // The files somebody runs this from, and what they are allowed to say.
@@ -249,13 +249,13 @@ func TestAVersionSaysWhichHostsTheBinaryWillReach(t *testing.T) {
 		t.Error("the line ends in a full stop; the deploy procedure matches on its start and shape")
 	}
 
-	if scan.Demo {
+	if demo.Enabled {
 		if !strings.HasPrefix(line, "demonstration: ") {
 			t.Errorf("a demonstration build says %q, which the deploy check does not match", line)
 		}
 		// Read from the list the scanner enforces, so a binary cannot say one
 		// thing and do another.
-		for _, host := range scan.DemoTargets() {
+		for _, host := range demo.Targets() {
 			if !strings.Contains(line, host) {
 				t.Errorf("the binary reaches %s and does not say so: %q", host, line)
 			}

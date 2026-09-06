@@ -1,4 +1,4 @@
-package scan
+package demo
 
 import (
 	"os"
@@ -38,8 +38,8 @@ func TestTheDemonstrationListMatchesAtLabelBoundaries(t *testing.T) {
 		{"", false},
 		{".", false},
 	} {
-		if got := isDemoTarget(c.host); got != c.want {
-			t.Errorf("isDemoTarget(%q) = %v, want %v", c.host, got, c.want)
+		if got := isTarget(c.host); got != c.want {
+			t.Errorf("isTarget(%q) = %v, want %v", c.host, got, c.want)
 		}
 	}
 }
@@ -54,7 +54,7 @@ func TestABlankEntryAdmitsNothing(t *testing.T) {
 	defer func() { demoTargets = restore }()
 
 	for _, host := range []string{"example.com", "denyfirst.dev", "a.b.c"} {
-		if isDemoTarget(host) {
+		if isTarget(host) {
 			t.Errorf("a list of blanks admitted %q", host)
 		}
 	}
@@ -73,8 +73,8 @@ func TestABlankEntryAdmitsNothing(t *testing.T) {
 // that nobody runs the suite against.
 func TestTheBuildTagTouchesNothingElse(t *testing.T) {
 	declaring := map[string]bool{
-		filepath.Join("internal", "scan", "demo_on.go"):  true,
-		filepath.Join("internal", "scan", "demo_off.go"): true,
+		filepath.Join("internal", "demo", "demo_on.go"):  true,
+		filepath.Join("internal", "demo", "demo_off.go"): true,
 	}
 
 	found := map[string]bool{}

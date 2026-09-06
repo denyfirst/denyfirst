@@ -1,6 +1,8 @@
 package scan
 
 import (
+	"github.com/denyfirst/denyfirst/internal/demo"
+
 	"context"
 	"errors"
 	"net"
@@ -179,7 +181,7 @@ func TestUnreachableTargetIsUngraded(t *testing.T) {
 	// this test scans one it does not. What is under test here is the tool,
 	// and the demonstration build is the tool with a list — the list is
 	// covered by its own tests under the same tag.
-	if Demo {
+	if demo.Enabled {
 		t.Skip("a demonstration build does not scan this host")
 	}
 

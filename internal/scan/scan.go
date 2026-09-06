@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/certinfo"
+	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/ocsp"
 	"github.com/denyfirst/denyfirst/internal/policy"
@@ -233,8 +234,8 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 	// only the hosts this project owns, and it reaches them from here rather
 	// than from the HTTP handler so that the command line built with the same
 	// tag cannot go anywhere the service cannot.
-	if DemoRefusal(host) {
-		return nil, ErrNotADemoTarget
+	if demo.Refusal(host) {
+		return nil, demo.ErrNotATarget
 	}
 
 	prober := s.prober()

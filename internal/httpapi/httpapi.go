@@ -56,6 +56,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/scan"
 )
@@ -377,7 +378,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	// lives — this is here so a visitor gets a sentence and a way forward
 	// rather than a scan that failed, and so the refusal is counted as what
 	// it is rather than as a host that could not be reached.
-	if scan.DemoRefusal(host) {
+	if demo.Refusal(host) {
 		s.refuse(w, http.StatusForbidden, "not_demonstrated",
 			"This deployment scans only hosts this project owns. Run the tool on your "+
 				"own machine to scan anything else: github.com/denyfirst/denyfirst")
