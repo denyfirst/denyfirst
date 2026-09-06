@@ -1,6 +1,6 @@
 //go:build !demo
 
-package scan
+package demo
 
 import "testing"
 
@@ -11,15 +11,15 @@ import "testing"
 // A default that restricted anything would be a default that quietly limits
 // somebody scanning their own network.
 func TestTheOrdinaryBuildIsNotADemonstration(t *testing.T) {
-	if Demo {
+	if Enabled {
 		t.Fatal("the ordinary build thinks it is a demonstration")
 	}
 	for _, host := range []string{"example.test", "denyfirst.dev", "192.0.2.1", ""} {
-		if DemoRefusal(host) {
+		if Refusal(host) {
 			t.Errorf("the ordinary build refuses %q for not being a demonstration target", host)
 		}
 	}
-	if got := DemoTargets(); len(got) != 0 {
+	if got := Targets(); len(got) != 0 {
 		t.Errorf("the ordinary build carries a demonstration list: %v", got)
 	}
 }

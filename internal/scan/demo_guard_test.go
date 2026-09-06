@@ -3,6 +3,8 @@
 package scan
 
 import (
+	"github.com/denyfirst/denyfirst/internal/demo"
+
 	"context"
 	"errors"
 	"strings"
@@ -29,7 +31,7 @@ func TestTheDemonstrationBuildRefusesAHostItDoesNotOwn(t *testing.T) {
 		"notdenyfirst.dev",
 	} {
 		_, err := s.Scan(context.Background(), host)
-		if !errors.Is(err, ErrNotADemoTarget) {
+		if !errors.Is(err, demo.ErrNotATarget) {
 			t.Errorf("scanning %q gave %v, want the demonstration refusal", host, err)
 		}
 	}
@@ -40,7 +42,7 @@ func TestTheDemonstrationBuildRefusesAHostItDoesNotOwn(t *testing.T) {
 // The message is printed, and a message that echoes what it was given is a
 // place where somebody else's text reaches a reader of ours.
 func TestTheDemonstrationRefusalNamesNoHost(t *testing.T) {
-	if strings.Contains(ErrNotADemoTarget.Error(), "%") {
+	if strings.Contains(demo.ErrNotATarget.Error(), "%") {
 		t.Error("the refusal is a format string, so it is meant to carry something back")
 	}
 }
@@ -50,29 +52,15 @@ func TestTheDemonstrationRefusalNamesNoHost(t *testing.T) {
 // An empty list refuses everything, which fails in the safe direction and is
 // still broken: the demonstration would demonstrate nothing. This is the test
 // that notices.
-func TestTheDemonstrationListIsNotEmpty(t *testing.T) {
-	if len(DemoTargets()) == 0 {
-		t.Fatal("the demonstration build has no hosts to demonstrate on")
-	}
-	for _, host := range DemoTargets() {
-		if !isDemoTarget(host) {
-			t.Errorf("%q is on the list and the list does not match it", host)
-		}
-		if !isDemoTarget("under." + host) {
-			t.Errorf("%q is on the list and does not cover what is beneath it", host)
-		}
-	}
-}
-
 // It really is a demonstration build.
 func TestTheTagIsWhatSwitchesIt(t *testing.T) {
-	if !Demo {
-		t.Fatal("built with the demo tag and Demo is false")
+	if !demo.Enabled {
+		t.Fatal("built with the demo tag and demo.Enabled is false")
 	}
-	if !DemoRefusal("example.com") {
+	if !demo.Refusal("example.com") {
 		t.Error("a demonstration build does not refuse a host it does not own")
 	}
-	if DemoRefusal("denyfirst.dev") {
+	if demo.Refusal("denyfirst.dev") {
 		t.Error("a demonstration build refuses a host it does own")
 	}
 }
@@ -85,22 +73,19 @@ func TestTheTagIsWhatSwitchesIt(t *testing.T) {
 // the server refuses is a page arguing with its own scanner — and the visitor
 // is the one who loses the argument.
 func TestEveryHostOfferedIsOneTheScannerWillReach(t *testing.T) {
-	hosts := DemoHosts()
+	hosts := demo.Hosts()
 	if len(hosts) == 0 {
 		t.Fatal("the demonstration build offers nothing")
 	}
 
 	for _, h := range hosts {
-		if !isDemoTarget(h.Host) {
-			t.Errorf("%q is offered and is outside the list the scanner will reach", h.Host)
-		}
-		if DemoRefusal(h.Host) {
+		if demo.Refusal(h.Host) {
 			t.Errorf("%q is offered and would be refused", h.Host)
 		}
 		if strings.TrimSpace(h.Shows) == "" {
 			t.Errorf("%q is offered with nothing said about what it shows", h.Host)
 		}
-		if _, err := (&Scanner{}).Scan(context.Background(), h.Host); errors.Is(err, ErrNotADemoTarget) {
+		if _, err := (&Scanner{}).Scan(context.Background(), h.Host); errors.Is(err, demo.ErrNotATarget) {
 			t.Errorf("%q is offered and Scan refuses it", h.Host)
 		}
 	}

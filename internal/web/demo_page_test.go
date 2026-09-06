@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/scan"
+	"github.com/denyfirst/denyfirst/internal/demo"
 )
 
 // What a visitor to denyfirst.dev is given.
@@ -25,7 +25,7 @@ func TestTheDemonstrationPageOffersWhatItCanScan(t *testing.T) {
 		t.Error("the demonstration page carries a text field it cannot answer")
 	}
 
-	hosts := scan.DemoHosts()
+	hosts := demo.Hosts()
 	if len(hosts) == 0 {
 		t.Fatal("the demonstration page has nothing to offer")
 	}

@@ -33,6 +33,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/httpapi"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/scan"
@@ -634,10 +635,10 @@ func trustStoreUsable(pool *x509.CertPool, err error) error {
 // Written from the same list the scanner enforces rather than from a constant
 // of its own, so a binary cannot say one thing and do another.
 func reach() string {
-	if !scan.Demo {
+	if !demo.Enabled {
 		return "scans whatever it is pointed at"
 	}
-	hosts := scan.DemoTargets()
+	hosts := demo.Targets()
 	if len(hosts) == 0 {
 		return "scans nothing: this is a demonstration build with an empty list"
 	}

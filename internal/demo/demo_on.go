@@ -1,15 +1,15 @@
 //go:build demo
 
-package scan
+package demo
 
-// Demo is true in the build that runs on denyfirst.dev.
+// Enabled is true in the build that runs on denyfirst.dev.
 //
 // The gate is this constant and not the length of the list below. Written the
 // other way — refuse only when a list is non-empty — a list emptied by a bad
 // merge would open the deployment to the whole internet and every test would
 // still pass. This way an emptied list refuses everything, which is a failure
 // somebody notices in a second.
-const Demo = true
+const Enabled = true
 
 // demoTargets are the hosts this project owns.
 //
@@ -30,6 +30,6 @@ var demoTargets = []string{
 // The list is short because the hosts that demonstrate a weak configuration
 // have to be built and kept broken on purpose, and each of them is a running
 // server somebody has to maintain. They arrive one at a time.
-var demoHosts = []DemoHost{
+var demoHosts = []Host{
 	{Host: "denyfirst.dev", Shows: "this server"},
 }
