@@ -34,9 +34,11 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/httpapi"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/scan"
+	"github.com/denyfirst/denyfirst/internal/verify"
 	"github.com/denyfirst/denyfirst/internal/web"
 )
 
@@ -123,6 +125,19 @@ func run() int {
 		// their own. If a proxy is ever put here, both fields come back
 		// together, with a test.
 
+		// The secret comes from a file rather than from a flag value.
+		//
+		// A flag lands in the process list, where every user on the machine
+		// reads it, and in whatever shell history or unit file put it there.
+		// The secret is what every token is derived from, so a deployment that
+		// leaked it is a deployment anyone can add domains to.
+		verifySecretFile = flag.String("verification-secret-file", "",
+			"path to a file holding this deployment's verification secret; when set,\n"+
+				"\tonly domains that have published the matching challenge are scanned")
+
+		verifyToken = flag.String("verification-token", "",
+			"print what the named domain must publish at "+verify.Label+", then exit")
+
 		statsFile = flag.String("stats-file", "",
 			"path to a file holding the aggregate counters; empty keeps them in\n"+
 				"\tmemory only, so a restart resets the published total")
@@ -155,6 +170,31 @@ func run() int {
 		// symptom would be a public scanner nobody meant to run. The deploy
 		// procedure reads this line rather than trusting the filename.
 		fmt.Printf("denyfirstd %s\npolicy %s\n%s\n", version, policy.TLSVersion, reach())
+		return 0
+	}
+
+	// The scope this deployment will scan, read before anything is served.
+	//
+	// A secret configured with no way to check it, or a file that cannot be
+	// read, stops the process rather than starting one that admits everything.
+	// The alternative is a service that was asked to require proof, could not,
+	// and scanned whatever it was given — the failure mode this whole boundary
+	// exists to prevent, arriving through a typo in a path.
+	scope, err := verificationScope(*verifySecretFile)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+
+	// Printing what a domain must publish is a question, not a service, so it
+	// answers and exits. It needs the secret and nothing else — no network, no
+	// listener, and no trust store.
+	if *verifyToken != "" {
+		if scope == nil {
+			fmt.Fprintln(os.Stderr, "-verification-token needs -verification-secret-file")
+			return 2
+		}
+		fmt.Printf("%s.%s. IN TXT \"%s\"\n", verify.Label, *verifyToken, verify.Token(scope.Secret, *verifyToken))
 		return 0
 	}
 
@@ -192,7 +232,7 @@ func run() int {
 	// The scanner is left at its defaults on purpose. It dials through
 	// safedial, enforces the port allow list, and takes hostnames rather than
 	// addresses. There is no flag here that would turn any of it off.
-	api := httpapi.New(&scan.Scanner{}, limits, nil)
+	api := httpapi.New(&scan.Scanner{Verify: scope}, limits, nil)
 
 	if *statsFile != "" {
 		if snapshot, err := loadStats(*statsFile); err == nil {
@@ -644,4 +684,42 @@ func reach() string {
 		return "scans nothing: this is a demonstration build with an empty list"
 	}
 	return "demonstration: scans " + strings.Join(hosts, ", ") + " and nothing else"
+}
+
+// verificationScope reads the deployment secret, or reports why it could not.
+//
+// Nil and no error means no proof is required, which is what an unconfigured
+// deployment gets today. That is the state docs/scope.md calls the open one:
+// a service anyone can reach that will scan anything it is asked to. It is
+// opt-in for now and says so loudly at startup, because turning it on by
+// default would stop every deployment that has not published a record yet —
+// and a change that stops a running service is a change to make deliberately
+// rather than as a side effect of an upgrade.
+//
+// The secret is read from a file rather than a flag: a flag value is in the
+// process list, where every user on the machine reads it.
+func verificationScope(path string) (*verify.Scope, error) {
+	if path == "" {
+		return nil, nil
+	}
+
+	// #nosec G304 -- operator-supplied path, never request-supplied
+	secret, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("the verification secret could not be read: %w", err)
+	}
+
+	secret = []byte(strings.TrimSpace(string(secret)))
+	if len(secret) < 32 {
+		// Short enough to guess is short enough to forge every token this
+		// deployment will ever check, and a deployment whose tokens can be
+		// forged is one anyone can add a domain to.
+		return nil, errors.New("the verification secret is shorter than 32 bytes; generate one with " +
+			"head -c 32 /dev/urandom | base64 > the file")
+	}
+
+	return &verify.Scope{
+		Secret:   secret,
+		Resolver: &dnsclient.Client{},
+	}, nil
 }

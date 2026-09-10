@@ -67,6 +67,19 @@ accurately. It belongs with the `/web` page work rather than ahead of it.
 
 ### 2. Scope: prove control of a domain before scanning it
 
+**The boundary is built and is opt-in**, since 2026-09-10: `internal/verify`,
+asked in both scanners beside the demonstration list, and
+`-verification-secret-file` on the service. N9 has the reasoning.
+
+What is left is the default. `docs/scope.md` says it belongs **on** for a
+service, and turning it on stops every deployment that has not published a
+record yet — a change to make deliberately, with a release note, rather than
+as a side effect of an upgrade. Until then a service with no secret configured
+scans whatever it is asked to, and says so at startup.
+
+The `.well-known` half is also still to come. It authorises one hostname
+rather than a zone, and the difference is in `docs/scope.md`.
+
 **[`docs/scope.md`](scope.md) is the design**, settled: what a verified domain
 does and does not authorise, why the two challenge methods grant different
 things, what verification is not a reason to retire, and which of the public
@@ -137,10 +150,11 @@ deployment whose scope is established at run time rather than compiled in has
 to appear on that line as well, or the property the deploy procedure reads
 becomes false for the new mode.
 
-**A self-hosted `denyfirstd` has no target boundary at all**, which is what
-item 2 above is for. Until it lands, `docs/self-host.md` notes that loopback
-is the default and does not say plainly that binding to a reachable interface
-makes it an open scanner.
+**A self-hosted `denyfirstd` requires no proof by default.** The boundary
+exists and is opt-in; the default is the remaining half of item 2 above. Until
+it changes, `docs/self-host.md` notes that loopback is the default and does
+not say plainly that binding to a reachable interface without
+`-verification-secret-file` makes it an open scanner.
 
 **`docs/releasing.md` tells you to run `gh pr checks --watch` immediately
 after `gh pr create`.** No check has registered yet, the command exits saying
