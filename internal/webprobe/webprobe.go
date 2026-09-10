@@ -186,7 +186,21 @@ type Hop struct {
 
 	// Err is why this hop produced no response. Non-empty means Status and
 	// Headers are unset, which is different from a response with no headers.
+	//
+	// Every value is a phrase written in classifyProbeError. Nothing from the
+	// standard library reaches it, because Go words network failures for an
+	// operator reading a terminal and names the resolver's address while
+	// doing so (I6).
 	Err string `json:"error,omitempty"`
+
+	// blocked records that this hop was refused by safedial rather than by
+	// anything on the network.
+	//
+	// Unexported, so it cannot be serialised: a caller is told the
+	// destination was refused through Report.BlockedDestination, which is the
+	// question they can act on. Kept per hop only because that is where the
+	// fact is known.
+	blocked bool
 }
 
 // Chain is one starting address and the hops that followed from it.
@@ -227,6 +241,22 @@ type Report struct {
 	// UserAgent is what was sent, recorded so that a report says how it was
 	// obtained rather than requiring the reader to trust a document.
 	UserAgent string `json:"userAgent"`
+
+	// BlockedDestination reports that every hop was refused by safedial
+	// before anything was dialled: the name resolves only to private,
+	// loopback, link-local or reserved addresses.
+	//
+	// The same field the TLS report carries, for the same reason. A caller
+	// has to be able to count this — "attempts at private addresses rose
+	// from two a day to eight thousand" is the sentence that says somebody
+	// is using this as a way into the network it runs in — and a count built
+	// by matching prose breaks silently the first time the prose is
+	// improved (A7).
+	//
+	// Not serialised: it is a fact about why this service declined, not a
+	// measurement of the host, and the caller turns it into a refusal with
+	// its own status code rather than passing it through.
+	BlockedDestination bool `json:"-"`
 }
 
 // Probe fetches the headers of one host over both schemes.
@@ -254,6 +284,11 @@ func (p *Prober) Probe(ctx context.Context, host string) (*Report, error) {
 	// stripping arrangement.
 	report.Secure = p.chain(ctx, client, "https://"+net.JoinHostPort(host, securePort)+"/")
 	report.Plain = p.chain(ctx, client, "http://"+net.JoinHostPort(host, plainPort)+"/")
+
+	// Asked of both chains together. One port refused and the other reached
+	// is a name that was measured; only a name where every attempt was
+	// declined is a destination this service will not go to.
+	report.BlockedDestination = blockedDestination(report.Secure, report.Plain)
 
 	return report, nil
 }
@@ -296,14 +331,14 @@ func (p *Prober) fetch(ctx context.Context, client *http.Client, target string) 
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		hop.Err = err.Error()
+		hop.Err, hop.blocked = classifyProbeError(err)
 		return hop
 	}
 	req.Header.Set("User-Agent", p.userAgent())
 
 	resp, err := client.Do(req)
 	if err != nil {
-		hop.Err = unwrapURLError(err)
+		hop.Err, hop.blocked = classifyProbeError(err)
 		return hop
 	}
 
@@ -538,20 +573,6 @@ func CheckHostname(host string) error {
 		return fmt.Errorf("%w: the host needs a full name with a domain, such as example.com", ErrNotAHostname)
 	}
 	return nil
-}
-
-// unwrapURLError removes the wrapper the http client adds.
-//
-// url.Error prints the method and the whole address in front of every
-// failure, and the address is already the URL field of the hop this error
-// belongs to. Printed as it comes, a report says the same address twice and
-// the reason is at the end of a long line.
-func unwrapURLError(err error) string {
-	var ue *url.Error
-	if errors.As(err, &ue) && ue.Err != nil {
-		return ue.Err.Error()
-	}
-	return err.Error()
 }
 
 func (p *Prober) requestTimeout() time.Duration {
