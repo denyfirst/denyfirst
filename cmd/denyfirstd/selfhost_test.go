@@ -198,13 +198,34 @@ func TestAnEmptyTrustStoreStopsTheServiceStarting(t *testing.T) {
 	// test that did both would be testing the harness.
 	source := repoFile(t, "cmd/denyfirstd/main.go")
 
-	call := strings.Index(source, "trustStoreUsable(x509.SystemCertPool())")
+	call := strings.Index(source, "trustStoreUsable(")
 	if call < 0 {
 		t.Fatal("nothing checks the trust store before the service starts")
 	}
 	serve := strings.Index(source, "ListenAndServe")
 	if serve >= 0 && call > serve {
 		t.Error("the trust store is checked after the service is already answering")
+	}
+
+	// And the store that was checked is the store that decides.
+	//
+	// This half was missing, and its absence was the defect. The check read a
+	// pool, satisfied itself that it was not empty, and dropped it; the
+	// scanner was then built with no Roots at all. x509.Verify reads a nil
+	// Roots as "decide for yourself", and on Windows and macOS deciding means
+	// the platform verifier — a different store, which this check never
+	// looked at. So the guard passed against one thing and every chain was
+	// judged against another, on the two platforms self-hosting is most
+	// likely to run on.
+	//
+	// Asserted on the source for the same reason the call above is: run()
+	// parses flags and binds a port, and a test that did both would be
+	// testing the harness. Matched on the pool reaching the scanner rather
+	// than on any particular spelling of the call, so that improving the
+	// prose around it does not fail this.
+	if !strings.Contains(source, "scan.Scanner{Roots:") {
+		t.Error("the scanner is built without a trust store, so the pool checked above decides " +
+			"nothing and every chain is judged against whatever the platform picks")
 	}
 }
 

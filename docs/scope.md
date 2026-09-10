@@ -211,7 +211,3 @@ say so on that line too, or the property N6 relies on for deploys becomes
 false for the new mode. `denyfirst-scan -version` prints no reach line at all,
 which is its own roadmap defect.
 
-**`certinfo` verifies against a different trust store from the one the service
-checks at startup.** Already a roadmap defect. It matters more here: the
-platforms where it misbehaves are the ones self-hosters run.
-

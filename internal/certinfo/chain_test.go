@@ -171,7 +171,7 @@ func TestAWeakIssuerReachesTheVerdict(t *testing.T) {
 		ca := newIntermediate(t, root, c.opts)
 		leaf := leafUnder(t, ca, "example.test")
 
-		report, err := Analyse([]*x509.Certificate{leaf, ca.cert}, "example.test", refNow)
+		report, err := Analyse([]*x509.Certificate{leaf, ca.cert}, "example.test", refNow, testRoots)
 		if err != nil {
 			t.Fatalf("%s: Analyse: %v", c.name, err)
 		}
@@ -213,7 +213,7 @@ func TestASoundChainIsStillStrong(t *testing.T) {
 	ca := newIntermediate(t, root, intermediateOpts{})
 	leaf := leafUnder(t, ca, "example.test")
 
-	report, err := Analyse([]*x509.Certificate{leaf, ca.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, ca.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestARootIsNotGradedAndTheReportSaysWhy(t *testing.T) {
 	leaf := leafUnder(t, ca, "example.test")
 
 	// The server sends the root as well, which many do.
-	report, err := Analyse([]*x509.Certificate{leaf, ca.cert, root.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, ca.cert, root.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -292,7 +292,7 @@ func TestASoundLeafTakesItsIssuersVerdict(t *testing.T) {
 	})
 	leaf := leafUnder(t, ca, "example.test")
 
-	report, err := Analyse([]*x509.Certificate{leaf, ca.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, ca.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -325,7 +325,7 @@ func TestAnIssuerSubjectCannotRewriteTheReport(t *testing.T) {
 	})
 	leaf := leafUnder(t, ca, "example.test")
 
-	report, err := Analyse([]*x509.Certificate{leaf, ca.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, ca.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}

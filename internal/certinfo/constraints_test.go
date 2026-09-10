@@ -27,7 +27,7 @@ func analyseWithIssuer(t *testing.T, o intermediateOpts) *Report {
 	ca := newIntermediate(t, root, o)
 	leaf := leafUnder(t, ca, "example.test")
 
-	report, err := Analyse([]*x509.Certificate{leaf, ca.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, ca.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestARootsConstraintsAreNotReported(t *testing.T) {
 		t.Fatal("the certificate this test built is not self-signed, so it exercises nothing")
 	}
 
-	report, err := Analyse([]*x509.Certificate{leaf, ca.cert, constrainedRoot}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, ca.cert, constrainedRoot}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
