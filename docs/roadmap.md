@@ -156,6 +156,40 @@ string.** None of these was ever a logging question, and none of them became
 available when this project stopped being a public intermediary. The last is
 where most scanners lose their readers' trust.
 
+**Nothing malformed is ever sent**, and the reason has changed, so it is
+written down rather than left to be inferred from the line above.
+
+The old reason was that the server belongs to somebody else. Once a deployment
+scans only estates it has proven control of, that reason is weak: it is your
+own server, and looking at it harder is your decision. Three reasons survive
+and none of them is about the scanned party.
+
+A tool that sends deliberately broken input is a weapon in whoever's hands it
+ends up in. This one is meant to be installed by a company to check itself,
+and the property that makes that safe is that the worst a careless colleague
+can do with it is read a page. That property is worth more than any finding it
+costs.
+
+Several of these probes can destabilise the service they are aimed at, and a
+check that can take down the thing it is checking is not a check anybody runs
+on a Tuesday afternoon.
+
+And the class has a poor accuracy record. A false "vulnerable to ROBOT" sends
+a team after a week of work that was never needed; a false "clean" is worse.
+This project's whole argument is that its answers can be relied on, and a
+family of checks that has historically been wrong in both directions is a bad
+trade for a report that is otherwise checkable line by line.
+
+**What is given up is smaller than it looks, and where it is given up the
+report says so.** Almost everything reachable by malformed input is either
+reachable by a fuller ordinary handshake — a wider ClientHello, the offered
+suites, the parameters a server volunteers — or has a precondition that is
+plainly visible. A Bleichenbacher oracle can only exist behind a static RSA
+key exchange, and that is graded `insecure` on sight; the finding now says
+what confirming the oracle would take, that this tool does not do it, and that
+the remedy is the same instruction either way. A reader loses the confirmation
+and keeps the action.
+
 **Accounts or scan history on denyfirst.dev.** *I do not have the data to
 begin with* is a stronger statement than any policy, and it is not a claim to
 retire by accident. If it is ever retired it will be a separate, deliberate
