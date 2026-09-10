@@ -139,6 +139,62 @@ const DefaultUserAgent = "denyfirst/1 (+https://denyfirst.dev/web/method)"
 // ErrNotAHostname is returned for a target that is not a bare hostname.
 var ErrNotAHostname = errors.New("webprobe: target must be a bare hostname")
 
+// Reach answers whether this probe may connect to a host a redirect named.
+//
+// The first address in a chain is one the caller chose and has already
+// authorised. Every address after it was chosen by the server that answered,
+// and a probe that follows one without asking has been aimed by somebody
+// other than the operator. safedial stops such a hop reaching a private
+// address; nothing stopped it reaching a public host the deployment was never
+// allowed to touch — an excluded name, a host outside what a demonstration
+// build owns, or a domain nobody proved control of. So the caller's boundary
+// is asked again, at the hop, which is where the connection is (N6, N10).
+//
+// It returns the reason to record when the answer is no, and an empty string
+// when it is yes. A reason rather than an error, because this string is
+// written into a report a stranger reads: an error from the caller's own
+// boundary could carry a resolver's address or a name this program undertakes
+// not to repeat, and a signature with nowhere to put one is stronger than a
+// rule saying not to (I6).
+//
+// A nil Reach follows any host the rest of these limits allow, which is what
+// the command line is: the scan leaves from the operator's own machine, and a
+// browser would have followed the same redirect.
+type Reach func(ctx context.Context, host string) string
+
+// walk is what one Probe call carries across both of its chains: where it may
+// go, and what it has already asked about.
+//
+// The answers are remembered because asking can cost a DNS lookup, and a
+// redirect to the same host on the other scheme is the ordinary case rather
+// than the exception. One question per distinct name per probe.
+type walk struct {
+	reach   Reach
+	decided map[string]string
+}
+
+// may reports the reason a host is not to be reached, or an empty string.
+func (w *walk) may(ctx context.Context, host string) string {
+	if w.reach == nil {
+		return ""
+	}
+
+	// Folded here rather than trusted to have been folded, for the reason N8
+	// gives about its own comparison: EXAMPLE.COM, example.com and
+	// example.com. are one server, and a memo keyed on the spelling a server
+	// happened to send would ask again — or, worse, remember an answer under
+	// a key nothing else matches.
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+
+	if why, asked := w.decided[host]; asked {
+		return why
+	}
+
+	why := w.reach(ctx, host)
+	w.decided[host] = why
+	return why
+}
+
 // Cookie is one Set-Cookie header, without its value.
 //
 // There is no Value field, and its absence is the point. The attributes below
@@ -291,7 +347,15 @@ type Report struct {
 // Neither failure is returned as an error, because neither is a failure of
 // this program. An error here means the target was refused or nothing could
 // be attempted at all.
-func (p *Prober) Probe(ctx context.Context, host string) (*Report, error) {
+// reach is asked for every host a redirect names other than this one, and a
+// nil reach follows them all. It is a parameter rather than a field on Prober
+// deliberately. Dial is a field because leaving it unset selects the safe
+// answer; this one has no safe default — the command line must follow a
+// redirect anywhere and a service must not — so it is the caller's decision
+// every time, spelled at every call site, where a review can see a nil.
+// A guard a constructor has to remember to set is a guard somebody forgets,
+// and this project has already been caught by exactly that (N9).
+func (p *Prober) Probe(ctx context.Context, host string, reach Reach) (*Report, error) {
 	if err := CheckHostname(host); err != nil {
 		return nil, err
 	}
@@ -303,11 +367,20 @@ func (p *Prober) Probe(ctx context.Context, host string) (*Report, error) {
 
 	client := p.client()
 
+	// The host asked about is authorised already — the caller said so by
+	// asking — so it is seeded rather than looked up again. A redirect from
+	// https to http on the same name, which is the commonest redirect there
+	// is, then costs nothing.
+	w := &walk{
+		reach:   reach,
+		decided: map[string]string{strings.ToLower(strings.TrimSuffix(host, ".")): ""},
+	}
+
 	// Secure first. If the deadline runs out it should run out on the chain
 	// that matters most, rather than on the one that exists to catch a
 	// stripping arrangement.
-	report.Secure = p.chain(ctx, client, "https://"+net.JoinHostPort(host, securePort)+"/")
-	report.Plain = p.chain(ctx, client, "http://"+net.JoinHostPort(host, plainPort)+"/")
+	report.Secure = p.chain(ctx, client, "https://"+net.JoinHostPort(host, securePort)+"/", w)
+	report.Plain = p.chain(ctx, client, "http://"+net.JoinHostPort(host, plainPort)+"/", w)
 
 	// Asked of both chains together. One port refused and the other reached
 	// is a name that was measured; only a name where every attempt was
@@ -318,7 +391,7 @@ func (p *Prober) Probe(ctx context.Context, host string) (*Report, error) {
 }
 
 // chain follows one starting address as far as the limits allow.
-func (p *Prober) chain(ctx context.Context, client *http.Client, start string) *Chain {
+func (p *Prober) chain(ctx context.Context, client *http.Client, start string, w *walk) *Chain {
 	out := &Chain{}
 	next := start
 
@@ -342,8 +415,34 @@ func (p *Prober) chain(ctx context.Context, client *http.Client, start string) *
 		if loc == "" {
 			return out
 		}
+
+		// Asked before the address is dialled rather than after it is
+		// recorded, so that a hop the deployment may not make leaves nothing
+		// in anybody's access log. The hop that produced the Location is
+		// already in the chain, and the Location header itself is one of the
+		// headers this probe keeps, so a reader can see where it pointed
+		// without this sentence naming it (I3).
+		if why := w.may(ctx, hostOf(loc)); why != "" {
+			out.Stopped = why
+			return out
+		}
+
 		next = loc
 	}
+}
+
+// hostOf is the name in an address nextURL has already parsed and accepted.
+//
+// An address that will not parse here cannot have come from nextURL, which
+// returns nothing it could not parse. It is answered as the empty name rather
+// than as an address to be dialled, so that an unreadable target reaches the
+// boundary as something to refuse instead of skipping it.
+func hostOf(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
 }
 
 // fetch performs one request and records what came back.
