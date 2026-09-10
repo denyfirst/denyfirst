@@ -69,7 +69,9 @@ accurately. It belongs with the `/web` page work rather than ahead of it.
 
 **The boundary is built and is opt-in**, since 2026-09-10: `internal/verify`,
 asked in both scanners beside the demonstration list, and
-`-verification-secret-file` on the service. N9 has the reasoning.
+`-verification-secret-file` on the service. Both challenge methods are there —
+a TXT record for the zone, a file for one hostname — and a file does not open a
+check that leaves the ports a browser uses. N9 has the reasoning.
 
 It was asked in both scanners and configured on one. `httpapi.New` built the
 web check from nothing, so a service that set a scope refused an unproven host
@@ -84,9 +86,6 @@ service, and turning it on stops every deployment that has not published a
 record yet — a change to make deliberately, with a release note, rather than
 as a side effect of an upgrade. Until then a service with no secret configured
 scans whatever it is asked to, and says so at startup.
-
-The `.well-known` half is also still to come. It authorises one hostname
-rather than a zone, and the difference is in `docs/scope.md`.
 
 **[`docs/scope.md`](scope.md) is the design**, settled: what a verified domain
 does and does not authorise, why the two challenge methods grant different
