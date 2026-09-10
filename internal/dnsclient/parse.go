@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // parseReply reads a reply and checks it answers the question that was asked.
@@ -85,11 +86,12 @@ func parseReply(raw []byte, id uint16, question []byte, qtype uint16) (reply, er
 	}
 
 	answers := int(binary.BigEndian.Uint16(raw[6:8]))
-	records, err := parseAnswers(raw, end, answers, qtype, foldName(question))
+	records, txt, err := parseAnswers(raw, end, answers, qtype, foldName(question))
 	if err != nil {
 		return out, err
 	}
 	out.records = records
+	out.txt = txt
 	return out, nil
 }
 
@@ -109,27 +111,30 @@ func parseReply(raw []byte, id uint16, question []byte, qtype uint16) (reply, er
 // is how RRSIG and every other type in the section are already handled. The
 // walk then reports no CAA at this name and carries on to the parent, which is
 // the honest answer: nothing was found for the name that was asked about.
-func parseAnswers(raw []byte, offset, count int, qtype uint16, wantName []byte) ([]CAA, error) {
-	var out []CAA
+func parseAnswers(raw []byte, offset, count int, qtype uint16, wantName []byte) ([]CAA, []string, error) {
+	var (
+		out []CAA
+		txt []string
+	)
 
 	for i := 0; i < count; i++ {
 		owner, next, err := readName(raw, offset)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		offset = next
 
 		// Type, class, TTL, and the length of what follows: ten bytes before
 		// anything variable.
 		if offset+10 > len(raw) {
-			return nil, errors.New("dnsclient: a record ends before its header does")
+			return nil, nil, errors.New("dnsclient: a record ends before its header does")
 		}
 		rrType := binary.BigEndian.Uint16(raw[offset : offset+2])
 		rdLength := int(binary.BigEndian.Uint16(raw[offset+8 : offset+10]))
 		offset += 10
 
 		if rdLength < 0 || offset+rdLength > len(raw) {
-			return nil, errors.New("dnsclient: a record announces more data than the reply holds")
+			return nil, nil, errors.New("dnsclient: a record announces more data than the reply holds")
 		}
 		rdata := raw[offset : offset+rdLength]
 		offset += rdLength
@@ -139,18 +144,27 @@ func parseAnswers(raw []byte, offset, count int, qtype uint16, wantName []byte) 
 		// for DNSSEC produces, and treating it as a fault would reject every
 		// signed zone. A record for another owner is skipped for the same
 		// reason and with more cause: it answers a question nobody asked.
-		if rrType != qtype || qtype != TypeCAA || !bytes.Equal(owner, wantName) {
+		if rrType != qtype || !bytes.Equal(owner, wantName) {
 			continue
 		}
 
-		record, err := parseCAA(rdata)
-		if err != nil {
-			return nil, err
+		switch qtype {
+		case TypeCAA:
+			record, err := parseCAA(rdata)
+			if err != nil {
+				return nil, nil, err
+			}
+			out = append(out, record)
+		case TypeTXT:
+			value, err := parseTXT(rdata)
+			if err != nil {
+				return nil, nil, err
+			}
+			txt = append(txt, value)
 		}
-		out = append(out, record)
 	}
 
-	return out, nil
+	return out, txt, nil
 }
 
 // parseCAA reads one property: a flags octet, a length-prefixed tag, and the
@@ -309,4 +323,31 @@ func appendFolded(dst, src []byte) []byte {
 		dst = append(dst, b)
 	}
 	return dst
+}
+
+// parseTXT joins the character-strings a TXT record is made of.
+//
+// A TXT record is one or more length-prefixed strings, each at most 255 bytes,
+// and a value longer than that arrives split across several. Joining them with
+// nothing between is what every consumer of a DNS-published token does — ACME
+// among them — because the split is a wire format detail and not part of the
+// value somebody published.
+//
+// Records are kept separate from each other. A name can carry several TXT
+// records for unrelated purposes, and concatenating those would invent a value
+// nobody wrote.
+func parseTXT(rdata []byte) (string, error) {
+	var b strings.Builder
+
+	for i := 0; i < len(rdata); {
+		n := int(rdata[i])
+		i++
+		if i+n > len(rdata) {
+			return "", errors.New("dnsclient: a TXT string runs past the end of its record")
+		}
+		b.Write(rdata[i : i+n])
+		i += n
+	}
+
+	return b.String(), nil
 }

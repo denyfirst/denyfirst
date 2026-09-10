@@ -474,7 +474,90 @@ proving control of it.
 `TestTheExclusionListIsNotOverriddenByTheDeploymentList`,
 `TestEveryRefusalCodeCanBeProduced`
 
+---
+
+### N9 — A deployment scans only estates it has been shown control of
+
+The command line needs no boundary: whoever runs it has the machine, the scan
+leaves from their own address, and nobody else can reach it. A service is the
+other case entirely, and until this existed it had nothing at all. A
+`denyfirstd` bound to an interface is reachable by a careless colleague, by a
+compromised CI job, and by an SSRF into the scanner — and every scan any of
+them starts puts the operator's address in a stranger's logs. That is N6's
+arrangement rebuilt inside somebody's own network, which is the thing
+`docs/scope.md` was written to stop.
+
+**Proof is a TXT record at `_denyfirst-challenge.<domain>`** carrying the token
+this deployment expects for that domain. Publishing it needs control of the
+zone, which is what is being proven.
+
+**The token is derived per domain, not shared.** One secret published
+everywhere would be readable in public DNS: anybody who looked at one record
+could publish the same string on a name they control — including a name
+pointed at somebody else's address — and have this deployment scan it. The
+token is an HMAC over the deployment secret and the domain, so reading one
+tells nobody anything about another.
+
+**The secret is read from a file.** A flag value is in the process list, where
+every user on the machine can read it, and in whatever unit file or shell
+history put it there. It is the whole of the proof.
+
+**Nothing is remembered.** A verification checked once and stored is a standing
+authorisation outliving the relationship it came from: a domain changes hands,
+a supplier contract ends, a subsidiary is sold. Re-reading is one round trip,
+and it makes revocation work by deleting the record — the only revocation an
+operator will actually find.
+
+**Asked where the scan is decided**, beside `demo.Refusal` and the exclusion
+list, in `Scanner.Scan` and `webscan.Scanner.Scan` rather than in the handler
+that calls one of them today. Checking at startup and holding a flag would make
+it a configuration boundary, and N6 says what happens to those.
+
+**And asked after the exclusion list.** Proving control of a name does not put
+it back in reach: the list says what this project will not touch, whoever asks
+and whatever they have shown (N8). Asked the other way round, an operator is
+told to publish a record for a name that will be refused after they publish
+it — work this program prompted and that changes nothing.
+
+**A scope that cannot check refuses.** A deployment configured to require proof
+and given no resolver, or no secret, admits nothing. The message says the
+failure is local rather than blaming the host, and the process refuses to start
+if the secret file cannot be read: a service that was asked for a boundary,
+could not build one, and scanned anyway is the failure this exists to prevent
+arriving through a typo in a path.
+
+**A lookup that failed is not a domain that is unverified.** Reporting the
+second sends an operator to their DNS to publish a record they have already
+published, rather than to the resolver that would not answer.
+
+**It is opt-in today, and that is the open state.** Turning it on by default
+would stop every deployment that has not published a record yet, which is a
+change to make deliberately rather than as a side effect of an upgrade.
+`docs/scope.md` says the default belongs on for a service, and the roadmap
+carries the gap until it is.
+
+*Enforced in:* `internal/verify`, `internal/scan.Scanner.Scan`,
+`internal/webscan.Scanner.Scan`, `cmd/denyfirstd.verificationScope`
+*Guarded by:* `TestAPublishedTokenCoversTheZone`,
+`TestADomainThatProvedNothingIsRefused`,
+`TestATokenFromOneDomainDoesNotProveAnother`,
+`TestATokenFromAnotherDeploymentIsNotAccepted`,
+`TestTheTokenIsFoundAmongOtherRecords`,
+`TestAScopeThatCannotCheckRefuses`,
+`TestALookupFailureIsNotAnUnverifiedDomain`,
+`TestTheRefusalNamesNoHost`,
+`TestTheWalkDoesNotReachForAPublicSuffix`,
+`TestTheMostSpecificNameIsAskedFirst`,
+`TestATokenIsStableAndSpellable`,
+`TestTheTLSScannerRefusesAnUnverifiedNameBeforeDialling`,
+`TestTheTLSScannerScansAVerifiedName`,
+`TestTheTLSScannerNeedsNoProofByDefault`,
+`TestAnUnverifiedNameIsRefusedBeforeAnythingIsDialled`,
+`TestAVerifiedNameIsScanned`, `TestNoScopeMeansNoProofIsRequired`,
+`TestAnExcludedNameIsRefusedAsExcludedRatherThanAsUnproven`
+
 ## Input
+
 
 Every bug found in this project so far has been here. Six of them: an empty
 port, brackets left on a hostname, several colons, a signed port number, a

@@ -43,6 +43,9 @@ const (
 	// TypeCAA is the record type from RFC 8659.
 	TypeCAA = 257
 
+	// TypeTXT is the record type from RFC 1035.
+	TypeTXT = 16
+
 	classIN = 1
 	typeOPT = 41
 
@@ -236,7 +239,15 @@ func (c *Client) LookupCAA(ctx context.Context, name string) (Answer, error) {
 }
 
 type reply struct {
-	records   []CAA
+	records []CAA
+
+	// txt holds the TXT record values found, one entry per record.
+	//
+	// A separate field rather than a second use of records, because the two
+	// carry different things and a caller that had to switch on which one was
+	// filled would be reading the query type back out of the answer.
+	txt []string
+
 	validated bool
 	existed   bool
 }
@@ -519,4 +530,67 @@ func systemResolver() (string, error) {
 		}
 	}
 	return "", fmt.Errorf("%w: no nameserver line in /etc/resolv.conf", ErrNoResolver)
+}
+
+// TXTAnswer is what a TXT lookup found.
+type TXTAnswer struct {
+	// Values holds one entry per TXT record at the name, in the order they
+	// arrived. A record split across several character-strings is joined.
+	Values []string
+
+	// Existed is false when the resolver said the name does not exist.
+	// Separate from an empty Values, which means the name exists and carries
+	// no TXT: a caller that could not tell them apart would report "no proof
+	// published" for a domain that does not exist, and the two lead a reader
+	// to different places.
+	Existed bool
+
+	// Validated is the AD bit the resolver set. It means the resolver says it
+	// verified the DNSSEC chain, not that this program verified anything, and
+	// a caller presenting it as its own work would be claiming somebody
+	// else's.
+	Validated bool
+}
+
+// LookupTXT reads the TXT records at one name.
+//
+// No walk up the tree, which is the difference from LookupCAA and the whole of
+// it. CAA is inherited, so a name with none is governed by its parent's; a
+// challenge is not, and a walk would let a record published at example.com
+// prove control of a name delegated to somebody else — the failure
+// docs/scope.md is written about, arriving through the lookup instead of
+// through the rule.
+func (c *Client) LookupTXT(ctx context.Context, name string) (TXTAnswer, error) {
+	server, err := c.server()
+	if err != nil {
+		return TXTAnswer{}, err
+	}
+
+	reply, err := c.exchange(ctx, server, name, TypeTXT)
+	if err != nil {
+		return TXTAnswer{Existed: reply.existed, Validated: reply.validated}, err
+	}
+
+	return TXTAnswer{
+		Values:    reply.txt,
+		Existed:   reply.existed,
+		Validated: reply.validated,
+	}, nil
+}
+
+// LookupChallenge reads TXT records in the narrow shape a boundary asks for.
+//
+// internal/verify decides what may be scanned and deliberately imports nothing
+// of this project's own, the way internal/policy does: a rule about who may be
+// reached should be readable without reading a DNS client. So the adapter is
+// here rather than there, and it is one method rather than a closure written
+// at every place a scope is constructed.
+//
+// Validated is dropped on purpose. It is the resolver's claim that it checked
+// DNSSEC, and a boundary that treated it as its own work would be presenting
+// somebody else's verification as this program's — the same objection the CAA
+// report already makes about the same bit.
+func (c *Client) LookupChallenge(ctx context.Context, name string) (values []string, existed bool, err error) {
+	answer, err := c.LookupTXT(ctx, name)
+	return answer.Values, answer.Existed, err
 }

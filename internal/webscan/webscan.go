@@ -21,6 +21,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/exclusion"
 	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/denyfirst/internal/verify"
 	"github.com/denyfirst/denyfirst/internal/webprobe"
 )
 
@@ -32,6 +33,11 @@ type Scanner struct {
 	// Prober opens the connections. Nil means a default one, which refuses
 	// private addresses and every port but 80 and 443.
 	Prober *webprobe.Prober
+
+	// Verify is the proof of control this deployment requires before it will
+	// scan a name. Nil means none is required, which is what the command line
+	// wants and what a service must not have.
+	Verify *verify.Scope
 
 	// Now supplies the current time, so a duration is reproducible in tests.
 	// Nil means time.Now.
@@ -113,6 +119,16 @@ func (s *Scanner) Scan(ctx context.Context, host string) (*Result, error) {
 	// deployment ends up demonstrating one thing and connecting to another.
 	if demo.Refusal(host) {
 		return nil, demo.ErrNotATarget
+	}
+
+	// And the third source of authority. Same place, same reason as the two
+	// above: a deployment that requires proof of control scans only what it
+	// has been shown, and a guard in one entry point disappears the moment a
+	// second is added.
+	if s.Verify != nil {
+		if err := s.Verify.Covers(ctx, host); err != nil {
+			return nil, err
+		}
 	}
 
 	prober := s.Prober

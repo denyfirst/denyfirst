@@ -26,6 +26,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/ocsp"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/denyfirst/internal/verify"
 )
 
 const (
@@ -204,6 +205,22 @@ type Scanner struct {
 	// about every target, and the scanned host learns nothing from them.
 	Resolver *dnsclient.Client
 
+	// Verify is the proof of control this deployment requires before it will
+	// scan a name.
+	//
+	// Nil means none is required, which is what the command line wants:
+	// whoever runs it already has the machine, the scan leaves from their own
+	// address, and nobody else can reach it. A service is the other case and
+	// sets this, because anything anyone can reach must not scan arbitrary
+	// hosts.
+	//
+	// A pointer rather than a value, so that "not required" is a state the
+	// zero value cannot be mistaken for. A Scope with no secret refuses
+	// everything, which is the right answer for a deployment that asked for
+	// proof and cannot check it, and the wrong one for a caller that never
+	// asked.
+	Verify *verify.Scope
+
 	// Roots is the trust store every chain is judged against.
 	//
 	// Nil means the system pool, loaded explicitly rather than left for
@@ -252,6 +269,23 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 	// tag cannot go anywhere the service cannot.
 	if demo.Refusal(host) {
 		return nil, demo.ErrNotATarget
+	}
+
+	// And the third source of authority: a deployment that requires proof of
+	// control scans only what it has been shown.
+	//
+	// Asked here for the reason the two above are, and with more at stake: a
+	// guard in one entry point disappears the moment a second is added, and
+	// this is the guard that decides whether a service anyone on a network can
+	// reach is a scanner for that network or a scanner for its own estate.
+	//
+	// Re-read rather than remembered. A proof checked once and stored outlives
+	// the relationship it came from, and deleting the record is the only
+	// revocation an operator will find.
+	if s.Verify != nil {
+		if err := s.Verify.Covers(ctx, host); err != nil {
+			return nil, err
+		}
 	}
 
 	prober := s.prober()
