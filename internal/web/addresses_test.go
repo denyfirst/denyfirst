@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/denyfirst/denyfirst/internal/webprobe"
 )
 
 // Where things live, and why the two redirects are different kinds.
@@ -25,13 +27,28 @@ func TestTheProjectsPagesStayAtTheRootAndTheChecksDoNot(t *testing.T) {
 		"/terms":   true,
 	}
 
+	// The question this test was written to ask ahead of time. There are two
+	// checks now, so the answer is a list rather than one prefix — and a
+	// third check added without an entry here fails rather than quietly
+	// putting a page at the root.
+	checks := []string{"/tls", "/web"}
+
+	underACheck := func(path string) bool {
+		for _, prefix := range checks {
+			if path == prefix || strings.HasPrefix(path, prefix+"/") {
+				return true
+			}
+		}
+		return false
+	}
+
 	for path := range pages {
 		switch {
 		case project[path]:
-		case strings.HasPrefix(path, "/tls"):
+		case underACheck(path):
 		default:
 			t.Errorf("%s is neither one of the project's own pages nor under a check; "+
-				"decide which it is before a second check makes the question urgent", path)
+				"decide which it is before a third check makes the question urgent", path)
 		}
 	}
 
@@ -41,13 +58,78 @@ func TestTheProjectsPagesStayAtTheRootAndTheChecksDoNot(t *testing.T) {
 		}
 	}
 
-	// The check is where it says it is.
-	if w := get(t, "/tls"); w.Code != http.StatusOK {
-		t.Errorf("GET /tls returned %d", w.Code)
+	// Every check's method page is where that check says it is.
+	//
+	// The limits of a TLS handshake are not the limits of a header check, and
+	// a page trying to be both would be true of neither.
+	for _, path := range []string{"/tls", "/tls/method", "/web/method"} {
+		if w := get(t, path); w.Code != http.StatusOK {
+			t.Errorf("GET %s returned %d", path, w.Code)
+		}
 	}
-	if w := get(t, "/tls/method"); w.Code != http.StatusOK {
-		t.Errorf("GET /tls/method returned %d", w.Code)
+}
+
+// An address this project sends to somebody else's server resolves here.
+//
+// N7 gives the web probe a user agent naming a page that explains exactly
+// what was sent, because a probe that hides is one an administrator can only
+// be alarmed by while one that identifies itself is one they can make a
+// decision about. That promise is only as good as the address: a 404 makes
+// the probe look like it is hiding, to the one reader who went looking.
+//
+// TestEveryInternalLinkResolves follows the links on the pages. This is the
+// other direction — an address this program puts in a request it makes — and
+// it was not covered by anything until the address it names had gone
+// unserved through an entire release.
+func TestEveryAddressThisProjectSendsOutResolves(t *testing.T) {
+	// Each is a string this project transmits to a third party, and the path
+	// it promises them.
+	for _, tc := range []struct {
+		what string
+		sent string
+	}{
+		{"the web probe's user agent", webprobe.DefaultUserAgent},
+	} {
+		path := pathOfDenyfirstURL(t, tc.sent)
+		if path == "" {
+			t.Errorf("%s names no address on this site: %q", tc.what, tc.sent)
+			continue
+		}
+
+		w := get(t, path)
+		if w.Code == http.StatusOK {
+			continue
+		}
+		if location := w.Header().Get("Location"); w.Code/100 == 3 && location != "" {
+			if get(t, location).Code == http.StatusOK {
+				continue
+			}
+		}
+		t.Errorf("%s tells an administrator to read %s, and this site answers %d. "+
+			"The whole reason the probe identifies itself is that the address it gives leads somewhere",
+			tc.what, path, w.Code)
 	}
+}
+
+// pathOfDenyfirstURL pulls the path out of the first denyfirst.dev address in
+// a string, which is the shape a user agent comment uses.
+func pathOfDenyfirstURL(t *testing.T, s string) string {
+	t.Helper()
+
+	const marker = "https://denyfirst.dev"
+	i := strings.Index(s, marker)
+	if i < 0 {
+		return ""
+	}
+
+	rest := s[i+len(marker):]
+	if end := strings.IndexAny(rest, " )\t\r\n"); end >= 0 {
+		rest = rest[:end]
+	}
+	if rest == "" {
+		return "/"
+	}
+	return rest
 }
 
 // The root stands in. It does not move.
@@ -114,14 +196,37 @@ func TestEveryInternalLinkResolves(t *testing.T) {
 				continue
 			}
 			seen++
+
+			fragment := ""
 			if i := strings.Index(href, "#"); i >= 0 {
-				href = href[:i]
+				href, fragment = href[:i], href[i+1:]
 			}
 			if href == "" {
 				continue
 			}
 			if !answered(href) {
 				t.Errorf("%s links to %s, which this server does not answer", path, href)
+				continue
+			}
+
+			// The heading a link aims at exists on the page it aims at.
+			//
+			// Stripping the fragment and stopping was enough while every
+			// link's target was a page somebody had just written. It stopped
+			// being enough the moment a page was written against another
+			// page's headings: /privacy#exclusion pointed at a section that
+			// has never existed, the link resolved because /privacy does, and
+			// a reader following it would have landed at the top of a long
+			// page with no idea which part answered them.
+			if fragment == "" {
+				continue
+			}
+			if _, isPage := pages[href]; !isPage {
+				continue
+			}
+			if target := get(t, href).Body.String(); !strings.Contains(target, `id="`+fragment+`"`) {
+				t.Errorf("%s links to %s#%s, and %s carries no heading with that id",
+					path, href, fragment, href)
 			}
 		}
 	}

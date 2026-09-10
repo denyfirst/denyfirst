@@ -177,6 +177,27 @@ var pages = map[string]*page{
 		Fragment:    "assets/method.html",
 		Data:        methodPage{Limits: policy.StandingLimits()},
 	},
+
+	// The address the web check puts in its own user agent.
+	//
+	// N7 says a probe identifies itself and names a page explaining exactly
+	// what it sent, because a probe that hides is one an administrator can
+	// only be alarmed by while one that identifies itself is one they can
+	// make a decision about. webprobe.DefaultUserAgent has named this address
+	// since the check was written, and it answered 404 until the check had a
+	// service surface — at which point the promise started being made to
+	// strangers' access logs for real.
+	//
+	// So this page answers the log reader before it answers the report
+	// reader. Somebody who arrives from a log line did not ask to be here and
+	// wants one thing: what reached their server, exactly, and that there is
+	// nothing else to look for.
+	"/web/method": {
+		Title:       "What the web check sends, and what it cannot see — denyfirst",
+		Description: "Exactly what a web check sends to a server, how to read the report it produces, and the limits of the method.",
+		Fragment:    "assets/web-method.html",
+		Data:        methodPage{Limits: policy.WebStandingLimits()},
+	},
 }
 
 // scanPage is what assets/index.html branches on.
