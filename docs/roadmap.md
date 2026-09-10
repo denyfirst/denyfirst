@@ -37,11 +37,11 @@ service we do.
 
 ### 1. The web check's service surface
 
-**`POST /api/v1/web/scan` and `/web/method` are served**, since 2026-09-10.
-Next is `/web` itself, then a front page at `/` that runs both checks
-against one name and reports one worst-case verdict with an explicit list of
-what neither established. `/` stops being a redirect the day there is
-something to put there.
+**The web check has its service surface**, since 2026-09-10: `POST
+/api/v1/web/scan`, `/web`, and `/web/method`. What is left is a front page at
+`/` that runs both checks against one name and reports one worst-case verdict
+with an explicit list of what neither established. `/` stops being a redirect
+the day there is something to put there.
 
 The endpoint inherited the demonstration guard and the exclusion list rather
 than repeating them, because both are asked in `webscan.Scanner.Scan`. It

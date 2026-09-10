@@ -1,0 +1,96 @@
+<section class="ask">
+    <!--
+      What this check is for, in the line people read rather than the line they
+      skim past. A TLS handshake can be perfect on a site that is trivially
+      stripped, and that gap is the whole reason this check exists beside the
+      other one.
+    -->
+    <h1>A perfect handshake<br>on a site anyone<br>can strip.</h1>
+
+    <form class="ask-form" id="scan-form" autocomplete="off" data-check="web">
+      <!--
+        Which check this page runs is declared here rather than worked out from
+        the path. One script serves both pages; a path is a thing that moves,
+        and a script that guessed from it would be wrong the day one does.
+      -->
+      <label class="field-label" for="target">{{if .Demo}}Host{{else}}Hostname{{end}}</label>
+      {{if .Demo}}
+      <!--
+        A menu, not a field, for the same reason as the other check: this
+        deployment connects only to hosts this project owns, so a field that
+        accepted any hostname would be a field that mostly answers no. It keeps
+        the id the script reads, because a select answers .value exactly as an
+        input does.
+      -->
+      <div class="field-row">
+        <select
+          class="field"
+          id="target"
+          name="target"
+          aria-describedby="field-help">
+          {{range .Hosts}}<option value="{{.Host}}">{{.Host}} &mdash; {{.Shows}}</option>{{end}}
+        </select>
+        <button class="submit" type="submit" id="submit">Check</button>
+      </div>
+      {{else}}
+      <div class="field-row">
+        <input
+          class="field"
+          type="text"
+          id="target"
+          name="target"
+          placeholder="example.com"
+          spellcheck="false"
+          autocapitalize="off"
+          autocorrect="off"
+          enterkeyhint="go"
+          aria-describedby="field-help">
+        <button class="submit" type="submit" id="submit">Check</button>
+      </div>
+      {{end}}
+      {{if .Demo}}
+      <p class="field-help" id="field-help">
+        This deployment scans only hosts this project owns. It is here so that
+        you can watch the instrument work and check its verdicts against your
+        own run of it &mdash; not so that it opens connections to somebody
+        else's server on a stranger's behalf, and the
+        <a href="/terms">terms</a> say so plainly.
+        <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/self-host.md">Run it yourself</a> to
+        scan anything else.
+        <a href="/web/method">Exactly what is sent</a> is written out in full,
+        and it is one <code>GET</code> of the root over each scheme.
+      </p>
+      {{else}}
+      <p class="field-help" id="field-help">
+        A bare hostname &mdash; this reads the site over HTTP and over HTTPS,
+        the way a browser reaches an address somebody types, so there is no
+        port to choose. Public hosts only. Scan only what you own, administer,
+        or have permission to scan &mdash; the decision is yours and the
+        <a href="/terms">terms</a> say so plainly.
+        <a href="/web/method">Exactly what is sent</a> is written out in full,
+        and it is one <code>GET</code> of the root over each scheme.
+      </p>
+      {{end}}
+    </form>
+
+    <!--
+      The other check, named where somebody who wanted it will look. The two
+      answer different questions over different evidence and neither is a
+      subset of the other: a site can negotiate TLS 1.3 with a clean chain and
+      still serve content on port 80 with no policy declared.
+    -->
+    <p class="field-help">
+      This grades how a site is reached. To grade the handshake and the
+      certificate behind it, use the <a href="/tls">TLS check</a>.
+    </p>
+
+    <noscript>
+      <p class="noscript">
+        Running a scan needs JavaScript, because the result is fetched and
+        rendered in the page. The same check is available from the command line
+        tool in the repository, which needs nothing but Go.
+      </p>
+    </noscript>
+  </section>
+
+  <section class="result" id="result" aria-live="polite" aria-atomic="false" hidden></section>

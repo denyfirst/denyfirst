@@ -108,10 +108,27 @@ type page struct {
 	// which is the whole argument of R16, applied to a third renderer.
 	Data any
 
+	// Method is the page the footer's "How a report is read" link points at.
+	//
+	// It was one address in the layout while there was one check. The moment
+	// there were two, a shared footer meant a reader of a web report was sent
+	// to the limits of a TLS handshake — the exact confusion the method pages
+	// are separate to prevent, arriving through the one piece of markup every
+	// page has in common.
+	//
+	// Empty takes defaultMethodPage. A page that is not a check's has to point
+	// somewhere, and the transport check is the one this project has had
+	// longest and the one a reader is likeliest to have a report from.
+	Method string
+
 	// Body is filled in at startup. It is template.HTML because the fragment
 	// is a file in this repository rather than anything a user supplied.
 	Body template.HTML
 }
+
+// defaultMethodPage is where a page that is not a check's own sends a reader
+// asking how to read a report.
+const defaultMethodPage = "/tls/method"
 
 // pages is the whole site.
 //
@@ -178,6 +195,23 @@ var pages = map[string]*page{
 		Data:        methodPage{Limits: policy.StandingLimits()},
 	},
 
+	// The web check, beside the TLS one rather than under it.
+	//
+	// Neither is a subset of the other. A site can negotiate TLS 1.3 with a
+	// clean chain and still serve content on port 80 with no policy declared,
+	// and the handshake check grades that host strong — correctly, and while
+	// saying nothing about the way it is actually reached. Two checks, two
+	// addresses, two rule sets, and a front page at "/" later that runs both
+	// against one name.
+	"/web": {
+		Title:       "denyfirst — check how a site is actually reached",
+		Description: "Check how a website is reached over HTTP and HTTPS: redirects, transport, and the policy a browser would end up holding. Nothing about the scan is recorded.",
+		Fragment:    "assets/web.html",
+		Script:      true,
+		Method:      "/web/method",
+		Data:        scanPage{Demo: demo.Enabled, Hosts: demo.Hosts()},
+	},
+
 	// The address the web check puts in its own user agent.
 	//
 	// N7 says a probe identifies itself and names a page explaining exactly
@@ -196,6 +230,7 @@ var pages = map[string]*page{
 		Title:       "What the web check sends, and what it cannot see — denyfirst",
 		Description: "Exactly what a web check sends to a server, how to read the report it produces, and the limits of the method.",
 		Fragment:    "assets/web-method.html",
+		Method:      "/web/method",
 		Data:        methodPage{Limits: policy.WebStandingLimits()},
 	},
 }
@@ -279,6 +314,10 @@ func init() {
 	layout := template.Must(template.ParseFS(assets, "assets/layout.html"))
 
 	for path, p := range pages {
+		if p.Method == "" {
+			p.Method = defaultMethodPage
+		}
+
 		fragment, err := assets.ReadFile(p.Fragment)
 		if err != nil {
 			// At startup, so a missing fragment stops the process instead of

@@ -168,7 +168,9 @@ func TestTheStandingLimitsAreNamedAndLinked(t *testing.T) {
 		t.Error("the script still renders the standing limits as a section of every report")
 	}
 	for _, required := range []string{
-		`const METHOD_PAGE = "/tls/method"`,
+		`methodPage: "/tls/method"`,
+		`methodPage: "/web/method"`,
+		"const METHOD_PAGE = CHECK.methodPage",
 		"limits of this method apply to every scan",
 		"standing.length",
 	} {
