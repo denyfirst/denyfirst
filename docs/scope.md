@@ -152,6 +152,19 @@ private address can be verified and then scanned — that composes. An IP typed
 as a target cannot, and stays where it is today: available on the command
 line, which runs on the operator's own machine, and absent from the service.
 
+**It does not travel down a redirect.** A verified zone authorises the hosts in
+it, and a `Location` header names whatever the server that answered chose to
+name. So the scope is asked again about that host, before the hop is dialled,
+and a chain that leaves the zone stops there with the reason recorded (N10).
+Anything else would mean one header on a site an organisation does own could
+walk its scanner out of its own estate — into a third party's logs, from the
+organisation's address, on the strength of a proof that was about somewhere
+else.
+
+The same holds in the other direction and is worth saying, because it is the
+part an operator notices: a record at `example.com` covers `www.example.com`,
+so the ordinary redirect is followed and the report is whole.
+
 **It is visible.** `_denyfirst-challenge.example.com` sits in public DNS and
 says the organisation uses this tool. That is the ordinary cost of every
 challenge-based scheme and it is not worth hiding; it is worth naming, here

@@ -45,6 +45,16 @@
     </p>
 
     <p>
+      <strong>A redirect off what this deployment may reach is not
+      followed.</strong> Whatever decides which hosts an installation of this
+      tool connects to is asked again about the address a
+      <code>Location</code> header names, before anything is dialled — because
+      that address was chosen by a server rather than by the person running
+      the scan. On this deployment that means the hosts this project owns, so
+      a redirect away from them ends the chain and the report says so.
+    </p>
+
+    <p>
       <strong>The response body was never read.</strong> Headers were taken
       and the body was closed unread, so the traffic this cost you is a
       header's worth. That is also the part you pay for, which is why it is
