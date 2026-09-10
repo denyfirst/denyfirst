@@ -50,6 +50,37 @@ import (
 // Label is the name a challenge is published under, beneath the domain.
 const Label = "_denyfirst-challenge"
 
+// Path is where the file half of the challenge is served from.
+//
+// The one path this project ever constructs, and it is worth saying why that
+// is not a contradiction of N7. N7 governs the web check, which reads what a
+// server volunteers to every visitor and guesses at nothing. This is not a
+// check: it is one request for a file the operator deliberately put there, to
+// a host that has not been scanned yet and will not be unless the file is
+// found. Nothing about it is read as a measurement, and nothing it returns
+// reaches a report.
+const Path = "/.well-known/denyfirst-challenge"
+
+// Surface names what a check will reach, because the two proof methods do not
+// prove the same thing.
+//
+// A TXT record proves control of a zone, which covers everything under it. A
+// file proves control of what one hostname serves over HTTPS — narrower, and
+// exactly the surface a web check reads. It proves nothing about port 993 on
+// the same name: a content network serves the file while the mail service
+// answers from an origin the person who placed it may not administer.
+type Surface int
+
+const (
+	// HTTPOnly is a check that reaches a host the way a browser does, over 80
+	// and 443 and nothing else. Either proof covers it.
+	HTTPOnly Surface = iota
+
+	// AnyPort is a check that may open a connection to a port a browser never
+	// touches. Only the zone proof covers it.
+	AnyPort
+)
+
 // ErrNotVerified is returned for a domain this deployment has not been shown
 // control of.
 //
@@ -90,7 +121,39 @@ type Scope struct {
 
 	// Resolver reads the challenge. Nil means nothing can be proven.
 	Resolver Resolver
+
+	// Fetcher reads the file half of the challenge, for teams without access
+	// to their own DNS.
+	//
+	// Nil means the file method is not offered, which is a deployment where
+	// only the zone proof works — and that is the stricter arrangement, so it
+	// is the safe thing for nil to mean.
+	Fetcher Fetcher
 }
+
+// Fetcher reads the file at Path from one host.
+//
+// An interface for the same reason Resolver is: this package decides who may
+// be scanned and imports nothing of this project's own, so that a rule about
+// who may be reached can be read without reading an HTTP client.
+//
+// The implementation is expected to refuse private, loopback and reserved
+// destinations exactly as a scan would. A fetch is a connection this
+// deployment opens to a host somebody named, so it is reachable by the same
+// SSRF the boundary exists to stop — and it happens before the boundary has
+// decided anything.
+type Fetcher interface {
+	// FetchChallenge returns the body served at Path, or an error.
+	//
+	// A host that serves no such file returns ErrNoChallenge rather than an
+	// error of its own: nothing published is a fact about the domain, and a
+	// connection that failed is a fact about the network, and the two lead a
+	// reader to different places.
+	FetchChallenge(ctx context.Context, host string) (body string, err error)
+}
+
+// ErrNoChallenge means the host answered and served no challenge.
+var ErrNoChallenge = errors.New("verify: the host serves no challenge file")
 
 // Covers reports whether this deployment has been shown control of the host,
 // or of a domain above it.
@@ -106,7 +169,18 @@ type Scope struct {
 // The walk is bounded and starts at the host itself, so the most specific
 // proof wins and a deployment that has been shown control of one subdomain
 // does not thereby reach its parent.
-func (s Scope) Covers(ctx context.Context, host string) error {
+//
+// The surface decides whether the file proof is even consulted. A file proves
+// control of what one hostname serves over HTTPS, so it covers a check that
+// reads a site the way a browser does and nothing else. A check that may open
+// a connection to port 993 needs the zone proof, because a content network can
+// serve a file for a name whose mail lives on an origin the person who placed
+// it does not administer.
+//
+// DNS is asked first whether or not a fetcher exists. It is cheaper, it
+// covers more, and it costs the scanned host nothing — where a fetch is a
+// request this deployment makes to their server on every scan.
+func (s Scope) Covers(ctx context.Context, host string, surface Surface) error {
 	if len(s.Secret) == 0 || s.Resolver == nil {
 		// Not an error about the host. A deployment configured to require
 		// proof and given no way to check it must refuse rather than admit,
@@ -142,6 +216,27 @@ func (s Scope) Covers(ctx context.Context, host string) error {
 			if hmac.Equal([]byte(strings.TrimSpace(strings.ToLower(v))), []byte(want)) {
 				return nil
 			}
+		}
+	}
+
+	// The file, for teams without access to their own DNS.
+	//
+	// Only for this host — never for a name beneath it and never for its
+	// parent — because that is the whole of what the file proves. A record in
+	// a zone is a statement about the zone; a file on a host is a statement
+	// about the host.
+	if surface == HTTPOnly && s.Fetcher != nil {
+		body, err := s.Fetcher.FetchChallenge(ctx, host)
+		switch {
+		case errors.Is(err, ErrNoChallenge):
+			// Nothing published. Fall through to the refusal, which is the
+			// answer the operator needs to act on.
+		case err != nil:
+			// A fetch that failed is not a host that proved nothing, for the
+			// same reason a failed lookup is not.
+			return err
+		case hmac.Equal([]byte(strings.TrimSpace(strings.ToLower(body))), []byte(Token(s.Secret, host))):
+			return nil
 		}
 	}
 

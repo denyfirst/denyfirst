@@ -491,6 +491,39 @@ arrangement rebuilt inside somebody's own network, which is the thing
 this deployment expects for that domain. Publishing it needs control of the
 zone, which is what is being proven.
 
+**Or a file at `/.well-known/denyfirst-challenge`**, for teams without access
+to their own DNS — which is a common enough arrangement that refusing them
+would mean refusing the estates this tool is for.
+
+**The two do not prove the same thing, so they do not grant the same thing.** A
+record in a zone is a statement about the zone and covers every name under it.
+A file on a host is a statement about that host: it opens that hostname and no
+other, not its parent and not a name beneath it. Reading a file as a zone proof
+would let one file open every name under a domain, including the ones delegated
+to somebody else.
+
+**And a file does not open a check that leaves the ports a browser uses.** It
+proves control of what one hostname serves over HTTPS, which is exactly what a
+web check reads. It proves nothing about port 993 on the same name: a content
+network can serve the file while the mail service answers from an origin the
+person who placed it does not administer. So `Covers` is told which surface is
+asking, and only the zone proof answers for all of them.
+
+**The fetch is the dangerous half.** It is a connection this deployment opens
+to a host somebody named, before the boundary has decided anything — the shape
+of the SSRF this exists to survive. It dials through `safedial` as a scan does,
+over 443 and no other port, follows no redirect, reads a bounded body, and
+verifies the certificate: a challenge read over a connection this program would
+not trust proves nothing, because whoever can answer for the name can serve any
+file.
+
+**It is the one path this project constructs, and that is not a contradiction
+of N7.** N7 governs the web check, which reads what a server volunteers and
+guesses at nothing. This is not a check. It is one request for a file an
+operator deliberately placed, made only when the DNS proof was not found, to a
+host that will not be scanned unless the file is there. Nothing it returns
+reaches a report.
+
 **The token is derived per domain, not shared.** One secret published
 everywhere would be readable in public DNS: anybody who looked at one record
 could publish the same string on a name they control — including a name
@@ -536,8 +569,9 @@ change to make deliberately rather than as a side effect of an upgrade.
 `docs/scope.md` says the default belongs on for a service, and the roadmap
 carries the gap until it is.
 
-*Enforced in:* `internal/verify`, `internal/scan.Scanner.Scan`,
-`internal/webscan.Scanner.Scan`, `cmd/denyfirstd.verificationScope`
+*Enforced in:* `internal/verify`, `internal/challenge`,
+`internal/scan.Scanner.Scan`, `internal/webscan.Scanner.Scan`,
+`cmd/denyfirstd.verificationScope`
 *Guarded by:* `TestAPublishedTokenCoversTheZone`,
 `TestADomainThatProvedNothingIsRefused`,
 `TestATokenFromOneDomainDoesNotProveAnother`,
@@ -554,7 +588,24 @@ carries the gap until it is.
 `TestTheTLSScannerNeedsNoProofByDefault`,
 `TestAnUnverifiedNameIsRefusedBeforeAnythingIsDialled`,
 `TestAVerifiedNameIsScanned`, `TestNoScopeMeansNoProofIsRequired`,
-`TestAnExcludedNameIsRefusedAsExcludedRatherThanAsUnproven`
+`TestAnExcludedNameIsRefusedAsExcludedRatherThanAsUnproven`,
+`TestAServedFileProvesTheHost`, `TestAServedFileProvesNoOtherName`,
+`TestAServedFileDoesNotProveACheckThatLeavesTheBrowsersPorts`,
+`TestTheZoneProofCoversEverySurface`,
+`TestAFileWithTheWrongTokenIsRefused`,
+`TestAFailedFetchIsNotAHostThatPublishedNothing`,
+`TestAHostServingNoFileIsRefusedRatherThanErrored`,
+`TestNoFetcherMeansOnlyTheZoneProofWorks`,
+`TestAHostWithAZoneProofIsNeverFetchedFrom`,
+`TestOnlyTheChallengePathIsRequested`,
+`TestAMissingFileIsNoChallengeRatherThanAnError`,
+`TestAnEmptyFileIsNoChallenge`, `TestARedirectIsNotFollowed`,
+`TestAFetchFailureNamesNoInfrastructure`,
+`TestTheDefaultDiallerRefusesPrivateAddresses`,
+`TestAChallengeIsNotReadOverAnUntrustedConnection`,
+`TestAFileProofDoesNotOpenTheTLSCheck`,
+`TestAFileProofOpensTheWebCheck`,
+`TestAFileProofDoesNotOpenAnotherName`
 
 ## Input
 

@@ -33,6 +33,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/denyfirst/denyfirst/internal/challenge"
 	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/httpapi"
@@ -737,5 +738,12 @@ func verificationScope(path string) (*verify.Scope, error) {
 	return &verify.Scope{
 		Secret:   secret,
 		Resolver: &dnsclient.Client{},
+
+		// The file method, for teams without access to their own DNS. It
+		// is consulted only when the zone proof was not found, and only for
+		// a check that reads a site the way a browser does — a file proves
+		// control of one hostname over HTTPS and nothing about port 993 on
+		// the same name.
+		Fetcher: &challenge.Fetcher{},
 	}, nil
 }

@@ -170,3 +170,78 @@ func TestAnExcludedNameIsRefusedAsExcludedRatherThanAsUnproven(t *testing.T) {
 		})
 	}
 }
+
+// servesFile proves one host through the file method and nothing through DNS.
+type servesFile struct {
+	secret []byte
+	host   string
+}
+
+func (s servesFile) FetchChallenge(_ context.Context, host string) (string, error) {
+	if host == s.host {
+		return verify.Token(s.secret, s.host), nil
+	}
+	return "", verify.ErrNoChallenge
+}
+
+// A file proof does open the web check.
+//
+// The other side of the surface, and the half that makes the method worth
+// having: it exists for teams without access to their own DNS, and a file that
+// proved nothing anywhere would be a method nobody can use. What it proves is
+// what a web check reads — one hostname, the way a browser reaches it.
+func TestAFileProofOpensTheWebCheck(t *testing.T) {
+	if demo.Enabled {
+		t.Skip("a demonstration build refuses this name before the scope is reached")
+	}
+
+	secret := []byte("s")
+	var dialed atomic.Bool
+
+	s := &Scanner{
+		Prober: &webprobe.Prober{
+			Dial: func(context.Context, string, string) (net.Conn, error) {
+				dialed.Store(true)
+				return nil, errors.New("nothing is listening")
+			},
+			RequestTimeout: time.Second,
+			TotalTimeout:   2 * time.Second,
+		},
+		Verify: &verify.Scope{
+			Secret:   secret,
+			Resolver: nothingPublished{},
+			Fetcher:  servesFile{secret: secret, host: "example.test"},
+		},
+	}
+
+	if _, err := s.Scan(context.Background(), "example.test"); err != nil {
+		t.Fatalf("a host serving its own challenge was refused: %v", err)
+	}
+	if !dialed.Load() {
+		t.Error("a proven host was accepted and nothing was ever dialled")
+	}
+}
+
+// And it opens that host only.
+//
+// A file on one host says nothing about a name beneath it. Reading it as a
+// zone proof would let one file open every name under a domain, including the
+// ones delegated to somebody else.
+func TestAFileProofDoesNotOpenAnotherName(t *testing.T) {
+	if demo.Enabled {
+		t.Skip("a demonstration build refuses this name before the scope is reached")
+	}
+
+	secret := []byte("s")
+	s := &Scanner{
+		Verify: &verify.Scope{
+			Secret:   secret,
+			Resolver: nothingPublished{},
+			Fetcher:  servesFile{secret: secret, host: "example.test"},
+		},
+	}
+
+	if _, err := s.Scan(context.Background(), "www.example.test"); !errors.Is(err, verify.ErrNotVerified) {
+		t.Errorf("Scan returned %v; a file on one host opened another name", err)
+	}
+}

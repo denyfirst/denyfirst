@@ -148,3 +148,57 @@ func TestAnExcludedNameIsRefusedAsExcludedRatherThanAsUnproven(t *testing.T) {
 		})
 	}
 }
+
+// servesFile proves one host through the file method and nothing through DNS.
+type servesFile struct {
+	secret []byte
+	host   string
+}
+
+func (s servesFile) FetchChallenge(_ context.Context, host string) (string, error) {
+	if host == s.host {
+		return verify.Token(s.secret, s.host), nil
+	}
+	return "", verify.ErrNoChallenge
+}
+
+// A file proof does not open the TLS check.
+//
+// This is the whole reason Covers is told which surface is asking. A file
+// proves control of what one hostname serves over HTTPS. The TLS check may
+// open a connection to port 993 on the same name, and a content network can
+// serve the file while the mail service answers from an origin the person who
+// placed it does not administer.
+//
+// Without this test the surface argument could be changed to HTTPOnly here and
+// nothing would notice, which is exactly what a sabotage found.
+func TestAFileProofDoesNotOpenTheTLSCheck(t *testing.T) {
+	if demo.Enabled {
+		t.Skip("a demonstration build refuses this name for its own reason")
+	}
+
+	secret := []byte("s")
+	var dialed atomic.Bool
+
+	s := &Scanner{
+		Prober: &tlsprobe.Prober{
+			Dial: func(context.Context, string, string) (net.Conn, error) {
+				dialed.Store(true)
+				return nil, errors.New("nothing is listening")
+			},
+		},
+		Verify: &verify.Scope{
+			Secret:   secret,
+			Resolver: nothingPublished{},
+			Fetcher:  servesFile{secret: secret, host: "example.test"},
+		},
+	}
+
+	_, err := s.Scan(context.Background(), "example.test")
+	if !errors.Is(err, verify.ErrNotVerified) {
+		t.Errorf("Scan returned %v; a file proof admitted a check that may open port 993", err)
+	}
+	if dialed.Load() {
+		t.Error("the TLS check dialled a host proven only by a file")
+	}
+}
