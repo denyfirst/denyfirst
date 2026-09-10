@@ -3,9 +3,11 @@
     <h1>What this keeps,<br>and what it does.</h1>
 
     <p class="lede">
-      A count of scans, and nothing else. Not the hostname you asked about,
-      not your address, not the result, not the time. If you found this page
-      because a scan from here reached your server, the section on
+      Counts, and nothing that points back to anybody. Not the hostname you
+      asked about, not your address, not the time. Verdicts are counted &mdash;
+      how many scans came back strong &mdash; and nothing ties one to who asked
+      or what they asked about. If you found this page because a scan from here
+      reached your server, the section on
       <a href="#scans">what a scan does</a> is the one you want.
     </p>
 
@@ -20,9 +22,41 @@
     <h2 id="kept">What is kept</h2>
 
     <p>
-      One number goes up per scan, along with how many came back strong, weak
-      or insecure. That is the whole record. It is written to a small file so
-      a restart does not reset it.
+      Counts of scans, and counts of refusals. Every figure below is served in
+      full at <code>/api/v1/stats</code>, so the list can be checked against
+      the thing itself rather than believed, and they are written to a small
+      file so a restart does not reset them.
+    </p>
+
+    <p>
+      <strong>Per scan</strong>, one number goes up, and one of four more:
+      strong, weak, insecure, or ungraded &mdash; which means nothing was
+      measured rather than nothing was wrong. A separate figure holds the
+      day&rsquo;s total, with the date it belongs to so that a restart can tell
+      whether it is still today, and one date says when counting began. That is
+      everything this service knows about time.
+    </p>
+
+    <p>
+      <strong>Each check keeps its own block</strong> of those figures, naming
+      the rules that graded them. There are two checks now &mdash; the TLS
+      handshake, and how a site is reached over HTTP &mdash; and they answer
+      different questions over different evidence, so one number adding them
+      together would describe nothing anybody could check.
+    </p>
+
+    <p>
+      <strong>Per refusal</strong>, how many requests were turned away and for
+      which reason, from a fixed list. The reasons name causes and never
+      requesters: an address asking too often, a name this service will not
+      scan, a target that would not parse. Nothing about who asked or what they
+      asked about is in any of them. They exist because an operator who cannot
+      see a change in the shape of what arrives is asking you to trust somebody
+      who is not watching, and that would be its own kind of carelessness.
+    </p>
+
+    <p>
+      That is the whole record.
     </p>
 
     <p>

@@ -60,10 +60,14 @@ them. Nothing published moved, so a reader of `/api/v1/stats` and a rollback
 to an older binary both keep figures that mean what they meant. R22 has the
 reasoning.
 
-**The privacy page describes one figure per scan** and needs a sentence now
-that a second check is counted. Nothing new is recorded — no hostname, no
-address, no time — but the page says what is kept and has to keep saying it
-accurately. It belongs with the `/web` page work rather than ahead of it.
+**The privacy page says what is kept**, and since 2026-09-10 it says all of it:
+the four verdict counts rather than three, the day's total and the two dates,
+the block each check keeps under its own rule set, and the refusals counted by
+reason. Nothing new is recorded — no hostname, no address, no time — the page
+had simply fallen behind what `/api/v1/stats` publishes, which made it useless
+for the one thing it is for. It is pinned to the type now rather than to
+somebody's memory: every figure in the published snapshot has to be described
+on the page or a test fails.
 
 ### 2. Scope: prove control of a domain before scanning it
 
