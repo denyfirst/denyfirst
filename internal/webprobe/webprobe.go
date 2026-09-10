@@ -163,6 +163,30 @@ type Cookie struct {
 	// they imply.
 	HostPrefix   bool `json:"hostPrefix,omitempty"`
 	SecurePrefix bool `json:"securePrefix,omitempty"`
+
+	// Path and Domain are the two attributes a __Host- prefix constrains, and
+	// they are here so that the prefix can be checked in full rather than in
+	// part.
+	//
+	// RFC 6265bis requires a __Host- cookie to carry Secure, to set Path=/,
+	// and to carry no Domain at all. A browser that finds any of those wrong
+	// rejects the cookie outright — so a site setting __Host-session without
+	// Path=/ has a session cookie that silently does not exist, and every
+	// symptom of that is somewhere other than the header. Reading two of the
+	// three conditions would have reported a guarantee the browser is not
+	// making.
+	//
+	// Neither is a secret. A path and a domain are scoping instructions the
+	// server sends to every visitor, and Cookie still has nowhere to put a
+	// value.
+	Path string `json:"path,omitempty"`
+
+	// DomainSet records that the attribute was present, which is the question
+	// the prefix asks. The value is kept too because a Domain widens a cookie
+	// beyond the host that set it, and a reader checking scope needs to see
+	// how far.
+	Domain    string `json:"domain,omitempty"`
+	DomainSet bool   `json:"domainSet,omitempty"`
 }
 
 // Hop is one request and the response to it.
@@ -494,6 +518,15 @@ func cookies(headers []string) []Cookie {
 				c.HTTPOnly = true
 			case "samesite":
 				c.SameSite = strings.ToLower(strings.TrimSpace(value))
+			case "path":
+				c.Path = strings.TrimSpace(value)
+			case "domain":
+				// Presence is recorded separately from the value, because
+				// "Domain=" with nothing after it is still the attribute
+				// being present and a __Host- cookie carrying it is still
+				// rejected by a browser.
+				c.DomainSet = true
+				c.Domain = strings.TrimSpace(value)
 			}
 		}
 		out = append(out, c)

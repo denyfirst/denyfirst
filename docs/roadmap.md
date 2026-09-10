@@ -114,9 +114,7 @@ Certificate revocation fetched live (command line only — a certificate
 authority learns which certificate is being examined, and that is the
 operator's decision about their own certificate, not ours to make for them).
 Several trust stores. Transparency receipts verified offline against an
-embedded log list. Every address a name resolves to, capped. Cookies in the
-web check, which needs `Path` and `Domain` on `webprobe.Cookie` so `__Host-`
-can be checked in full rather than in part. A hand-written ClientHello, for
+embedded log list. Every address a name resolves to, capped. A hand-written ClientHello, for
 SSLv3, export and NULL suites and per-suite TLS 1.3 enumeration.
 
 ---

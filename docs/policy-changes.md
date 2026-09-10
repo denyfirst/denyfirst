@@ -14,6 +14,56 @@ free to improve without breaking that.
 
 ---
 
+## `denyfirst-web-v2` → `denyfirst-web-v3`
+
+Unreleased.
+
+**The check reads the cookies it was already collecting.** Every Set-Cookie a
+site sends has been in the report since the check shipped and no rule looked at
+any of them. Four rules are added and three observations, and the line between
+those two lists is the whole of the change worth arguing about.
+
+### What is graded, and why only this
+
+A browser settles each of these. They are not opinions about configuration;
+they are what happens next, and a site that has one is usually the last to
+know, because every symptom appears somewhere other than the header.
+
+| rule | what a browser does |
+|---|---|
+| `cookie.no-secure-over-tls` | sends the cookie on plaintext requests too, in the clear |
+| `cookie.host-prefix-broken` | rejects a `__Host-` cookie that breaks the prefix, entirely |
+| `cookie.secure-prefix-broken` | rejects a `__Secure-` cookie sent without `Secure` |
+| `cookie.samesite-none-without-secure` | rejects the cookie |
+
+Three of the four mean a cookie the site believes it set does not exist.
+
+### What is reported and deliberately not graded
+
+There is a large body of advice about cookies and almost none of it is a line
+anybody published. R21 is the rule being applied.
+
+**`HttpOnly` missing** is good advice and not a rule. A CSRF token, a locale, a
+consent flag and a feature switch are all cookies a page is meant to read, and
+this check cannot tell which it is looking at — deliberately, since a cookie
+value is never recorded. Failing those servers would be this project inventing
+a threshold nobody can argue with.
+
+**`SameSite` missing** is treated as `Lax` by current browsers. That is a
+property of the browser rather than of the server, so it is stated rather than
+graded.
+
+**A `Domain` attribute** widens a cookie beyond the host that set it. That is
+often deliberate, and it is reported because it decides how far a cookie
+travels.
+
+### Nothing else moved
+
+No reach or HSTS rule was added, removed, or made stricter. A site with no
+cookies is graded exactly as it was under v2.
+
+---
+
 ## `denyfirst-web-v1` → `denyfirst-web-v2`
 
 Released in v0.15.1, 2026-09.

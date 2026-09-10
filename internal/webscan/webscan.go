@@ -148,11 +148,12 @@ func Grade(observed *webprobe.Report) *Result {
 	reach := policy.GradeReach(hops(observed.Secure), hops(observed.Plain))
 	hsts := policy.GradeHSTS(securePolicy(observed.Secure), plaintextPolicy(observed.Plain),
 		answered(observed.Secure))
+	cookies := policy.GradeCookies(cookieFacts(observed))
 
 	// Worst case across the checks, for the reason it is worst case within
 	// one: a site reached in the clear is reached in the clear however sound
 	// its policy declaration is.
-	for _, r := range []policy.WebResult{reach, hsts} {
+	for _, r := range []policy.WebResult{reach, hsts, cookies} {
 		out.Findings = append(out.Findings, r.Findings...)
 		out.Notes = append(out.Notes, r.Notes...)
 		out.Verdict = policy.Worst(out.Verdict, r.Verdict)
@@ -262,4 +263,45 @@ func (s *Scanner) now() time.Time {
 		return s.Now()
 	}
 	return time.Now()
+}
+
+// cookieFacts reduces every cookie in both chains to what the rules read.
+//
+// Both chains, because a cookie set anywhere along the way is a cookie the
+// visitor carries. A hop that failed carries none, and is skipped rather than
+// treated as a response that set nothing.
+//
+// Each cookie is tagged with whether the response that set it arrived over
+// TLS, which is the fact that decides what a missing Secure attribute means: a
+// cookie set on a plaintext response was already in the clear before any
+// attribute could have helped, and that is the reach finding rather than a
+// cookie one. Charging it twice would report one mistake as two.
+func cookieFacts(r *webprobe.Report) []policy.CookieFacts {
+	var out []policy.CookieFacts
+
+	for _, c := range []*webprobe.Chain{r.Secure, r.Plain} {
+		if c == nil {
+			continue
+		}
+		for _, hop := range c.Hops {
+			if hop.Err != "" {
+				continue
+			}
+			for _, cookie := range hop.Cookies {
+				out = append(out, policy.CookieFacts{
+					Name:         cookie.Name,
+					Secure:       cookie.Secure,
+					HTTPOnly:     cookie.HTTPOnly,
+					SameSite:     cookie.SameSite,
+					Path:         cookie.Path,
+					DomainSet:    cookie.DomainSet,
+					HostPrefix:   cookie.HostPrefix,
+					SecurePrefix: cookie.SecurePrefix,
+					OverTLS:      hop.TLS,
+				})
+			}
+		}
+	}
+
+	return out
 }
