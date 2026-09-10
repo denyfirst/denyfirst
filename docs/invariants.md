@@ -270,6 +270,13 @@ protects the server being measured and a second budget would let one host be
 made to absorb twice the peak. The scan allowance is shared, because two
 endpoints each with a full one would silently double what a client can spend.
 
+**And the list is asked about every host a redirect names.** The chain above
+authorises the host somebody typed. A demonstration build that followed a
+`Location` header off the hosts this project owns would be connecting to a
+stranger from this project's address — this arrangement rebuilt through a door
+nobody was watching, and needing no compromise to arrange, since a marketing
+redirect to somebody else's platform is enough. N10 is that guard.
+
 *Enforced in:* `internal/demo` (`demo.go`, `demo_on.go`, `demo_off.go`),
 `internal/scan.Scanner.Scan`, `internal/webscan.Scanner.Scan`,
 `internal/httpapi.Server.handleScan`, `internal/httpapi` (`check`, `target`),
@@ -460,6 +467,13 @@ authority exists: a deployment that establishes its scope at run time
 (`docs/scope.md`) must not be able to buy a scan of a name on this list by
 proving control of it.
 
+**And it holds at a redirect.** A name on this list was refused when typed and
+reached when a `Location` header pointed at it, until the web probe began
+asking the caller's boundary about every host a redirect names. N10 has the
+reasoning; it applies to this list, to the demonstration list and to a verified
+zone alike, because all three answer the same question about the same kind of
+address.
+
 **The refusal states the rule and does not repeat the name** (I3).
 
 *Enforced in:* `internal/exclusion`, `internal/scan.Scanner.Scan`,
@@ -555,6 +569,80 @@ carries the gap until it is.
 `TestAnUnverifiedNameIsRefusedBeforeAnythingIsDialled`,
 `TestAVerifiedNameIsScanned`, `TestNoScopeMeansNoProofIsRequired`,
 `TestAnExcludedNameIsRefusedAsExcludedRatherThanAsUnproven`
+
+---
+
+### N10 — A redirect is a connection the scanned server chose
+
+Every boundary above authorises **the host the caller asked about**. A redirect
+names a different one, and until 2026-09-10 the probe followed it: the
+exclusion list, the demonstration list and the verified zone all held at the
+front door and none of them held at the hop.
+
+What that cost is not theoretical, and it is worst on the two deployments this
+project is most careful about. A name on the exclusion list was refused when
+typed and reached when a `Location` header pointed at it (N8). The
+demonstration build — whose entire safety is a compiled-in list of hosts this
+project owns — would have connected to a stranger the moment one of our own
+hosts answered with a redirect off it, which is N6's arrangement rebuilt
+through a door nobody was watching, and which needs no compromise to arrange:
+a marketing redirect to somebody else's platform is enough. And a deployment
+that scans only estates it has proven control of could be walked out of its own
+estate by one header on a site it does own (N9).
+
+`safedial` was never the answer to this. It stops a redirect reaching a
+private, loopback or reserved address, which is a different question — the
+hosts above are ordinary public ones.
+
+**So the boundary is asked again, at the hop, before the address is dialled.**
+The same three sources of authority, in the same order, written once in
+`webscan.Scanner.reachable` rather than twice, so that an authority added later
+cannot hold at the front door and not at the hop.
+
+**The host asked about is not asked about again**, and no name is asked about
+twice in one probe. Asking can be a DNS lookup somebody else's resolver serves;
+a redirect from `https` to `http` on the same name is the commonest redirect
+there is, and a chain of five hops on one host would otherwise be five
+questions. The names are folded before they are asked or remembered, for the
+reason N8 gives about its own comparison.
+
+**A boundary that cannot be asked stops the chain.** A lookup that fails is not
+permission — a guard that gives way whenever a resolver is slow is a guard
+somebody can arrange to be slow.
+
+**It is a parameter of `Probe`, not a field on `Prober`.** `Dial` is a field
+because leaving it unset selects the safe answer; this has no safe default,
+since the command line must follow a redirect anywhere and a service must not.
+So it is spelled at every call site, where a review can see a `nil` — because a
+guard a constructor has to remember to set is a guard somebody forgets, and
+this project has already been caught by exactly that (N9).
+
+**Declining is recorded, never silent.** The chain carries the reason in
+`Stopped`, which is not `Truncated`: one is a limit of the method and the other
+is a decision, and only one of them changes if the site is scanned from
+somewhere else. The reason states the rule and does not name the host (I3) —
+the `Location` header is one of the headers the probe keeps, so the reader has
+the address without the report repeating it. And the reason is a string rather
+than an error, because it is written into a report a stranger reads: an error
+from the caller's boundary could carry a resolver's address, and a signature
+with nowhere to put one is stronger than a rule saying not to (I6).
+
+*Enforced in:* `internal/webprobe.Prober.chain`, `internal/webprobe.walk`,
+`internal/webscan.Scanner.reachable`
+*Guarded by:* `TestARedirectIsNotFollowedToAHostTheCallerRefuses`,
+`TestARedirectIsFollowedToAHostTheCallerAllows`,
+`TestANilReachFollowsAnyHost`,
+`TestTheHostAskedAboutIsNotAskedAgain`,
+`TestOneQuestionPerDistinctHost`,
+`TestTheHostIsFoldedBeforeTheBoundaryIsAsked`,
+`TestARefusedRedirectIsNotReportedAsTheRedirectLimit`,
+`TestARedirectToAnExcludedDomainIsNotFollowed`,
+`TestARedirectOutOfTheVerifiedZoneIsNotFollowed`,
+`TestARedirectInsideTheVerifiedZoneIsFollowed`,
+`TestARedirectIsNotFollowedWhenTheBoundaryCannotBeAsked`,
+`TestTheRedirectRefusalNamesNoHost`,
+`TestARedirectOffTheDemonstrationIsNotFollowed`,
+`TestARedirectInsideTheDemonstrationIsFollowed`
 
 ## Input
 

@@ -16,6 +16,7 @@ package webscan
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/demo"
@@ -136,7 +137,20 @@ func (s *Scanner) Scan(ctx context.Context, host string) (*Result, error) {
 		prober = &webprobe.Prober{}
 	}
 
-	observed, err := prober.Probe(ctx, host)
+	// And again, for every host a redirect names.
+	//
+	// The three guards above authorise the host that was asked about. A
+	// redirect is a different host, chosen by the server that answered rather
+	// than by the operator, and until this was passed the probe followed one
+	// anywhere the ports and safedial allowed. So a name on the exclusion
+	// list was refused when typed and reached when a redirect pointed at it;
+	// so was a host outside a demonstration build; and a deployment that
+	// scans only what it has been shown control of could be walked out of its
+	// own estate by one Location header on a site it does own.
+	//
+	// N10 has the reasoning. The same three sources of authority, in the same
+	// order, are what s.reachable asks.
+	observed, err := prober.Probe(ctx, host, s.reachable)
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +159,47 @@ func (s *Scanner) Scan(ctx context.Context, host string) (*Result, error) {
 	out.Host = host
 	out.Duration = s.now().Sub(started)
 	return out, nil
+}
+
+// reachable answers whether a redirect may be followed to a host, and why not
+// when it may not.
+//
+// It asks what Scan asks about the host it was given, in the same order and
+// from the same three sources of authority, because a redirect target is a
+// host this deployment is about to connect to and there is no second set of
+// rules about that. Written once here rather than twice, so that a source of
+// authority added later cannot hold at the front door and not at the hop.
+//
+// The sentences are fixed and none of them repeats the name (I3). They go into
+// a report, and the report goes to whoever asked — including, on a service, a
+// stranger. The Location header is kept in the hop that produced it, so a
+// reader can see the address without this saying it.
+func (s *Scanner) reachable(ctx context.Context, host string) string {
+	if exclusion.Covers(host) {
+		return "the Location header named a domain this service does not scan"
+	}
+
+	if demo.Refusal(host) {
+		return "the Location header named a host outside what this deployment scans"
+	}
+
+	if s.Verify == nil {
+		return ""
+	}
+
+	if err := s.Verify.Covers(ctx, host); err != nil {
+		if errors.Is(err, verify.ErrNotVerified) {
+			return "the Location header named a domain this deployment has not been shown control of"
+		}
+
+		// Any other failure is this deployment being unable to ask rather
+		// than an answer, and it stops the chain. Following on would be a
+		// boundary that opens whenever a resolver is slow, which is a
+		// boundary somebody can arrange to be slow.
+		return "whether that domain may be reached could not be established"
+	}
+
+	return ""
 }
 
 // Grade turns what a probe observed into a graded result.
