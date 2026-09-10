@@ -422,9 +422,36 @@ written in that function. There is no pass-through, and the default case is a
 phrase rather than the error: an unrecognised failure is the one most likely
 to carry an address, and the one nobody has reviewed.
 
-*Enforced in:* `internal/tlsprobe.classifyHandshakeError`
+**Both probes, and the second one was open for two rule sets.** The web check
+wrote `hop.Err` straight from the library, so a name that did not resolve
+recorded the resolver this machine asked and a destination safedial declined
+recorded the address it declined. It was reachable only from the command line,
+where the operator reading the report runs the machine described — which is
+why it survived. It stops being that the day the check has an address on the
+service, and a report is then a reply to a stranger. `classifyProbeError` is
+the same rule applied to the other probe, written before that endpoint rather
+than after it.
+
+The phrases differ only where the checks differ. This client verifies, which
+the TLS probe deliberately does not, so a certificate a browser would refuse
+stops a hop here; that is a finding about how the secure address behaves for a
+visitor, and it is answered with a phrase rather than the library's text,
+which carries a second half-description of a certificate the TLS report
+already describes in full.
+
+**A refusal is recognised by what it is, not by how it reads.** The policy
+branch is asked before every message test, because its text is the one certain
+to carry an address. Nothing today depends on that order — no `ErrBlocked`
+message contains a phrase a later branch matches — and that is a fact about
+safedial's current wording rather than a property of the function, so the
+order is pinned by a test rather than by a comment.
+
+*Enforced in:* `internal/tlsprobe.classifyHandshakeError`,
+`internal/webprobe.classifyProbeError`
 *Guarded by:* `TestHandshakeErrorsCarryNoInfrastructure`,
-`TestReportFromAFailedProbeNamesNoAddress`
+`TestReportFromAFailedProbeNamesNoAddress`,
+`TestAFailedHopNamesNoInfrastructure`,
+`TestAPolicyRefusalIsRecognisedWhateverItSays`
 
 ### I7 — One host has one spelling
 
@@ -588,10 +615,28 @@ once the handler has validated the target. It is written as a counted refusal
 anyway, since the signature permits an error and an uncounted one would be the
 same hole in a different place.
 
+**The fact is carried as a field, and the field comes before the entry point
+that counts it.** `blocked_destination` was silent on the TLS check until
+`tlsprobe.Report.BlockedDestination` existed, because the reason lived in
+prose inside a successful report and a count built by matching prose breaks
+the first time the prose is improved. `webprobe.Report` carries the same field
+for the same reason, and it was given it *before* the web check had an address
+on the service — the order N6 argues for, so that an entry point written later
+inherits the signal instead of having to remember it.
+
+It is true only where every hop was refused. A name reached on one port and
+declined on the other has been measured, and answering that with a refusal
+would hide the half that succeeded.
+
 *Enforced in:* `internal/httpapi.Server.refuse`,
-`internal/tlsprobe.Report.BlockedDestination`
+`internal/tlsprobe.Report.BlockedDestination`,
+`internal/webprobe.Report.BlockedDestination`
 *Guarded by:* `TestEveryRefusalCodeCanBeProduced`,
-`TestOnlyKnownRefusalCodesAreCounted`
+`TestOnlyKnownRefusalCodesAreCounted`,
+`TestANameThatResolvesOnlyWhereWeWillNotGoIsRecordedAsBlocked`,
+`TestANameReachedOnOnePortIsNotABlockedDestination`,
+`TestNoHopsIsNotABlockedDestination`,
+`TestOnlyAPolicyRefusalSetsTheBlockedFlag`
 
 ### A8 — The per-target table regenerates faster than this service can spend it
 
