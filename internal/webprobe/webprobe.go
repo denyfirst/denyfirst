@@ -238,7 +238,7 @@ type Report struct {
 // this program. An error here means the target was refused or nothing could
 // be attempted at all.
 func (p *Prober) Probe(ctx context.Context, host string) (*Report, error) {
-	if err := checkHostname(host); err != nil {
+	if err := CheckHostname(host); err != nil {
 		return nil, err
 	}
 
@@ -511,14 +511,20 @@ func (p *Prober) client() *http.Client {
 	}
 }
 
-// checkHostname refuses anything that is not a bare name.
+// CheckHostname refuses anything that is not a bare name.
+//
+// Exported because a caller has to be able to ask before it acts. A scanner
+// deciding whether a deployment may reach a host wants a valid host first:
+// asking the deployment about "not a hostname" and answering "this deployment
+// does not demonstrate that" tells the reader the wrong thing about their own
+// mistake.
 //
 // No scheme, no path, no port, no address. The check is deliberately narrow:
 // this reads how a website answers the thing a person types into a browser,
 // and a person types neither a scheme nor a port. A caller wanting something
 // else is asking for a different measurement, which should have a different
 // name rather than a flag on this one.
-func checkHostname(host string) error {
+func CheckHostname(host string) error {
 	switch {
 	case host == "":
 		return fmt.Errorf("%w: it is empty", ErrNotAHostname)

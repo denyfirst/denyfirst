@@ -98,7 +98,7 @@ jobs:
       - name: Build and test the demonstration deployment
         run: |
           go build -trimpath -tags demo ./...
-          go test -race -shuffle=on -tags demo ./internal/demo/ ./internal/scan/ ./internal/web/
+          go test -race -shuffle=on -tags demo ./internal/demo/ ./internal/scan/ ./internal/webscan/ ./internal/web/
           go test -race -shuffle=on -tags demo -run Demonstration -v ./internal/httpapi/ \
             | tee /tmp/demo-api.log
           grep -q 'PASS: TestTheDemonstrationRefusalIsAnsweredAndCounted' /tmp/demo-api.log

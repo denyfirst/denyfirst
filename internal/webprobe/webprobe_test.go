@@ -368,14 +368,14 @@ func TestABareHostnameIsRequired(t *testing.T) {
 		{"a bare name", "localhost"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := checkHostname(tc.host); !errors.Is(err, ErrNotAHostname) {
-				t.Errorf("checkHostname(%q) = %v, want ErrNotAHostname", tc.host, err)
+			if err := CheckHostname(tc.host); !errors.Is(err, ErrNotAHostname) {
+				t.Errorf("CheckHostname(%q) = %v, want ErrNotAHostname", tc.host, err)
 			}
 		})
 	}
 
-	if err := checkHostname("example.com"); err != nil {
-		t.Errorf("checkHostname(example.com) = %v, want nil", err)
+	if err := CheckHostname("example.com"); err != nil {
+		t.Errorf("CheckHostname(example.com) = %v, want nil", err)
 	}
 }
 
