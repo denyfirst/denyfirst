@@ -215,6 +215,3 @@ which is its own roadmap defect.
 checks at startup.** Already a roadmap defect. It matters more here: the
 platforms where it misbehaves are the ones self-hosters run.
 
-**The counters describe one check.** `Snapshot` carries one verdict breakdown,
-and a `strong` mixing two rule sets means nothing (R22). Scheduled with the
-web check's service surface.

@@ -477,7 +477,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	// Counted only on success, and only as a number. Nothing about which
 	// target produced it is kept, so the figure can be published without
 	// describing anybody.
-	s.counts.record(result.Verdict)
+	s.counts.record(checkTLS, result.Verdict)
 
 	writeJSON(w, http.StatusOK, scanResponse{
 		Result:   result,

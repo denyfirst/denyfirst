@@ -45,9 +45,18 @@ the day there is something to put there.
 The demonstration guard is already in `webscan.Scanner.Scan`, so the endpoint
 inherits it rather than having to remember it.
 
-**The counters need a decision before the endpoint lands.** `Snapshot` carries
-one verdict breakdown, and a `strong` mixing two rule sets means nothing. The
-per-check figures have to be separated without breaking a published shape.
+**The counters were settled first**, on 2026-09-10. Each check has its own
+block naming its own rule set; the fields at the top of a `Snapshot` are still
+the TLS check's, spelled the same and counting the same thing, and the `tls`
+block repeats them. Nothing published moved, so a reader of `/api/v1/stats`
+and a rollback to an older binary both keep figures that mean what they meant.
+R22 has the reasoning. The `web` block appears when the endpoint below can
+produce one, and a test names it as not yet reachable until then.
+
+**The privacy page describes one figure per scan** and will need a sentence
+once the web endpoint is counted, because there are two blocks now. Nothing
+new is recorded — no hostname, no address, no time — but the page says what is
+kept and should keep saying it accurately.
 
 ### 2. Scope: prove control of a domain before scanning it
 
