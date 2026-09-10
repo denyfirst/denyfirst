@@ -134,16 +134,6 @@ SSLv3, export and NULL suites and per-suite TLS 1.3 enumeration.
 
 ## Known defects
 
-**`certinfo` verifies against a different trust store from the one the service
-checks.** `leaf.Verify` is called with a nil `Roots`, which means the system
-pool, which on Windows and macOS means the platform verifier. Two of its tests
-have failed on those platforms since they were written, because the fixture
-points `SSL_CERT_FILE` and `SSL_CERT_DIR` at a private authority and only Go's
-unix root loader reads those variables. Harmless while this ran on one Linux
-server; not harmless now that self-hosting is the product. The store the
-program checks at startup should be the store it verifies against, on every
-platform, which means threading an explicit `*x509.CertPool` through.
-
 **`denyfirst-scan -version` prints both rule sets but no reach line**, while
 `denyfirstd` prints one. Every binary should say what it will connect to. A
 deployment whose scope is established at run time rather than compiled in has

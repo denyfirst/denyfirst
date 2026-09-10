@@ -1426,9 +1426,51 @@ second intermediate passes it. Measured: leaf and one intermediate sent, the
 next one omitted, `chainComplete` true, and a real client refusing the
 connection. The finding now says what is checked.
 
-*Enforced in:* `internal/certinfo.chainComplete`
+**The store a chain is judged against is the store this program checked.** The
+same rule read one layer down, and it was broken in the layer nobody looked
+at. `x509.Verify` with a nil `Roots` does not mean "the system pool"; it means
+*decide for yourself*, and on Windows and macOS deciding hands the whole
+question to the platform verifier — a different store, reading neither the
+pool `denyfirstd` reads when it starts nor `SSL_CERT_FILE`. So the service
+satisfied itself that its trust store was not empty and then judged every
+chain against something else, on the two platforms self-hosting is most likely
+to run on. It refused to start on a machine with no store and would have
+reported chains as trusted on one it never consulted.
+
+The pool is a parameter now, `denyfirstd` hands the scanner the pool it
+checked, and nothing leaves `Roots` nil. A non-nil `Roots` takes the pure-Go
+path everywhere, so one store decides on every platform — which is what this
+invariant asks for and what the nil was quietly preventing.
+
+The symptom was visible for months and read as something else. Two tests in
+`internal/certinfo` failed on Windows and macOS from the day they were
+written, because the fixture installed its private authority through
+`SSL_CERT_FILE` and only Go's unix root loader reads it. That looked like a
+fixture that did not port. It was the program measuring against a store it had
+never looked at, and the fixture was the only thing saying so. The tests pass
+the pool now, which is what the program does, so they exercise the real path
+rather than a second one arranged for them — and the package runs on every
+platform.
+
+**A store that cannot be read is a fact about this machine.** It is said in
+words rather than reported as an untrusted chain, which would be a finding
+about somebody else's certificate produced by a local failure (R4). The pool
+returned in that case is empty rather than nil, because nil would send the
+verification back to the platform — and on the machine whose store could not
+be read, that path reports chains as trusted.
+
+*Enforced in:* `internal/certinfo.chainComplete`,
+`internal/certinfo.resolveRoots`, `internal/scan.Scanner.Roots`,
+`cmd/denyfirstd`
 *Guarded by:* `TestMissingIssuerIsAnIncompleteChain`,
-`TestPresentIssuerIsNotAnIncompleteChain`
+`TestPresentIssuerIsNotAnIncompleteChain`,
+`TestTheRootsPassedInAreTheOnesThatDecide`,
+`TestANilPoolBecomesTheSystemPoolRatherThanThePlatformVerifier`,
+`TestAPoolPassedInIsNotReplaced`,
+`TestAnUnreadableStoreIsNotReportedAsAnUntrustedServer`,
+`TestTheTestRootIsTheStoreAnalyseUses`,
+`TestTheScannersTrustStoreIsWhatJudgesTheChain`,
+`TestAnEmptyTrustStoreStopsTheServiceStarting`
 
 ### R8 — Rules that change on a schedule are written as schedules
 
@@ -1673,7 +1715,7 @@ server sent, and the two need not carry the same extensions.
 `TestAnIssuerSubjectCannotRewriteTheReport`,
 `TestTheVerdictIsTheWorstAcrossTheChain`,
 `TestAFindingAboutAnIssuerReachesTheFindings`,
-`TestASoundLeafTakesItsIssuersVerdict`, `TestTheTestRootIsInTheStore`,
+`TestASoundLeafTakesItsIssuersVerdict`, `TestTheTestRootIsTheStoreAnalyseUses`,
 `TestAConstrainedIssuerIsDescribed`, `TestAnUnconstrainedIssuerSaysNothing`,
 `TestARootsConstraintsAreNotReported`,
 `TestAConstraintCannotRewriteTheReport`

@@ -184,7 +184,7 @@ func TestAnExtendedValidationSubjectReachesTheReport(t *testing.T) {
 		},
 	}})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}

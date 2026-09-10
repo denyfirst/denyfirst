@@ -436,7 +436,25 @@ func mixedScriptNote(leaf *x509.Certificate) string {
 // Analyse describes and grades a chain. The chain must be leaf first, as TLS
 // presents it. Passing an empty hostname skips the name check and says so in
 // the notes rather than silently reporting a pass.
-func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report, error) {
+//
+// roots is the store the chain is judged against. It is a parameter rather
+// than a default because it was a default, and the default was not what the
+// program had checked.
+//
+// Verify with a nil Roots does not mean "the system pool". On Linux it very
+// nearly does; on Windows and macOS it hands the whole question to the
+// platform verifier, which is a different code path reading a different store
+// and ignoring SSL_CERT_FILE and SSL_CERT_DIR entirely. So denyfirstd would
+// read a pool at startup, satisfy itself that it was not empty, and then judge
+// every chain against something else — on the two platforms self-hosting is
+// most likely to run on. Two tests in this package had failed there since they
+// were written, which was the symptom nobody read as one.
+//
+// A non-nil Roots takes the pure-Go path on every platform, so the store that
+// was checked is the store that decides. Nil is still accepted and still means
+// the system pool, but it is loaded here and passed explicitly rather than
+// left for Verify to interpret.
+func Analyse(chain []*x509.Certificate, hostname string, now time.Time, roots *x509.CertPool) (*Report, error) {
 	if len(chain) == 0 {
 		return nil, ErrNoChain
 	}
@@ -491,9 +509,22 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 		intermediates.AddCert(c)
 	}
 
+	roots, rootsErr := resolveRoots(roots)
+	if rootsErr != nil {
+		// Nothing can be said about trust, and "untrusted" is not the way to
+		// say it: that is a finding about the server, and what happened is
+		// that this machine could not read its own store (R4). The chain is
+		// still described — names, dates, key, algorithms are all readable
+		// without a root — and the trust question is left open in words.
+		report.unsettled("The trust store on this machine could not be read, so whether this chain " +
+			"reaches a trusted root was not established. That is a fact about the machine running " +
+			"this scan and not about the server it looked at.")
+	}
+
 	// The name is checked separately below so that a wrong name and an
 	// untrusted chain remain distinguishable findings.
 	_, err := leaf.Verify(x509.VerifyOptions{
+		Roots:         roots,
 		Intermediates: intermediates,
 		CurrentTime:   now,
 		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -523,7 +554,7 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 		// earlier, was reported trusted.
 		var invalid x509.CertificateInvalidError
 		if errors.As(err, &invalid) && invalid.Reason == x509.Expired {
-			report.Trusted = trustedWithinValidity(leaf, intermediates)
+			report.Trusted = trustedWithinValidity(leaf, roots, intermediates)
 		}
 	}
 
@@ -779,7 +810,7 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time) (*Report
 // valid; Go reports both as Expired. An intermediate that had already expired
 // by then makes this false, which is the right answer: the chain was not
 // verifiable at that moment either.
-func trustedWithinValidity(leaf *x509.Certificate, intermediates *x509.CertPool) bool {
+func trustedWithinValidity(leaf *x509.Certificate, roots, intermediates *x509.CertPool) bool {
 	window := leaf.NotAfter.Sub(leaf.NotBefore)
 	if window <= 0 {
 		// NotAfter at or before NotBefore. There is no moment to ask about.
@@ -787,6 +818,7 @@ func trustedWithinValidity(leaf *x509.Certificate, intermediates *x509.CertPool)
 	}
 
 	_, err := leaf.Verify(x509.VerifyOptions{
+		Roots:         roots,
 		Intermediates: intermediates,
 		CurrentTime:   leaf.NotBefore.Add(window / 2),
 		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
@@ -1203,3 +1235,40 @@ func (r *Report) observe(text string) { r.Notes = append(r.Notes, policy.Observe
 func (r *Report) unsettled(text string) { r.Notes = append(r.Notes, policy.Unsettled(text)) }
 
 func (r *Report) standing(l policy.StandingLimit) { r.Notes = append(r.Notes, l.Note()) }
+
+// resolveRoots turns a caller's store into one Verify will use on every
+// platform.
+//
+// A nil pool reaching x509.VerifyOptions is the defect this exists to close:
+// Verify reads it as "decide for yourself", and on Windows and macOS deciding
+// means calling the platform verifier, which consults neither the pool this
+// program checked at startup nor SSL_CERT_FILE. Loading the system pool here
+// and passing it explicitly keeps one store in play everywhere.
+//
+// An error is returned rather than swallowed, and the caller says so in words
+// rather than reporting the chain as untrusted: a store that could not be read
+// is a fact about this machine, not about the server (R4).
+// systemCertPool is a variable so that the failure branch below can be
+// reached by a test.
+//
+// It could not be. The branch matters most on a machine whose store cannot be
+// read, which is the machine no test runs on — and a test that skips itself
+// everywhere is the same silence A7 is about, arriving in a test file instead
+// of in a counter.
+var systemCertPool = x509.SystemCertPool
+
+func resolveRoots(roots *x509.CertPool) (*x509.CertPool, error) {
+	if roots != nil {
+		return roots, nil
+	}
+
+	pool, err := systemCertPool()
+	if err != nil {
+		// An empty pool rather than nil. Nil would send Verify back to the
+		// platform verifier, which is the behaviour being removed — and it
+		// would report a trusted chain on the two platforms where the store
+		// could not be read, which is the worst of the available answers.
+		return x509.NewCertPool(), err
+	}
+	return pool, nil
+}

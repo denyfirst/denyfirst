@@ -200,7 +200,7 @@ func TestTheFingerprintReachesTheReport(t *testing.T) {
 		t.Fatalf("parsing it back: %v", err)
 	}
 
-	report, err := Analyse([]*x509.Certificate{leaf}, "roca.test", time.Now())
+	report, err := Analyse([]*x509.Certificate{leaf}, "roca.test", time.Now(), testRoots)
 	if err != nil {
 		t.Fatalf("analysing: %v", err)
 	}

@@ -33,7 +33,7 @@ func TestAnExpiredUntrustedChainIsNotReportedTrusted(t *testing.T) {
 		notAfter:  refNow.AddDate(0, 0, -7),
 	})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "expired.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "expired.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestTrustWithinValidityAsksARealQuestion(t *testing.T) {
 		notBefore: refNow.AddDate(0, 0, -60),
 		notAfter:  refNow.AddDate(0, 0, -7),
 	})
-	if trustedWithinValidity(stale, pool) {
+	if trustedWithinValidity(stale, testRoots, pool) {
 		t.Error("a chain to an uninstalled root verified inside its window; the intermediates pool is not the trust store")
 	}
 
@@ -89,7 +89,7 @@ func TestTrustWithinValidityAsksARealQuestion(t *testing.T) {
 		notBefore: refNow,
 		notAfter:  refNow.Add(-time.Hour),
 	})
-	if trustedWithinValidity(backwards, pool) {
+	if trustedWithinValidity(backwards, testRoots, pool) {
 		t.Error("a certificate whose validity ends before it begins was reported trusted")
 	}
 }
@@ -160,7 +160,7 @@ func TestSummaryDoesNotCallAnExpiredCertificateCurrent(t *testing.T) {
 		notAfter:  refNow.Add(-8 * time.Hour),
 	})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "just.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "just.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestAnUnnamedExtendedKeyUsageIsStillReported(t *testing.T) {
 	oid := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 3, 36}
 	leaf := newLeaf(t, root, leafOpts{unknownEKU: []asn1.ObjectIdentifier{oid}})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -312,7 +312,7 @@ func TestTheReportSaysWhoseRootStoreDecided(t *testing.T) {
 		{"a chain that does not reach a trusted root", []*x509.Certificate{newLeaf(t, root, leafOpts{}), root.cert}},
 		{"a self-signed certificate", []*x509.Certificate{newLeaf(t, root, leafOpts{selfSign: true})}},
 	} {
-		report, err := Analyse(c.chain, "example.test", refNow)
+		report, err := Analyse(c.chain, "example.test", refNow, testRoots)
 		if err != nil {
 			t.Fatalf("%s: Analyse: %v", c.name, err)
 		}

@@ -36,7 +36,7 @@ func TestTheValidationLevelIsNamed(t *testing.T) {
 		root := newRoot(t)
 		leaf := newLeaf(t, root, leafOpts{policies: []x509.OID{policyOID(t, c.arcs...)}})
 
-		report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+		report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow, testRoots)
 		if err != nil {
 			t.Fatalf("%s: Analyse: %v", c.name, err)
 		}
@@ -64,7 +64,7 @@ func TestACertificateWithNoKnownPolicySaysNothing(t *testing.T) {
 	} {
 		leaf := newLeaf(t, root, leafOpts{policies: c.policies})
 
-		report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+		report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow, testRoots)
 		if err != nil {
 			t.Fatalf("%s: Analyse: %v", c.name, err)
 		}
@@ -87,7 +87,7 @@ func TestTheStrongestPolicyIsTheOneNamed(t *testing.T) {
 		policyOID(t, 2, 23, 140, 1, 1),    // extended
 	}})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestTheValidationLevelIsNotGraded(t *testing.T) {
 	root := newRoot(t)
 	leaf := newLeaf(t, root, leafOpts{policies: []x509.OID{policyOID(t, 2, 23, 140, 1, 2, 1)}})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}

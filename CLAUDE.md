@@ -120,13 +120,14 @@ go test ./...
 
 Two things about `go test ./...`:
 
-- **On Windows and macOS, two `internal/certinfo` tests fail** and have since
-  they were written. They build a private authority and point `SSL_CERT_FILE`
-  and `SSL_CERT_DIR` at it; only Go's unix root loader reads those variables,
-  so the platform verifier never sees the test root. It is a real defect —
-  `certinfo` verifies with a nil `Roots`, which means a different trust store
-  from the one `denyfirstd` checks at startup — and it has its own change
-  waiting. Until then, exclude that package on those platforms.
+- **`internal/certinfo` used to fail on Windows and macOS** and no longer
+  does. Two of its tests had failed there since they were written, because the
+  fixture installed a private authority through `SSL_CERT_FILE` and only Go's
+  unix root loader reads that. The fixture was the symptom rather than the
+  fault: `certinfo` verified with a nil `Roots`, which hands the whole question
+  to the platform verifier — a different store from the one `denyfirstd`
+  checks when it starts. The store is passed explicitly now, so it is the same
+  store on every platform and the package runs everywhere.
 - **`-race` needs cgo**, which needs a C toolchain a Go installation on
   Windows does not bring. CI runs it on Linux.
 

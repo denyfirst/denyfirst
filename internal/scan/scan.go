@@ -221,6 +221,21 @@ type Scanner struct {
 	// asked.
 	Verify *verify.Scope
 
+	// Roots is the trust store every chain is judged against.
+	//
+	// Nil means the system pool, loaded explicitly rather than left for
+	// x509.Verify to interpret — because Verify reads a nil Roots as "decide
+	// for yourself", and on Windows and macOS deciding means the platform
+	// verifier, which is a different store from the one this program checks
+	// when it starts. A service that satisfied itself at startup that its
+	// trust store was not empty was then judging chains against something
+	// else entirely, on the two platforms self-hosting is most likely to run
+	// on.
+	//
+	// A caller that has a pool passes it, so the store it checked is the
+	// store that decides.
+	Roots *x509.CertPool
+
 	// Now supplies the current time, so certificate arithmetic is
 	// reproducible in tests. Nil means time.Now.
 	Now func() time.Time
@@ -288,7 +303,7 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 	out.Verdict = tlsReport.Verdict
 
 	if len(tlsReport.Certificates) > 0 {
-		certReport, err := certinfo.Analyse(tlsReport.Certificates, host, s.now())
+		certReport, err := certinfo.Analyse(tlsReport.Certificates, host, s.now(), s.Roots)
 		if err != nil {
 			return nil, fmt.Errorf("analysing the certificate for %s: %w", out.Target, err)
 		}
@@ -305,7 +320,7 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 		// only when the leaf is a different certificate, so in the ordinary
 		// case the loop does not run.
 		for _, alt := range tlsReport.AlternateChains {
-			altReport, err := certinfo.Analyse(alt.Certificates, host, s.now())
+			altReport, err := certinfo.Analyse(alt.Certificates, host, s.now(), s.Roots)
 			if err != nil {
 				// Not fatal. The chain this report describes was analysed
 				// successfully, and refusing the whole scan because a second
