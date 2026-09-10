@@ -77,6 +77,14 @@ asked in both scanners beside the demonstration list, and
 a TXT record for the zone, a file for one hostname — and a file does not open a
 check that leaves the ports a browser uses. N9 has the reasoning.
 
+It was asked in both scanners and configured on one. `httpapi.New` built the
+web check from nothing, so a service that set a scope refused an unproven host
+on `/api/v1/tls/scan` and measured it on `/api/v1/web/scan` — every guard in
+place, every unit test passing, and no boundary on half the surface. The
+constructor now hands the boundary to every check it builds, `UseWebScanner`
+cannot drop it, and the test drives the `POST` routes read out of the source
+rather than a list somebody has to remember to extend.
+
 What is left is the default. `docs/scope.md` says it belongs **on** for a
 service, and turning it on stops every deployment that has not published a
 record yet — a change to make deliberately, with a release note, rather than

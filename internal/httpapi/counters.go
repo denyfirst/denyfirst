@@ -45,6 +45,15 @@ var refusalCodes = []string{
 	// deployment does not do, which is the sentence that would tell us the
 	// page is not explaining itself.
 	"not_demonstrated", // a host outside what this deployment demonstrates
+
+	// Only a deployment that requires proof of control can produce this one,
+	// and it is the figure that says whether the requirement is understood.
+	// A number rising here is not an attack: it is people asking about
+	// domains they have not published a record for, which is either a
+	// procedure nobody was told about or a record that stopped resolving.
+	// Both are things an operator wants to see, and neither can be seen from
+	// a scan count.
+	"not_verified", // a domain this deployment has not been shown control of
 }
 
 // checkNames are the checks this service counts, and the complete set of keys
