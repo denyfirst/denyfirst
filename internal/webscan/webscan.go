@@ -127,7 +127,7 @@ func (s *Scanner) Scan(ctx context.Context, host string) (*Result, error) {
 	// has been shown, and a guard in one entry point disappears the moment a
 	// second is added.
 	if s.Verify != nil {
-		if err := s.Verify.Covers(ctx, host); err != nil {
+		if err := s.Verify.Covers(ctx, host, verify.HTTPOnly); err != nil {
 			return nil, err
 		}
 	}

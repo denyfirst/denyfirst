@@ -44,7 +44,7 @@ func TestAPublishedTokenCoversTheZone(t *testing.T) {
 		"EXAMPLE.COM",
 		"www.example.com.",
 	} {
-		if err := scope(p).Covers(context.Background(), host); err != nil {
+		if err := scope(p).Covers(context.Background(), host, AnyPort); err != nil {
 			t.Errorf("Covers(%q) = %v, want nil", host, err)
 		}
 	}
@@ -66,7 +66,7 @@ func TestADomainThatProvedNothingIsRefused(t *testing.T) {
 		"notexample.com",
 		"example.com.attacker.test",
 	} {
-		if err := scope(p).Covers(context.Background(), host); !errors.Is(err, ErrNotVerified) {
+		if err := scope(p).Covers(context.Background(), host, AnyPort); !errors.Is(err, ErrNotVerified) {
 			t.Errorf("Covers(%q) = %v, want ErrNotVerified", host, err)
 		}
 	}
@@ -91,7 +91,7 @@ func TestATokenFromOneDomainDoesNotProveAnother(t *testing.T) {
 	p := published{
 		Label + ".attacker.test": {mine},
 	}
-	if err := scope(p).Covers(context.Background(), "attacker.test"); !errors.Is(err, ErrNotVerified) {
+	if err := scope(p).Covers(context.Background(), "attacker.test", AnyPort); !errors.Is(err, ErrNotVerified) {
 		t.Error("a token copied from another domain was accepted")
 	}
 }
@@ -101,7 +101,7 @@ func TestATokenFromAnotherDeploymentIsNotAccepted(t *testing.T) {
 	other := Token([]byte("a different deployment"), "example.com")
 
 	p := published{Label + ".example.com": {other}}
-	if err := scope(p).Covers(context.Background(), "example.com"); !errors.Is(err, ErrNotVerified) {
+	if err := scope(p).Covers(context.Background(), "example.com", AnyPort); !errors.Is(err, ErrNotVerified) {
 		t.Error("a token derived from another deployment's secret was accepted")
 	}
 }
@@ -120,7 +120,7 @@ func TestTheTokenIsFoundAmongOtherRecords(t *testing.T) {
 		},
 	}
 
-	if err := scope(p).Covers(context.Background(), "example.com"); err != nil {
+	if err := scope(p).Covers(context.Background(), "example.com", AnyPort); err != nil {
 		t.Errorf("a token published beside other records was not found: %v", err)
 	}
 }
@@ -140,7 +140,7 @@ func TestAScopeThatCannotCheckRefuses(t *testing.T) {
 		{"neither", Scope{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := tc.scope.Covers(context.Background(), "example.com"); err == nil {
+			if err := tc.scope.Covers(context.Background(), "example.com", AnyPort); err == nil {
 				t.Error("a scope that cannot check anything admitted a host")
 			}
 		})
@@ -155,7 +155,7 @@ func TestAScopeThatCannotCheckRefuses(t *testing.T) {
 func TestALookupFailureIsNotAnUnverifiedDomain(t *testing.T) {
 	boom := errors.New("the resolver did not answer")
 
-	err := Scope{Secret: secret, Resolver: failing{boom}}.Covers(context.Background(), "example.com")
+	err := Scope{Secret: secret, Resolver: failing{boom}}.Covers(context.Background(), "example.com", AnyPort)
 	if errors.Is(err, ErrNotVerified) {
 		t.Error("a resolver that would not answer was reported as a domain that proved nothing")
 	}
@@ -166,7 +166,7 @@ func TestALookupFailureIsNotAnUnverifiedDomain(t *testing.T) {
 
 // The refusal states the rule and names no host (I3).
 func TestTheRefusalNamesNoHost(t *testing.T) {
-	err := scope(published{}).Covers(context.Background(), "secret-internal-name.example.com")
+	err := scope(published{}).Covers(context.Background(), "secret-internal-name.example.com", AnyPort)
 	if err == nil {
 		t.Fatal("an unverified host was admitted")
 	}
@@ -185,7 +185,7 @@ func TestTheWalkDoesNotReachForAPublicSuffix(t *testing.T) {
 	var asked []string
 	p := recorder{asked: &asked, values: published{}}
 
-	_ = Scope{Secret: secret, Resolver: p}.Covers(context.Background(), "www.example.com")
+	_ = Scope{Secret: secret, Resolver: p}.Covers(context.Background(), "www.example.com", AnyPort)
 
 	for _, name := range asked {
 		if name == Label+".com" {
@@ -203,7 +203,7 @@ func TestTheMostSpecificNameIsAskedFirst(t *testing.T) {
 	var asked []string
 	p := recorder{asked: &asked, values: published{}}
 
-	_ = Scope{Secret: secret, Resolver: p}.Covers(context.Background(), "a.b.example.com")
+	_ = Scope{Secret: secret, Resolver: p}.Covers(context.Background(), "a.b.example.com", AnyPort)
 
 	want := []string{
 		Label + ".a.b.example.com",

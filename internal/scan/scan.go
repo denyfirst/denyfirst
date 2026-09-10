@@ -283,7 +283,7 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 	// the relationship it came from, and deleting the record is the only
 	// revocation an operator will find.
 	if s.Verify != nil {
-		if err := s.Verify.Covers(ctx, host); err != nil {
+		if err := s.Verify.Covers(ctx, host, verify.AnyPort); err != nil {
 			return nil, err
 		}
 	}
