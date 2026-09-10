@@ -180,6 +180,7 @@ in it is there because it has already gone wrong once.
 | `internal/scan`, `internal/webscan` | a check: measure, then grade |
 | `internal/demo` | which hosts this deployment may reach, compiled in |
 | `internal/verify` | which domains a deployment has been shown control of (N9) |
+| `internal/challenge` | fetches the file half of that proof, and nothing else |
 | `internal/exclusion` | names no deployment scans, whoever asks (N8) |
 | `internal/safedial` | refuses private, loopback and reserved destinations |
 | `internal/httpapi` | the service; the only package that sees untrusted input |
