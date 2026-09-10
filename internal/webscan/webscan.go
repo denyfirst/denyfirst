@@ -149,11 +149,12 @@ func Grade(observed *webprobe.Report) *Result {
 	hsts := policy.GradeHSTS(securePolicy(observed.Secure), plaintextPolicy(observed.Plain),
 		answered(observed.Secure))
 	cookies := policy.GradeCookies(cookieFacts(observed))
+	headers := policy.GradeHeaders(headerFacts(observed.Secure))
 
 	// Worst case across the checks, for the reason it is worst case within
 	// one: a site reached in the clear is reached in the clear however sound
 	// its policy declaration is.
-	for _, r := range []policy.WebResult{reach, hsts, cookies} {
+	for _, r := range []policy.WebResult{reach, hsts, cookies, headers} {
 		out.Findings = append(out.Findings, r.Findings...)
 		out.Notes = append(out.Notes, r.Notes...)
 		out.Verdict = policy.Worst(out.Verdict, r.Verdict)
@@ -304,4 +305,53 @@ func cookieFacts(r *webprobe.Report) []policy.CookieFacts {
 	}
 
 	return out
+}
+
+// headerFacts reduces the response a visitor lands on to what the rules read.
+//
+// The last hop of the secure chain that produced a response, which is a
+// different choice from the one securePolicy makes and the difference matters.
+// Strict-Transport-Security persists in the browser, so the value that counts
+// is the last one carried by any hop made over TLS. These headers apply to the
+// response that carries them and to nothing else, so the one that counts is
+// the response whose content the visitor actually receives.
+//
+// A hop that failed carries no headers and is skipped rather than treated as a
+// response with none.
+func headerFacts(c *webprobe.Chain) policy.HeaderFacts {
+	var out policy.HeaderFacts
+	if c == nil {
+		return out
+	}
+
+	for i := len(c.Hops) - 1; i >= 0; i-- {
+		h := c.Hops[i]
+		if !h.TLS || h.Err != "" {
+			continue
+		}
+
+		out.Answered = true
+		out.Present = make(map[string]bool, len(h.Headers))
+		for name, values := range h.Headers {
+			if len(values) > 0 {
+				out.Present[name] = true
+			}
+		}
+		out.ACAO = first(h.Headers["Access-Control-Allow-Origin"])
+		out.ACAC = first(h.Headers["Access-Control-Allow-Credentials"])
+		return out
+	}
+
+	return out
+}
+
+// first returns the first value of a header, or empty.
+//
+// A browser processes the first of a repeated header for the ones read here,
+// so reading any other would describe something no client acts on.
+func first(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
 }

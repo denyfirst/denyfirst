@@ -325,12 +325,19 @@ guess of any kind: this reads what a server volunteers to every visitor.
 so a large or slow response costs a header's worth of traffic. It is also the
 part the scanned server pays for.
 
-**Only headers this check grades are kept.** An allow list, not a deny list.
+**Only headers this check reads are kept.** An allow list, not a deny list.
 A response carries whatever the server chose to send — internal host names,
 software versions, request identifiers — and a report built from a deny list
 holds all of it until somebody thinks of the next entry. Adding a rule that
 reads a new header means adding the header to that list, which is a line a
 reviewer sees.
+
+The list drifted ahead of the rules once and it is worth naming, because a
+list of things nobody reads is the state this rule exists to prevent: thirteen
+headers were collected and two were graded, so eleven were held on the
+strength of an intention. They are read now — one graded, the rest reported —
+and a header kept without a rule that reads it is a header to remove rather
+than to keep for later.
 
 **A cookie's value is never recorded, and there is nowhere to put one.**
 `webprobe.Cookie` carries the name and the attributes that decide whether a
@@ -388,7 +395,8 @@ nothing else to look for.
 `TestAnOverlongLocationIsNotFollowed`,
 `TestOnlyTheGradedHeadersAreRecorded`, `TestACookieValueIsNeverRecorded`,
 `TestCookieAttributesAreRead`, `TestTheScopeAttributesAreRead`,
-`TestTheScopeAttributesDidNotAddSomewhereForAValue`, `TestTheBodyIsNotRead`,
+`TestTheScopeAttributesDidNotAddSomewhereForAValue`,
+`TestTheRecommendedHeadersAreReportedAndNotGraded`, `TestTheBodyIsNotRead`,
 `TestTheUserAgentIdentifiesTheToolAndWhereToReadAboutIt`,
 `TestAnEmptyUserAgentIsNotAvailable`, `TestABareHostnameIsRequired`,
 `TestTheDefaultDiallerRefusesPrivateAddresses`,
@@ -2109,7 +2117,8 @@ flag — and this check cannot tell which it is looking at, because it never
 records a value. Grading that would fail correct servers for a rule nobody
 wrote, which is exactly the failure this invariant is named for.
 
-*Enforced in:* `internal/policy/web.go`, `internal/policy/cookies.go`
+*Enforced in:* `internal/policy/web.go`, `internal/policy/cookies.go`,
+`internal/policy/headers.go`
 *Guarded by:* `TestAShortMaxAgeIsDescribedAndNotGraded`,
 `TestIncludeSubDomainsIsDescribedAndNotGraded`,
 `TestATemporaryRedirectIsDescribedNotGraded`,
@@ -2126,7 +2135,18 @@ wrote, which is exactly the failure this invariant is named for.
 `TestACookieNameIsCarriedThroughAsText`,
 `TestTheCookieRulesReachAGradedReport`,
 `TestACookieIsNotReadFromAHopThatFailed`,
-`TestACookieCarriesTheTransportItWasSetOn`
+`TestACookieCarriesTheTransportItWasSetOn`,
+`TestCorsHeadersThatContradictEachOtherAreGraded`,
+`TestEitherHalfOfTheCorsPairAloneIsNotGraded`,
+`TestTheRecommendedHeadersAreReportedAndNotGraded`,
+`TestNosniffIsReportedAndNotGraded`,
+`TestAContentSecurityPolicySupersedesTheOlderFramingHeader`,
+`TestAReportOnlyPolicyIsDescribedAsNotYetEnforcing`,
+`TestAHostThatAnsweredNothingIsNotDescribedAsSendingNoHeaders`,
+`TestASiteThatSendsEverythingIsToldNothing`,
+`TestTheReportedListIsStable`,
+`TestTheHeaderRulesReachAGradedReport`,
+`TestTheHeadersReadAreTheOnesOnTheResponseAVisitorLandsOn`
 
 ---
 

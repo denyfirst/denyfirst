@@ -57,10 +57,36 @@ graded.
 often deliberate, and it is reported because it decides how far a cookie
 travels.
 
+### The response headers are read too
+
+The probe has collected thirteen headers since the check shipped and two of
+them were read. The rest are read now, and almost all of them are reported
+rather than graded.
+
+One rule is added. `headers.cors-wildcard-with-credentials` fires where
+`Access-Control-Allow-Origin` is `*` and `Access-Control-Allow-Credentials` is
+`true`: a browser refuses that combination rather than choosing between them,
+so the sharing the site configured does not work and nothing about the
+response says so.
+
+Everything else is a sentence. The headers a response did not send are listed
+once, with what each one does, because that is the list somebody closing gaps
+works from — and none of them is required by any specification. A missing
+`X-Content-Type-Options: nosniff` is on that list, and it is the one worth
+explaining: it was written as a graded finding first, and an existing test
+caught it by refusing to call a correctly reached site `strong`. There is no
+arrangement that wants nosniff absent, which is a good argument for grading it
+and not the same as a consequence this scan establishes — whether the absence
+matters depends on content types nothing here read. `hsts.absent` is graded
+because its consequence follows from the scan alone.
+
+A site sending a `Content-Security-Policy` is not told it lacks
+`X-Frame-Options`, which `frame-ancestors` replaced.
+
 ### Nothing else moved
 
 No reach or HSTS rule was added, removed, or made stricter. A site with no
-cookies is graded exactly as it was under v2.
+cookies and every header in place is graded exactly as it was under v2.
 
 ---
 
