@@ -51,6 +51,12 @@ per-check figures have to be separated without breaking a published shape.
 
 ### 2. Scope: prove control of a domain before scanning it
 
+**[`docs/scope.md`](scope.md) is the design**, settled: what a verified domain
+does and does not authorise, why the two challenge methods grant different
+things, what verification is not a reason to retire, and which of the public
+deployment's restrictions belong to the deployment rather than to the check.
+Read it before changing any of this. What follows is the summary.
+
 A deployment should be able to require that a domain has been verified before
 it will scan it — DNS TXT at `_denyfirst-challenge.<domain>`, or a file at
 `/.well-known/denyfirst-challenge` for teams without DNS access.
@@ -112,7 +118,22 @@ program checks at startup should be the store it verifies against, on every
 platform, which means threading an explicit `*x509.CertPool` through.
 
 **`denyfirst-scan -version` prints both rule sets but no reach line**, while
-`denyfirstd` prints one. Every binary should say what it will connect to.
+`denyfirstd` prints one. Every binary should say what it will connect to. A
+deployment whose scope is established at run time rather than compiled in has
+to appear on that line as well, or the property the deploy procedure reads
+becomes false for the new mode.
+
+**`webscan.Scanner.Scan` does not ask the exclusion list.** `scan.Scanner.Scan`
+does, so a name on it is refused by the TLS check and scanned by the web one.
+The list is in `internal/scan`, and `internal/webscan` importing the TLS
+scanner to find out what it may connect to is the shape N6 removed on
+2026-09-05 when `internal/demo` was extracted; this needs the same extraction
+into a package of its own.
+
+**A self-hosted `denyfirstd` has no target boundary at all**, which is what
+item 2 above is for. Until it lands, `docs/self-host.md` notes that loopback
+is the default and does not say plainly that binding to a reachable interface
+makes it an open scanner.
 
 **`docs/releasing.md` tells you to run `gh pr checks --watch` immediately
 after `gh pr create`.** No check has registered yet, the command exits saying
