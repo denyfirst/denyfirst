@@ -128,6 +128,81 @@ making it for them.
 
 ---
 
+## Two scopes, one methodology
+
+This is the shape of the whole product, and it is written here because getting
+the words wrong is how it would be lost.
+
+```
+                    DENYFIRST
+                       │
+              ┌────────┴────────┐
+              │                 │
+          UNVERIFIED         VERIFIED
+              │                 │
+        public scope        owned scope
+              │                 │
+        read / observe     read / observe
+              │                 │
+         same safe           same safe
+        methodology         methodology
+              │                 │
+         no exploit          no exploit
+         no fuzzing          no fuzzing
+         no guessing         no guessing
+              │                 │
+              └────────┬────────┘
+                       │
+                MINIMAL RETENTION
+```
+
+**Verification changes where this tool may look. It never changes how it
+looks.** The two branches separate on scope and rejoin on method, and the
+rejoining is the part that matters: a verified deployment is not a different
+tool with the safety catch off. It is the same instrument, pointed at more of
+what belongs to the person holding it.
+
+The temptation is to describe the right-hand branch as *full*, *deep* or
+*active*, and each of those words quietly authorises something this project has
+already refused. So the axis is named for what actually differs — **whose
+network it is** — and never for how hard the tool pushes.
+
+| | unverified | verified |
+|---|---|---|
+| which hosts | what the deployment was built to reach | the estate proven control of |
+| private, loopback, reserved | refused | an operator's own decision, off by default |
+| ports | the implicit-TLS list | an operator's own decision, off by default |
+| how a host is examined | **identical** | **identical** |
+| what is retained | **identical** | **identical** |
+
+Everything above the double line is about *whose network it is*. Everything
+below it is about *what kind of thing this is*, and no deployment model touches
+it. `docs/invariants.md` has the guards; the roadmap's "Not doing" section has
+the argument for the bottom three lines of the diagram, and it is worth reading
+in full, because the strongest reason there is not about the scanned party at
+all:
+
+> A tool that sends deliberately broken input is a weapon in whoever's hands it
+> ends up in. This one is meant to be installed by a company to check itself,
+> and the property that makes that safe is that the worst a careless colleague
+> can do with it is read a page.
+
+Proving control of `example.com` proves that `example.com` is yours. It does
+not make it safe to hand every junior on the team a tool that can take a
+production service down, and a deployment boundary is not an argument for
+building one.
+
+**Completeness comes from more passive checks, not from active ones.** An
+organisation that installs this to find its own gaps is owed all of them, and
+the way there is more that can be read — mail policy, which is DNS only; every
+address a name resolves to; the operator's own ports; several trust stores.
+What is given up by refusing the active class is roughly one finding, because
+almost everything reachable by malformed input is either reachable by a fuller
+ordinary handshake or has a precondition that is plainly visible. Where it is
+given up, the report says so rather than staying quiet.
+
+---
+
 ## What verification does not do
 
 **It changes who is responsible. It does not change what the tool does.**
@@ -210,4 +285,37 @@ compiled-in list. A deployment whose scope is established at run time has to
 say so on that line too, or the property N6 relies on for deploys becomes
 false for the new mode. `denyfirst-scan -version` prints no reach line at all,
 which is its own roadmap defect.
+
+**Reading a response body is listed above as never re-scopable, and a check
+worth having needs it.** Mixed content, a missing subresource integrity
+attribute, and a form that posts to somebody else's origin are ordinary gaps an
+organisation has and cannot see from headers alone. All three are read-only, a
+browser reads the same bytes, and on a verified deployment the page belongs to
+whoever asked — so the reason for the rule is weaker here than the list above
+makes it sound.
+
+The reason that survives is not bandwidth. It is that a body holds things a
+report must never carry: a leaked key in a comment, a token in a script, a name
+in a template. A report is a thing people paste into issue trackers.
+
+So the shape this would have to take, if it is ever built, and it is written
+down now because deciding it later under pressure is how it goes wrong:
+
+- **Only where control has been proven.** The demonstration verifies nothing —
+  it reaches a compiled-in list — so it would keep reading no body at all, and
+  the promise on `/web/method` stays literally true for the reader who found
+  that address in a log. Two deployments would then be telling two different
+  true things, and the page has to say which one it is rather than shipping one
+  sentence for both.
+- **Nothing kept but derived facts.** The struct that reaches a report has
+  nowhere to put a body, in the way `webprobe.Cookie` has nowhere to put a
+  value. What survives is "a subresource was loaded over plaintext", not the
+  markup that said so.
+- **Capped and streamed**, so a large page costs a bounded read.
+- **Still no path is constructed.** This reads the body of `/` and of what a
+  `Location` header named. It does not follow a link, fetch a script, or ask
+  for anything the response mentioned.
+
+**Not decided, and not started.** It changes a published promise, so it is a
+release note and a deliberate decision, not a side effect of adding a check.
 

@@ -79,7 +79,8 @@ record yet — a change to make deliberately, with a release note, rather than
 as a side effect of an upgrade. Until then a service with no secret configured
 scans whatever it is asked to, and says so at startup.
 
-**[`docs/scope.md`](scope.md) is the design**, settled: what a verified domain
+**[`docs/scope.md`](scope.md) is the design**, settled: the two scopes and the
+one methodology they share, what a verified domain
 does and does not authorise, why the two challenge methods grant different
 things, what verification is not a reason to retire, and which of the public
 deployment's restrictions belong to the deployment rather than to the check.
@@ -119,6 +120,28 @@ TLS-RPT, DANE on the MX hosts. DNS only: nothing is connected to on the
 target's mail path, which is the strongest privacy story any check here can
 have. It comes after scope because proving control of a domain is the natural
 condition for looking at its mail policy anyway.
+
+Two things about it are settled in advance, because both are easier to get
+right before the check exists than after.
+
+**Only the zone proof authorises it.** A `TXT` record proves control of the
+zone, which is where every one of these records lives. The `.well-known` file
+proves control of one host's HTTP surface, and a mail check makes no HTTP
+request at all, so a file on a web server says nothing about the zone's `MX`.
+`internal/verify` already draws that line — the file half is offered only for a
+surface that reads HTTP — and mail asks for the other one. Its name will want
+revisiting when this is built: what the mail check needs is not "any port", it
+is "the zone proof", and a name that describes the consequence rather than the
+requirement is a name somebody eventually reads backwards.
+
+**The check takes a domain, and the part before the `@` is discarded on
+arrival.** These are questions about `example.com`, never about a mailbox, so
+`test@example.com` is not needed and is not kept. A local part is a person's
+identity; this project records neither hostnames nor addresses, and the way to
+keep that true is to split the string where it arrives and let the left half go
+before anything can log, count or report it. Accepting an address at all is a
+convenience for whoever pastes one — so the page has to say plainly that the
+left half is dropped, rather than leaving somebody to trust that it was.
 
 ### Later
 
