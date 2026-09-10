@@ -37,16 +37,21 @@ service we do.
 
 ### 1. The web check's service surface
 
-**`POST /api/v1/web/scan` is served**, since 2026-09-10. Next are `/web` and
-`/web/method`, then a front page at `/` that runs both checks against one name
-and reports one worst-case verdict with an explicit list of what neither
-established. `/` stops being a redirect the day there is something to put
-there.
+**`POST /api/v1/web/scan` and `/web/method` are served**, since 2026-09-10.
+Next is `/web` itself, then a front page at `/` that runs both checks
+against one name and reports one worst-case verdict with an explicit list of
+what neither established. `/` stops being a redirect the day there is
+something to put there.
 
 The endpoint inherited the demonstration guard and the exclusion list rather
 than repeating them, because both are asked in `webscan.Scanner.Scan`. It
 walks the same chain of guards the TLS endpoint does — there is one chain,
 described per check rather than copied per endpoint, and N6 says why.
+
+The method page came before the page a visitor scans from, because the web
+probe has been naming that address in other people's access logs since the
+endpoint landed and it answered 404 (N7). It is written for the log reader
+first.
 
 **The counters were settled first.** Each check has its own block naming its
 own rule set; the fields at the top of a `Snapshot` are still the TLS check's,

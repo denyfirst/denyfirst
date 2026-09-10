@@ -360,6 +360,21 @@ and none for saying nothing: a probe that hides is one an administrator can
 only be alarmed by, where one that identifies itself is one they can make a
 decision about.
 
+**And the address leads somewhere.** That promise is worth exactly as much as
+the page behind it, and `/web/method` answered 404 from the day the user agent
+first named it until the check had a service surface — at which point the
+address started reaching strangers' access logs for real. A 404 makes a probe
+look like it is hiding, to the one reader who went looking, which is the
+opposite of what identifying yourself is for.
+
+Nothing caught it. Internal links are followed against the routing tables, but
+that reads the pages; this is an address the program puts into a request it
+makes to somebody else, and it was covered by neither direction. It is
+checked now, and the page answers the log reader before it answers the report
+reader: somebody who arrives from a log line did not choose to be here and
+wants one thing, which is what reached their server and the fact that there is
+nothing else to look for.
+
 *Enforced in:* `internal/webprobe`
 *Guarded by:* `TestOnlyTheRootIsRequestedUnlessTheServerSaysOtherwise`,
 `TestARedirectChainIsRecordedInOrder`,
@@ -376,7 +391,8 @@ decision about.
 `TestTheDefaultDiallerRefusesPortsOtherThanEightyAndFourFourThree`,
 `TestTheClientFollowsNothingByItself`,
 `TestNoProxyStandsBetweenThisAndTheHost`,
-`TestTheTwoChainsAreIndependent`
+`TestTheTwoChainsAreIndependent`,
+`TestEveryAddressThisProjectSendsOutResolves`
 
 ---
 
@@ -2452,9 +2468,18 @@ nothing:
 | `/tls` | the check |
 | `/tls/method` | what *this* check cannot establish |
 | `POST /api/v1/tls/scan` | the check's API |
+| `/web/method` | what the web check sends, and cannot establish |
+| `POST /api/v1/web/scan` | the web check's API |
 | `/privacy`, `/terms` | the project's promises |
 | `/.well-known/security.txt`, `/pgp-key.txt` | how a person is reached |
 | `GET /api/v1/stats` | the project's counter |
+
+There are two checks now, so the rule that was written ahead of time is being
+used: the test holds a list of check prefixes rather than one, and a third
+check added without an entry fails rather than quietly putting a page at the
+root. `/web` itself is still to come; its method page arrived first because
+the web probe's user agent has been naming that address in other people's
+access logs since the endpoint landed (N7).
 
 Privacy and terms are promises about everything this project runs, not about
 one scan, and a copy under each check would be several copies of a promise to
@@ -2485,11 +2510,20 @@ Every internal link on every page is followed against the routing tables, so a
 page that moves cannot leave a dead `href` behind — and the footer is on every
 page, which means one stale link is stale everywhere at once.
 
+**And the heading a link aims at exists on the page it aims at.** Stripping
+the fragment and stopping there was enough while every link pointed at a page
+somebody had just written. It stopped being enough the first time a page was
+written against another page's headings: a link to `/privacy#exclusion`
+resolved, because `/privacy` resolves, and would have dropped a reader at the
+top of a long page with no sign of which part answered them. The section it
+meant has never existed under that name.
+
 *Enforced in:* `internal/web.pages`, `internal/web.moved`,
 `internal/web.standingIn`, `internal/httpapi.New`
 *Guarded by:* `TestTheProjectsPagesStayAtTheRootAndTheChecksDoNot`,
 `TestTheRootStandsInAndSaysSoInTheStatusCode`,
 `TestEveryInternalLinkResolves`, `TestTheScriptCallsTheChecksOwnPath`,
+`TestEveryAddressThisProjectSendsOutResolves`,
 `TestBothScanPathsAreServedAndNeitherRedirects`,
 `TestNeitherScanPathAnswersAGet`, `TestOldPathsRedirect`
 

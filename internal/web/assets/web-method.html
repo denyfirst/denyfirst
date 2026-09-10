@@ -1,0 +1,169 @@
+<article class="prose">
+
+    <h1>What the web check<br>sends, and what it cannot see.</h1>
+
+    <p class="lede">
+      This page has two readers. One is looking at a report and wants to know
+      what it means. The other found this address in their access log, because
+      this is what the request said it was, and wants to know exactly what
+      reached their server. The second question is answered first.
+    </p>
+
+    <nav class="jump">
+      <a href="#sent">What was sent to your server</a>
+      <a href="#reading">How to read a report</a>
+      {{range .Limits}}<a href="#{{.ID}}">{{.Title}}</a>
+      {{end}}
+      <a href="#elsewhere">What else is written down</a>
+    </nav>
+
+    <h2 id="sent">What was sent to your server</h2>
+
+    <p>
+      If you are here from a log line, this is the whole of it. There is
+      nothing else to find, and none of it is a probe for a weakness.
+    </p>
+
+    <p>
+      <strong>One <code>GET</code> of <code>/</code>, over HTTPS and over
+      plaintext.</strong> Nothing else was requested. No path was constructed
+      by this program at any point: there is no attempt at
+      <code>/admin</code>, no guessing under <code>/.well-known</code>, and no
+      second guess of any kind. This reads what a server volunteers to every
+      visitor.
+    </p>
+
+    <p>
+      <strong>Redirects were followed, up to five, and only where a
+      <code>Location</code> header named.</strong> Each address after the
+      first was chosen by your server rather than by this scanner. A
+      <code>Location</code> in another scheme is not followed, an overlong one
+      is not followed, and credentials in one are stripped before the request
+      is made. Where the chain stopped, the report says whether it ended or
+      was declined, because a reader who cannot tell those apart cannot read
+      the chain at all.
+    </p>
+
+    <p>
+      <strong>The response body was never read.</strong> Headers were taken
+      and the body was closed unread, so the traffic this cost you is a
+      header's worth. That is also the part you pay for, which is why it is
+      the part that was skipped.
+    </p>
+
+    <p>
+      <strong>Only the headers this check grades were kept.</strong> An allow
+      list, not a deny list. Whatever else your server sent — internal host
+      names, software versions, request identifiers — was discarded where the
+      response was parsed rather than filtered out of the report later.
+    </p>
+
+    <p>
+      <strong>No cookie value was recorded, and there is nowhere to put
+      one.</strong> The report holds a cookie's name and the attributes that
+      decide whether it is safe. There is no field for a value at all: a value
+      is a session identifier as often as not, and a report is a thing people
+      paste into issue trackers.
+    </p>
+
+    <p>
+      <strong>Ports 80 and 443 only</strong>, and nothing was sent to any
+      address that is private, loopback, link-local or reserved — including an
+      address reached by following one of your own redirects.
+    </p>
+
+    <p>
+      If you would rather this domain were not scanned at all, that is
+      arranged by asking and needs no explanation. The address, and what else
+      a person here will answer, are under
+      <a href="/privacy#stopping">stopping a scan</a>.
+    </p>
+
+    <h2 id="reading">How to read a report</h2>
+
+    <p>
+      A report says four kinds of thing, and telling them apart is most of
+      knowing what it means.
+    </p>
+
+    <p>
+      <strong>Findings</strong> are graded. Each one names a rule, states what
+      was measured, and cites the document it rests on. Grading is worst-case:
+      a site reached in the clear is reached in the clear however sound its
+      policy declaration is.
+    </p>
+
+    <p>
+      <strong>Observed</strong> is what the check established and deliberately
+      does not grade. The length of an <code>HSTS</code> <code>max-age</code>
+      is the clearest case: no standards body publishes a minimum, and OWASP
+      explicitly recommends a short one during a rollout, so the value is
+      described in years or days along with what a browser does when it lapses
+      — and never failed against a threshold this project invented. The same
+      holds for a missing <code>includeSubDomains</code> on a host with
+      nothing beneath it, and for a temporary redirect from the plaintext
+      address, which works.
+    </p>
+
+    <p>
+      <strong>Not established for this host</strong> is what this particular
+      scan could not settle, for a reason that lies with the server in front
+      of it. These qualify that report's verdict and travel with it.
+    </p>
+
+    <p>
+      <strong>Limits of this method</strong> are below. They are true of every
+      scan this check runs, so they are stated once, here, rather than
+      repeated on every report where they read as faults of the server being
+      looked at.
+    </p>
+
+    <p>
+      Two distinctions decide more than they look. A host that answered
+      nothing is <em>ungraded</em>, not <em>weak</em>: declaring no policy is
+      a claim about a server, and nothing was ever spoken to. And a host with
+      nothing listening on port 80 is the safest arrangement there is, which
+      is not the same fact as a host answering <code>200</code> in the clear,
+      though both produce an empty list of headers.
+    </p>
+
+    <p>
+      The policy graded is the last one carried by a hop made over TLS,
+      because that is the one a browser would end up holding. Reading the last
+      hop describes a policy no browser holds the moment a site downgrades at
+      the end of its chain; reading the first describes one a later hop
+      replaced.
+    </p>
+
+    {{range .Limits}}
+    <h2 id="{{.ID}}">{{.Title}}</h2>
+
+    <p>{{.Text}}</p>
+    {{end}}
+
+    <h2 id="elsewhere">What else is written down</h2>
+
+    <p>
+      This check has its own rule set, separate from the one that grades a TLS
+      handshake, because they answer different questions over different
+      evidence and a single name for both would make two incomparable things
+      look comparable. What the other one can and cannot see is on
+      <a href="/tls/method">its own page</a>.
+    </p>
+
+    <p>
+      Every property this project holds itself to is in
+      <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/invariants.md">docs/invariants.md</a>,
+      each one naming the test that guards it and, where there was one, the
+      mistake that produced it. What changed between rule sets is in
+      <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/policy-changes.md">docs/policy-changes.md</a>,
+      because a report graded under one version is not comparable with a
+      report graded under another.
+    </p>
+
+    <p>
+      What is recorded about a scan here, and how to have a domain excluded,
+      are on the <a href="/privacy">privacy page</a>.
+    </p>
+
+</article>
