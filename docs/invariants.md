@@ -3853,7 +3853,20 @@ Anything below is open today.
   the day OCSP validation landed — *revocation is not checked* — and the
   privacy page stated the per-target threshold twice, as eight in one section
   and twice in another, with a test guarding only the first. Both are fixed and
-  both now have a test. What remains is the general case: these pages make
-  claims in prose, a test can only check the sentences somebody thought to
-  pin, and every rule added to `internal/policy` is a chance for one of them to
-  go quietly wrong. Re-read them whenever a policy version changes.
+  both now have a test. It happened a third time with the counters: the page
+  said one number per scan plus strong, weak and insecure, and ended *that is
+  the whole record*, while `/api/v1/stats` had grown `ungraded`, a block per
+  check naming its own rule set, a count of refusals by reason, and three
+  figures about dates. Nothing in any of that describes a person, so it was not
+  a privacy failure — it was the page being unusable for the one thing it is
+  for, which is checking. Its lede was loose in the same way, offering *not the
+  result* while verdicts were being counted.
+
+  That one is now mechanical rather than remembered: the figures are read off
+  the published type by reflection and each must be described on the page, so a
+  counter cannot be added without this failing. What remains is the general
+  case. These pages make claims in prose, a test can only check the sentences
+  somebody thought to pin, and every rule added to `internal/policy` is a
+  chance for one of them to go quietly wrong. Re-read them whenever a policy
+  version changes, and where a claim can be pinned to a type rather than to a
+  phrase, pin it to the type.
