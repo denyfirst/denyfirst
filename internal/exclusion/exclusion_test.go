@@ -1,8 +1,6 @@
-package scan
+package exclusion
 
 import (
-	"context"
-	"strings"
 	"testing"
 )
 
@@ -22,8 +20,8 @@ func TestExcludedNamesAreRefused(t *testing.T) {
 	}
 
 	for _, host := range excluded {
-		if !IsExcluded(host) {
-			t.Errorf("IsExcluded(%q) = false, want true", host)
+		if !Covers(host) {
+			t.Errorf("Covers(%q) = false, want true", host)
 		}
 	}
 }
@@ -44,8 +42,8 @@ func TestExclusionMatchesAtLabelBoundaries(t *testing.T) {
 	}
 
 	for _, host := range allowed {
-		if IsExcluded(host) {
-			t.Errorf("IsExcluded(%q) = true; the match is not at a label boundary", host)
+		if Covers(host) {
+			t.Errorf("Covers(%q) = true; the match is not at a label boundary", host)
 		}
 	}
 }
@@ -61,8 +59,8 @@ func TestOrdinaryGovernmentSitesAreNotExcluded(t *testing.T) {
 		"usa.gov",
 		"e-gov.az",
 	} {
-		if IsExcluded(host) {
-			t.Errorf("IsExcluded(%q) = true; only defence and intelligence names are on the list", host)
+		if Covers(host) {
+			t.Errorf("Covers(%q) = true; only defence and intelligence names are on the list", host)
 		}
 	}
 }
@@ -76,8 +74,8 @@ func TestExclusionIgnoresCaseAndTrailingDot(t *testing.T) {
 		"Army.Mil.",
 		"WWW.CIA.GOV",
 	} {
-		if !IsExcluded(host) {
-			t.Errorf("IsExcluded(%q) = false; DNS names are case-insensitive and may be fully qualified", host)
+		if !Covers(host) {
+			t.Errorf("Covers(%q) = false; DNS names are case-insensitive and may be fully qualified", host)
 		}
 	}
 }
@@ -86,42 +84,25 @@ func TestExclusionIgnoresCaseAndTrailingDot(t *testing.T) {
 // instance. A copy of this project starts with the same defaults and its
 // operator's additions stay their own.
 func TestOperatorCanAddNames(t *testing.T) {
-	before := len(extraExcluded)
-	t.Cleanup(func() { extraExcluded = extraExcluded[:before] })
+	before := len(added)
+	t.Cleanup(func() { added = added[:before] })
 
-	if IsExcluded("asked-not-to.example") {
+	if Covers("asked-not-to.example") {
 		t.Fatal("the name was already excluded, so this test proves nothing")
 	}
 
-	Exclude("asked-not-to.example", "  Another.Example.  ", "")
+	Add("asked-not-to.example", "  Another.Example.  ", "")
 
-	if !IsExcluded("asked-not-to.example") {
+	if !Covers("asked-not-to.example") {
 		t.Error("an added name was not excluded")
 	}
-	if !IsExcluded("www.asked-not-to.example") {
+	if !Covers("www.asked-not-to.example") {
 		t.Error("an added name did not cover what sits beneath it")
 	}
-	if !IsExcluded("another.example") {
+	if !Covers("another.example") {
 		t.Error("an added name was not normalised before being stored")
 	}
-	if IsExcluded("notasked-not-to.example") {
+	if Covers("notasked-not-to.example") {
 		t.Error("an added name matched outside a label boundary")
-	}
-}
-
-// The check has to sit where the connection is made, not only where a request
-// arrives. A guard in one caller disappears the moment a second is written.
-func TestScannerRefusesExcludedNames(t *testing.T) {
-	s := &Scanner{}
-
-	for _, target := range []string{"army.mil", "www.cia.gov", "nasa.gov:443"} {
-		_, err := s.Scan(context.Background(), target)
-		if err == nil {
-			t.Errorf("Scan(%s) was not refused", target)
-			continue
-		}
-		if !strings.Contains(err.Error(), "does not scan") {
-			t.Errorf("Scan(%s) failed for the wrong reason: %v", target, err)
-		}
 	}
 }

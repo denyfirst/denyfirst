@@ -57,6 +57,7 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/denyfirst/internal/exclusion"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/scan"
 )
@@ -365,7 +366,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 
 	// A short list of defence and intelligence names, plus anyone who asked
 	// to be left out. The message does not repeat the name back.
-	if scan.IsExcluded(host) {
+	if exclusion.Covers(host) {
 		s.refuse(w, http.StatusForbidden, "excluded",
 			"This service does not scan that domain. A small number of names are "+
 				"excluded, and any domain owner can ask to be added.")
