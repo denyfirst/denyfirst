@@ -148,11 +148,13 @@ func Grade(observed *webprobe.Report) *Result {
 	reach := policy.GradeReach(hops(observed.Secure), hops(observed.Plain))
 	hsts := policy.GradeHSTS(securePolicy(observed.Secure), plaintextPolicy(observed.Plain),
 		answered(observed.Secure))
+	cookies := policy.GradeCookies(cookieFacts(observed))
+	headers := policy.GradeHeaders(headerFacts(observed.Secure))
 
 	// Worst case across the checks, for the reason it is worst case within
 	// one: a site reached in the clear is reached in the clear however sound
 	// its policy declaration is.
-	for _, r := range []policy.WebResult{reach, hsts} {
+	for _, r := range []policy.WebResult{reach, hsts, cookies, headers} {
 		out.Findings = append(out.Findings, r.Findings...)
 		out.Notes = append(out.Notes, r.Notes...)
 		out.Verdict = policy.Worst(out.Verdict, r.Verdict)
@@ -262,4 +264,94 @@ func (s *Scanner) now() time.Time {
 		return s.Now()
 	}
 	return time.Now()
+}
+
+// cookieFacts reduces every cookie in both chains to what the rules read.
+//
+// Both chains, because a cookie set anywhere along the way is a cookie the
+// visitor carries. A hop that failed carries none, and is skipped rather than
+// treated as a response that set nothing.
+//
+// Each cookie is tagged with whether the response that set it arrived over
+// TLS, which is the fact that decides what a missing Secure attribute means: a
+// cookie set on a plaintext response was already in the clear before any
+// attribute could have helped, and that is the reach finding rather than a
+// cookie one. Charging it twice would report one mistake as two.
+func cookieFacts(r *webprobe.Report) []policy.CookieFacts {
+	var out []policy.CookieFacts
+
+	for _, c := range []*webprobe.Chain{r.Secure, r.Plain} {
+		if c == nil {
+			continue
+		}
+		for _, hop := range c.Hops {
+			if hop.Err != "" {
+				continue
+			}
+			for _, cookie := range hop.Cookies {
+				out = append(out, policy.CookieFacts{
+					Name:         cookie.Name,
+					Secure:       cookie.Secure,
+					HTTPOnly:     cookie.HTTPOnly,
+					SameSite:     cookie.SameSite,
+					Path:         cookie.Path,
+					DomainSet:    cookie.DomainSet,
+					HostPrefix:   cookie.HostPrefix,
+					SecurePrefix: cookie.SecurePrefix,
+					OverTLS:      hop.TLS,
+				})
+			}
+		}
+	}
+
+	return out
+}
+
+// headerFacts reduces the response a visitor lands on to what the rules read.
+//
+// The last hop of the secure chain that produced a response, which is a
+// different choice from the one securePolicy makes and the difference matters.
+// Strict-Transport-Security persists in the browser, so the value that counts
+// is the last one carried by any hop made over TLS. These headers apply to the
+// response that carries them and to nothing else, so the one that counts is
+// the response whose content the visitor actually receives.
+//
+// A hop that failed carries no headers and is skipped rather than treated as a
+// response with none.
+func headerFacts(c *webprobe.Chain) policy.HeaderFacts {
+	var out policy.HeaderFacts
+	if c == nil {
+		return out
+	}
+
+	for i := len(c.Hops) - 1; i >= 0; i-- {
+		h := c.Hops[i]
+		if !h.TLS || h.Err != "" {
+			continue
+		}
+
+		out.Answered = true
+		out.Present = make(map[string]bool, len(h.Headers))
+		for name, values := range h.Headers {
+			if len(values) > 0 {
+				out.Present[name] = true
+			}
+		}
+		out.ACAO = first(h.Headers["Access-Control-Allow-Origin"])
+		out.ACAC = first(h.Headers["Access-Control-Allow-Credentials"])
+		return out
+	}
+
+	return out
+}
+
+// first returns the first value of a header, or empty.
+//
+// A browser processes the first of a repeated header for the ones read here,
+// so reading any other would describe something no client acts on.
+func first(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
 }

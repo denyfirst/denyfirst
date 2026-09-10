@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -254,7 +255,7 @@ func TestCookieAttributesAreRead(t *testing.T) {
 		{
 			name:   "everything set",
 			header: "sid=x; Path=/; Secure; HttpOnly; SameSite=Strict",
-			want:   Cookie{Name: "sid", Secure: true, HTTPOnly: true, SameSite: "strict"},
+			want:   Cookie{Name: "sid", Secure: true, HTTPOnly: true, SameSite: "strict", Path: "/"},
 		},
 		{
 			name:   "nothing set",
@@ -277,7 +278,7 @@ func TestCookieAttributesAreRead(t *testing.T) {
 		{
 			name:   "the host prefix",
 			header: "__Host-sid=x; Secure; Path=/",
-			want:   Cookie{Name: "__Host-sid", Secure: true, HostPrefix: true},
+			want:   Cookie{Name: "__Host-sid", Secure: true, HostPrefix: true, Path: "/"},
 		},
 		{
 			name:   "the secure prefix",
@@ -491,5 +492,68 @@ func TestTheErrorDoesNotRepeatTheAddress(t *testing.T) {
 	}
 	if got := unwrapURLError(inner); got != "connection refused" {
 		t.Errorf("an unwrapped error changed: %q", got)
+	}
+}
+
+// Path and Domain are read, because a __Host- prefix cannot be checked without
+// them.
+//
+// The prefix requires Secure, Path=/ and no Domain. Reading two of the three
+// conditions reports a guarantee the browser is not making: a browser that
+// finds any one wrong rejects the cookie outright, so a site setting
+// __Host-session with Path=/app has a session cookie that silently does not
+// exist.
+func TestTheScopeAttributesAreRead(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		header string
+		want   Cookie
+	}{
+		{
+			"a path that is not the root",
+			"__Host-sid=x; Secure; Path=/app",
+			Cookie{Name: "__Host-sid", Secure: true, HostPrefix: true, Path: "/app"},
+		},
+		{
+			"a domain, which a host prefix forbids",
+			"__Host-sid=x; Secure; Path=/; Domain=example.com",
+			Cookie{Name: "__Host-sid", Secure: true, HostPrefix: true, Path: "/", Domain: "example.com", DomainSet: true},
+		},
+		{
+			// Present with nothing after it is still present, and a browser
+			// still rejects a __Host- cookie carrying it.
+			"an empty domain attribute is still the attribute",
+			"__Host-sid=x; Secure; Path=/; Domain=",
+			Cookie{Name: "__Host-sid", Secure: true, HostPrefix: true, Path: "/", DomainSet: true},
+		},
+		{
+			"attribute names are case-insensitive here too",
+			"sid=x; PATH=/one; domain=Example.test",
+			Cookie{Name: "sid", Path: "/one", Domain: "Example.test", DomainSet: true},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := cookies([]string{tc.header})
+			if len(got) != 1 {
+				t.Fatalf("got %d cookies, want 1", len(got))
+			}
+			if got[0] != tc.want {
+				t.Errorf("got %+v, want %+v", got[0], tc.want)
+			}
+		})
+	}
+}
+
+// A value is still not recorded, and there is still nowhere to put one.
+//
+// Path and Domain are scoping instructions a server sends to every visitor.
+// Adding them must not have added a place for a session identifier to land.
+func TestTheScopeAttributesDidNotAddSomewhereForAValue(t *testing.T) {
+	got := cookies([]string{"sid=super-secret-session-value; Path=/; Domain=example.test"})
+	if len(got) != 1 {
+		t.Fatalf("got %d cookies, want 1", len(got))
+	}
+	if strings.Contains(fmt.Sprintf("%+v", got[0]), "super-secret-session-value") {
+		t.Errorf("a cookie value reached the report: %+v", got[0])
 	}
 }

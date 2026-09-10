@@ -31,7 +31,7 @@ import (
 //
 // v1, 2026-09-04. The first rule set for this check: how a name answers on
 // each scheme, and what it says about coming back over TLS.
-const WebVersion = "denyfirst-web-v2"
+const WebVersion = "denyfirst-web-v3"
 
 // WebReviewBy is when these rules are read against their references again.
 //
