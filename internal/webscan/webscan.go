@@ -18,6 +18,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/webprobe"
 )
@@ -71,6 +72,30 @@ type Result struct {
 // could not be established, which is a different thing and is reported as one.
 func (s *Scanner) Scan(ctx context.Context, host string) (*Result, error) {
 	started := s.now()
+
+	// Valid first, and only then permitted. Asked the other way round, a
+	// demonstration build answers "this deployment does not demonstrate that"
+	// to somebody who simply mistyped, which tells them the wrong thing about
+	// their own mistake. The probe defines what a target is, so the probe is
+	// what is asked.
+	if err := webprobe.CheckHostname(host); err != nil {
+		return nil, err
+	}
+
+	// This deployment connects only to hosts this project owns (N6).
+	//
+	// Here, where the scan is decided, and not in whatever calls it. A guard
+	// in one place is a guard somebody walks around by adding an entry point,
+	// and this check exists before the entry point that will need it: the
+	// HTTP service has no web address yet. When it gets one it inherits this
+	// rather than repeating it.
+	//
+	// The list is the same list the TLS scanner asks, from the same package
+	// and under the same build tag. Two checks reaching two lists is how a
+	// deployment ends up demonstrating one thing and connecting to another.
+	if demo.Refusal(host) {
+		return nil, demo.ErrNotATarget
+	}
 
 	prober := s.Prober
 	if prober == nil {

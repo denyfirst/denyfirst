@@ -208,6 +208,22 @@ have imported the TLS scanner to find out what it may connect to, and a mail
 check after it — the shape that gets worse with every check added. It is
 `internal/demo` now, and each check's own scanner asks it.
 
+**Each check asks it where its own scan is decided.** `Scanner.Scan` for the
+transport, `webscan.Scanner.Scan` for the web check — not in the HTTP handler
+that happens to call one of them today. The web check was given the guard on
+2026-09-06, *before* it had an address on the service at all, and that order
+is the point: an entry point written later inherits the refusal instead of
+having to remember it. A guard in one place is a guard somebody walks around
+by adding an entry point, and adding entry points is exactly what this project
+is now doing.
+
+**A target is checked for validity before it is checked for permission.**
+Asked the other way round, a demonstration build answers *this deployment does
+not demonstrate that* to somebody who typed a port or a scheme, which tells
+them the wrong thing about their own mistake. The probe defines what a target
+is, so the probe is what is asked: `webprobe.CheckHostname` is exported for
+exactly this.
+
 **Two rules hold the build tag.** Every file gated on it is named `demo_*.go`,
 so the whole boundary can be listed without reading the tree; and outside
 tests the tag gates exactly the two files that declare the list. Most of the
@@ -236,9 +252,16 @@ say one thing and do another — and the deploy procedure greps for it rather
 than trusting a filename.
 
 *Enforced in:* `internal/demo` (`demo.go`, `demo_on.go`, `demo_off.go`),
-`internal/scan.Scanner.Scan`, `internal/httpapi.Server.handleScan`,
-`internal/web/assets/index.html`, `scripts/build.sh`, `docs/releasing.md`
+`internal/scan.Scanner.Scan`, `internal/webscan.Scanner.Scan`,
+`internal/httpapi.Server.handleScan`, `internal/web/assets/index.html`,
+`scripts/build.sh`, `docs/releasing.md`
 *Guarded by:* `TestTheOrdinaryBuildIsNotADemonstration`,
+`TestTheWebScannerRefusesAHostThisProjectDoesNotOwn`,
+`TestARefusedHostIsNeverConnectedTo`,
+`TestTheOrdinaryWebScannerIsNotADemonstration`,
+`TestTheWebRefusalNamesNoHost`, `TestAMistypedTargetIsToldItIsMistyped`,
+`TestEveryHostOfferedIsOneThisScannerWillReach`,
+`TestTheTagSwitchesTheWebScannerToo`,
 `TestTheDemonstrationListMatchesAtLabelBoundaries`,
 `TestABlankEntryAdmitsNothing`, `TestTheBuildTagTouchesNothingElse`,
 `TestTheDemonstrationBuildRefusesAHostItDoesNotOwn`,

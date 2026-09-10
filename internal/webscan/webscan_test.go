@@ -3,6 +3,8 @@ package webscan
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -10,6 +12,13 @@ import (
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/webprobe"
 )
+
+// refuseToDial answers every connection with a failure, so a test measures
+// what this package decides rather than what a network does. Shared with the
+// build-tagged tests beside this one.
+func refuseToDial(context.Context, string, string) (net.Conn, error) {
+	return nil, errors.New("nothing is listening")
+}
 
 func hop(tls bool, status int, headers map[string][]string) webprobe.Hop {
 	return webprobe.Hop{TLS: tls, Status: status, Headers: headers}
