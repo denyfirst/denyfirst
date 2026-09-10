@@ -182,4 +182,5 @@ in it is there because it has already gone wrong once.
 | `internal/httpapi` | the service; the only package that sees untrusted input |
 | `internal/web` | the pages |
 | `docs/invariants.md` | why all of the above is the way it is |
+| `docs/scope.md` | who may scan what, and where that is decided |
 | `docs/roadmap.md` | where this is going, and what is known to be wrong |
