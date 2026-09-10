@@ -2070,10 +2070,46 @@ then carry it under the wrong heading with every existing guard still green.
 **Both rule sets appear on the change log.** A second rule set that can move
 without a record is the first one's problem repeated.
 
+**The counters obey it too, and they are published.** `Snapshot` carried one
+verdict breakdown, so a second check counted into it would have produced a
+`strong` adding a handshake to an HTTP response — a figure describing nothing
+anybody can check, on the one endpoint this project publishes precisely
+because it can be checked. Each check has its own block naming its own rule
+set, keyed on the check rather than on the rule set so that a version bump
+does not restart a counter under a new name.
+
+**Nothing already published moved.** The fields at the top of a `Snapshot` are
+the TLS check's, spelled the same way and counting the same thing, and the
+`tls` block repeats them. A field that keeps its name and changes its meaning
+is the change nobody notices until a graph has been wrong for a month, and it
+would survive a rollback as well: `cmd/denyfirstd` reads the file with a plain
+`json.Unmarshal`, so an older binary ignores the new field — and what it then
+reads at the top has to still be one check's figures rather than a total with
+another check's scans folded in.
+
+**A key appears only once that check has been counted**, because a block of
+zeros for a check this build cannot run is the silence A7 is about. Keys are
+filtered on restore exactly as the refusal codes are, and the published map is
+cloned: the freeze in P-series that keeps a pollable counter from being a
+clock is free for an integer and is not free for a map.
+
 *Enforced in:* `internal/policy` (`TLSVersion`, `WebVersion`,
-`WebStandingLimits`)
+`WebStandingLimits`); `internal/httpapi` (`checkNames`, `CheckCounts`,
+`Snapshot.Checks`)
 *Guarded by:* `TestTheWebRuleSetIsNamedForItsCheck`, `TestTheWebLimitsAreItsOwn`,
-`TestEveryWebFindingIsUsableOnItsOwn`, `TestTheChangeLogCoversTheCurrentPolicy`
+`TestEveryWebFindingIsUsableOnItsOwn`, `TestTheChangeLogCoversTheCurrentPolicy`,
+`TestThePublishedFieldsKeepTheirNamesAndTheirMeaning`,
+`TestTheTopLevelFiguresAreTheTLSCheck`,
+`TestEveryCheckBlockNamesItsOwnRuleSet`,
+`TestAWebScanDoesNotMoveTheTLSFigures`, `TestACheckWithNoScansHasNoBlock`,
+`TestOnlyKnownChecksAreCounted`, `TestEveryCountedCheckCanOccur`,
+`TestAFileWithoutCheckBlocksRestoresIntoTheTLSBlock`,
+`TestARollbackReadsTheTLSFiguresAndIgnoresTheRest`,
+`TestRestoreFiltersUnknownChecks`,
+`TestARestoredBlockDoesNotCarryTheOldRuleSetName`,
+`TestSnapshotEqualityCoversTheCheckBlocks`,
+`TestTheDailyFigureResetsForEveryCheck`,
+`TestThePublishedCheckFiguresStandStillToo`
 
 ---
 

@@ -317,7 +317,7 @@ func TestPublishedFiguresStandStill(t *testing.T) {
 	}
 
 	for range 5 {
-		c.record(policy.Strong)
+		c.record(checkTLS, policy.Strong)
 	}
 	now = now.Add(20 * time.Second)
 
