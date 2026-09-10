@@ -28,6 +28,13 @@ func local() *Prober {
 	return &Prober{Dial: d.DialContext, RequestTimeout: 5 * time.Second}
 }
 
+// anywhere is the walk a chain gets when the caller applies no boundary: the
+// command line's answer, and what the tests of the probe itself measure
+// against. Tests of the boundary build their own.
+func anywhere() *walk {
+	return &walk{decided: map[string]string{}}
+}
+
 func TestOnlyTheRootIsRequestedUnlessTheServerSaysOtherwise(t *testing.T) {
 	var mu sync.Mutex
 	var paths []string
@@ -41,7 +48,7 @@ func TestOnlyTheRootIsRequestedUnlessTheServerSaysOtherwise(t *testing.T) {
 	defer srv.Close()
 
 	p := local()
-	p.chain(context.Background(), p.client(), srv.URL+"/")
+	p.chain(context.Background(), p.client(), srv.URL+"/", anywhere())
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -65,7 +72,7 @@ func TestARedirectChainIsRecordedInOrder(t *testing.T) {
 	defer srv.Close()
 
 	p := local()
-	c := p.chain(context.Background(), p.client(), srv.URL+"/")
+	c := p.chain(context.Background(), p.client(), srv.URL+"/", anywhere())
 
 	if len(c.Hops) != 3 {
 		t.Fatalf("got %d hops, want 3: %+v", len(c.Hops), c.Hops)
@@ -95,7 +102,7 @@ func TestTheRedirectLimitStopsTheChainAndSaysSo(t *testing.T) {
 
 	p := local()
 	p.MaxRedirects = 3
-	c := p.chain(context.Background(), p.client(), srv.URL+"/")
+	c := p.chain(context.Background(), p.client(), srv.URL+"/", anywhere())
 
 	if !c.Truncated {
 		t.Fatal("an endless chain must be reported as truncated")
@@ -123,7 +130,7 @@ func TestARelativeLocationIsResolvedAgainstTheAddressThatSentIt(t *testing.T) {
 	defer srv.Close()
 
 	p := local()
-	c := p.chain(context.Background(), p.client(), srv.URL+"/")
+	c := p.chain(context.Background(), p.client(), srv.URL+"/", anywhere())
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -143,7 +150,7 @@ func TestALocationWithAnotherSchemeIsNotFollowed(t *testing.T) {
 	defer srv.Close()
 
 	p := local()
-	c := p.chain(context.Background(), p.client(), srv.URL+"/")
+	c := p.chain(context.Background(), p.client(), srv.URL+"/", anywhere())
 
 	if len(c.Hops) != 1 {
 		t.Fatalf("got %d hops, want 1: an ftp address is not followed", len(c.Hops))
@@ -196,7 +203,7 @@ func TestOnlyTheGradedHeadersAreRecorded(t *testing.T) {
 	defer srv.Close()
 
 	p := local()
-	c := p.chain(context.Background(), p.client(), srv.URL+"/")
+	c := p.chain(context.Background(), p.client(), srv.URL+"/", anywhere())
 
 	h := c.Final().Headers
 	if got := h["Strict-Transport-Security"]; len(got) != 1 || got[0] != "max-age=63072000" {
@@ -230,7 +237,7 @@ func TestACookieValueIsNeverRecorded(t *testing.T) {
 	defer srv.Close()
 
 	p := local()
-	c := p.chain(context.Background(), p.client(), srv.URL+"/")
+	c := p.chain(context.Background(), p.client(), srv.URL+"/", anywhere())
 
 	blob, err := json.Marshal(c)
 	if err != nil {
@@ -314,7 +321,7 @@ func TestTheBodyIsNotRead(t *testing.T) {
 
 	p := local()
 	start := time.Now()
-	c := p.chain(context.Background(), p.client(), srv.URL+"/")
+	c := p.chain(context.Background(), p.client(), srv.URL+"/", anywhere())
 	elapsed := time.Since(start)
 
 	if c.Final().Status != http.StatusOK {
@@ -338,7 +345,7 @@ func TestTheUserAgentIdentifiesTheToolAndWhereToReadAboutIt(t *testing.T) {
 	defer srv.Close()
 
 	p := local()
-	p.chain(context.Background(), p.client(), srv.URL+"/")
+	p.chain(context.Background(), p.client(), srv.URL+"/", anywhere())
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -461,7 +468,7 @@ func TestTheTwoChainsAreIndependent(t *testing.T) {
 		TotalTimeout:   8 * time.Second,
 	}
 
-	report, err := p.Probe(context.Background(), "invalid.example")
+	report, err := p.Probe(context.Background(), "invalid.example", nil)
 	if err != nil {
 		t.Fatalf("Probe returned %v; a host that does not resolve is a finding, not an error", err)
 	}

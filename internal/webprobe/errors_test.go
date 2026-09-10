@@ -99,7 +99,7 @@ func TestANameThatResolvesOnlyWhereWeWillNotGoIsRecordedAsBlocked(t *testing.T) 
 		TotalTimeout:   8 * time.Second,
 	}
 
-	report, err := p.Probe(context.Background(), "internal.example")
+	report, err := p.Probe(context.Background(), "internal.example", nil)
 	if err != nil {
 		t.Fatalf("Probe returned %v; a refused destination is a finding, not an error", err)
 	}
@@ -133,7 +133,7 @@ func TestANameReachedOnOnePortIsNotABlockedDestination(t *testing.T) {
 		TotalTimeout:   8 * time.Second,
 	}
 
-	report, err := p.Probe(context.Background(), "half.example")
+	report, err := p.Probe(context.Background(), "half.example", nil)
 	if err != nil {
 		t.Fatalf("Probe returned %v", err)
 	}

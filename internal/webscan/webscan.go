@@ -16,6 +16,7 @@ package webscan
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/demo"
@@ -136,7 +137,20 @@ func (s *Scanner) Scan(ctx context.Context, host string) (*Result, error) {
 		prober = &webprobe.Prober{}
 	}
 
-	observed, err := prober.Probe(ctx, host)
+	// And again, for every host a redirect names.
+	//
+	// The three guards above authorise the host that was asked about. A
+	// redirect is a different host, chosen by the server that answered rather
+	// than by the operator, and until this was passed the probe followed one
+	// anywhere the ports and safedial allowed. So a name on the exclusion
+	// list was refused when typed and reached when a redirect pointed at it;
+	// so was a host outside a demonstration build; and a deployment that
+	// scans only what it has been shown control of could be walked out of its
+	// own estate by one Location header on a site it does own.
+	//
+	// N10 has the reasoning. The same three sources of authority, in the same
+	// order, are what s.reachable asks.
+	observed, err := prober.Probe(ctx, host, s.reachable)
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +159,69 @@ func (s *Scanner) Scan(ctx context.Context, host string) (*Result, error) {
 	out.Host = host
 	out.Duration = s.now().Sub(started)
 	return out, nil
+}
+
+// reachable answers whether a redirect may be followed to a host, and why not
+// when it may not.
+//
+// It asks what Scan asks about the host it was given, in the same order and
+// from the same three sources of authority, because a redirect target is a
+// host this deployment is about to connect to and there is no second set of
+// rules about that. Written once here rather than twice, so that a source of
+// authority added later cannot hold at the front door and not at the hop.
+//
+// The sentences are fixed and none of them repeats the name (I3). They go into
+// a report, and the report goes to whoever asked — including, on a service, a
+// stranger. The Location header is kept in the hop that produced it, so a
+// reader can see the address without this saying it.
+func (s *Scanner) reachable(ctx context.Context, host string) string {
+	if exclusion.Covers(host) {
+		return "the Location header named a domain this service does not scan"
+	}
+
+	if demo.Refusal(host) {
+		return "the Location header named a host outside what this deployment scans"
+	}
+
+	if s.Verify == nil {
+		return ""
+	}
+
+	// HTTPOnly, the same surface Scan asks for, because a redirect hop is the
+	// same kind of connection as the first one: ports 80 and 443, read the way
+	// a browser reads them. So a host that proved control by serving the
+	// challenge file proves enough for a hop as well — the file proof is
+	// narrow because it says nothing about a zone or about a port a browser
+	// never opens, and neither of those is what a redirect asks for.
+	//
+	// It has a cost, and it is written here rather than left to be discovered.
+	// Asking this way means a deployment with a Fetcher configured makes one
+	// request to the redirect target before refusing it: a GET of the
+	// challenge path, over 443, identifying itself, no redirect followed and
+	// a capped body. So "nothing is dialled" is true of the probe and not
+	// literally true of the machine.
+	//
+	// The alternative is to accept only the zone proof at a hop, which costs
+	// one lookup and no connection. It was not taken, because the file proof
+	// exists for teams with no DNS access, and apex-to-www is the redirect
+	// almost every site has: those teams would get a chain truncated at the
+	// first hop with nothing they could do about it. What is spent instead is
+	// one fixed, published request — strictly less than the probe that used to
+	// happen there unasked, and less than the check itself does to any host it
+	// is pointed at.
+	if err := s.Verify.Covers(ctx, host, verify.HTTPOnly); err != nil {
+		if errors.Is(err, verify.ErrNotVerified) {
+			return "the Location header named a domain this deployment has not been shown control of"
+		}
+
+		// Any other failure is this deployment being unable to ask rather
+		// than an answer, and it stops the chain. Following on would be a
+		// boundary that opens whenever a resolver is slow, which is a
+		// boundary somebody can arrange to be slow.
+		return "whether that domain may be reached could not be established"
+	}
+
+	return ""
 }
 
 // Grade turns what a probe observed into a graded result.
