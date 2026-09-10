@@ -164,31 +164,22 @@ func TestOnlyKnownChecksAreCounted(t *testing.T) {
 //
 // The second half of A7, applied to this map. A counter that cannot move is
 // not a low number; it is silence, and an operator reads silence as nothing
-// happening. When the web endpoint lands, drive it here and take it off this
-// list — the same discipline TestEveryRefusalCodeCanBeProduced keeps for the
-// refusal codes.
+// happening. Both checks have an address now, so both are driven here; a check
+// added later and left undriven fails this rather than shipping a figure that
+// is permanently zero.
 func TestEveryCountedCheckCanOccur(t *testing.T) {
 	s := New(offlineScanner(), Limits{Burst: 1000, Refill: time.Nanosecond}, nil)
-	post(t, s, `{"target":"one.test"}`)
+	s.UseWebScanner(offlineWebScanner())
 
-	notYetReachable := map[string]string{
-		checkWeb: "the web check has no address on this service yet",
-	}
+	post(t, s, `{"target":"one.test"}`)
+	postWeb(t, s, `{"target":"two.test"}`)
 
 	produced := s.Stats().Checks
 	for _, name := range checkNames {
-		if _, found := produced[name]; found {
-			if why, ok := notYetReachable[name]; ok {
-				t.Errorf("%q is listed as unreachable (%s) but a request produced it; "+
-					"drive it deliberately and remove it from the list", name, why)
-			}
-			continue
+		if _, found := produced[name]; !found {
+			t.Errorf("no request in this test produces a %q scan, so its published figures are "+
+				"permanently zero", name)
 		}
-		if _, ok := notYetReachable[name]; ok {
-			continue
-		}
-		t.Errorf("no request in this test produces a %q scan, so its published figures are "+
-			"permanently zero", name)
 	}
 }
 

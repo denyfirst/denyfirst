@@ -75,6 +75,13 @@ func TestEveryRefusalCodeCanBeProduced(t *testing.T) {
 		note(postFrom(t, s, `{"target":"93.184.216.34"}`, "203.0.113.5:5000"), "hostname_required")
 		note(postFrom(t, s, `{"target":"army.mil"}`, "203.0.113.6:5000"), "excluded")
 		note(postFrom(t, s, `{"target":"`+strings.Repeat("a", 9000)+`.test"}`, "203.0.113.8:5000"), "payload_too_large")
+
+		// Only the web check can produce this one: it takes a bare hostname,
+		// so a port is something to be told about rather than something to
+		// drop. The TLS endpoint answers port_not_allowed instead, which is a
+		// rule about a different check and a different sentence.
+		s.UseWebScanner(offlineWebScanner())
+		note(postWebFrom(t, s, `{"target":"example.test:443"}`, "203.0.113.12:5000"), "port_not_accepted")
 	}
 
 	// ── the header checks ──
