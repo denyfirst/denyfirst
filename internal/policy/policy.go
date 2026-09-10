@@ -419,9 +419,31 @@ var cipherRules = []cipherRule{
 			}
 			return false
 		},
-		verdict:   Insecure,
-		title:     "No forward secrecy",
-		rationale: "The session key is derived from a long-term key, so anyone who later obtains the server's private key can decrypt traffic captured months or years earlier.",
+		verdict: Insecure,
+		title:   "No forward secrecy",
+
+		// The second half of this was cited and never said.
+		//
+		// ROBOT has been in the references since the rule was written, and a
+		// reader who did not already know what a Bleichenbacher oracle is
+		// learnt nothing from a link. It is worth saying plainly, because it
+		// is the one place where this project's refusal to send malformed
+		// input costs a reader something — and it turns out to cost them
+		// almost nothing, which is the part they should be told.
+		//
+		// A static RSA key exchange is the only arrangement in which such an
+		// oracle can exist. Whether one does cannot be seen from a handshake:
+		// it takes dozens of deliberately malformed ciphertexts and a reading
+		// of how the server distinguishes them, which is a thing this tool
+		// does not do to anybody's server. What can be seen is the
+		// precondition, and the remedy for the precondition and for the
+		// oracle is the same instruction — so a reader loses the confirmation
+		// and keeps the action.
+		//
+		// Said as what was measured and not as what it implies (R17): the
+		// sentence claims the arrangement, names what was not established, and
+		// stops.
+		rationale: "The session key is derived from a long-term key, so anyone who later obtains the server's private key can decrypt traffic captured months or years earlier. A static RSA key exchange is also the only arrangement in which a Bleichenbacher oracle can exist, which lets an attacker decrypt recorded sessions or forge a signature without ever holding the private key. Whether this server is such an oracle was not established here — confirming it means sending deliberately malformed handshakes, which this tool does not do — and it does not need to be, because the remedy is the same either way: stop offering key exchange without forward secrecy.",
 		refs:      []Reference{rfc9325, rfc10015, rfc9846, robot, bsiTR02102},
 	},
 	{
