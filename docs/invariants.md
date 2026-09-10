@@ -530,6 +530,37 @@ arriving through a typo in a path.
 second sends an operator to their DNS to publish a record they have already
 published, rather than to the resolver that would not answer.
 
+**Configured once, inherited by every check.** This is the half that was
+missing, and it was missing in production while every test passed. Both
+scanners asked the scope, both had tests proving they asked it, and
+`httpapi.New` built the web check from nothing — so a service that configured a
+boundary refused an unproven host on `/api/v1/tls/scan` and measured it on
+`/api/v1/web/scan`. The component was secure and the composition was not.
+
+N6 puts a guard where the connection is made, and it does. What N6 does not say
+is that **a guard every constructor has to remember to pass is a guard somebody
+forgets.** So the caller configures the boundary on the scanner it hands to
+`New`, and every check the service builds takes it from there — including
+through `UseWebScanner`, which is a door for tests and therefore exactly how a
+boundary comes to be off in production. A replacement that carries no scope
+inherits the one the server was built with rather than replacing it with
+nothing.
+
+The test for this drives the addresses rather than the packages. It reads the
+`POST` routes out of the source, posts an unproven name to each, and asserts
+that no dial was attempted and that the challenge was actually looked up — so a
+check added later is tested by existing, and a refusal that arrives without a
+lookup is not mistaken for this boundary holding.
+
+**The refusal is recognised, not repeated.** Unlike the exclusion list and the
+demonstration list, this boundary is a lookup, so asking it in the handler and
+again in the scanner would be two queries somebody else's resolver serves for
+one request. The scanner asks; the handler reads the answer and turns it into
+`not_verified` with a 403. Before that it arrived as `scan_failed` with a 502
+saying the target could not be reached — a sentence about somebody else's
+server for a decision made entirely here, and a deliberate refusal counted as a
+failure in the only figures an operator has to watch this service by.
+
 **It is opt-in today, and that is the open state.** Turning it on by default
 would stop every deployment that has not published a record yet, which is a
 change to make deliberately rather than as a side effect of an upgrade.
@@ -537,7 +568,8 @@ change to make deliberately rather than as a side effect of an upgrade.
 carries the gap until it is.
 
 *Enforced in:* `internal/verify`, `internal/scan.Scanner.Scan`,
-`internal/webscan.Scanner.Scan`, `cmd/denyfirstd.verificationScope`
+`internal/webscan.Scanner.Scan`, `internal/httpapi.New`,
+`internal/httpapi.Server.UseWebScanner`, `cmd/denyfirstd.verificationScope`
 *Guarded by:* `TestAPublishedTokenCoversTheZone`,
 `TestADomainThatProvedNothingIsRefused`,
 `TestATokenFromOneDomainDoesNotProveAnother`,
@@ -554,7 +586,13 @@ carries the gap until it is.
 `TestTheTLSScannerNeedsNoProofByDefault`,
 `TestAnUnverifiedNameIsRefusedBeforeAnythingIsDialled`,
 `TestAVerifiedNameIsScanned`, `TestNoScopeMeansNoProofIsRequired`,
-`TestAnExcludedNameIsRefusedAsExcludedRatherThanAsUnproven`
+`TestAnExcludedNameIsRefusedAsExcludedRatherThanAsUnproven`,
+`TestEveryScanningEndpointRequiresProofOfControl`,
+`TestAProvenDomainReachesTheProbe`,
+`TestTheConstructorGivesEveryCheckTheSameBoundary`,
+`TestReplacingTheWebScannerCannotDropTheBoundary`,
+`TestTheVerificationRefusalStatesTheRuleWithoutRepeatingTheTarget`,
+`TestALookupFailureIsNotAnsweredAsUnproven`
 
 ## Input
 
@@ -819,7 +857,18 @@ One code remains unreachable by construction and is named in the test rather
 than left to be discovered: `scan_failed`, because `scan.Scan` cannot fail
 once the handler has validated the target. It is written as a counted refusal
 anyway, since the signature permits an error and an uncounted one would be the
-same hole in a different place.
+same hole in a different place. A deployment that requires proof of control
+adds one way through it — the challenge lookup itself failing — which is this
+service being unable to ask rather than the domain being unproven, and is why
+the two are answered separately (N9).
+
+`not_verified` is driven in the test rather than left defensive, and the
+difference from `not_demonstrated` is why. That one needs a build tag, so only
+the demonstration's own test can produce it. This one needs nothing but a
+configured scope, and a figure nobody drives is a figure nobody notices has
+stopped moving. What it says is worth having: people asking about domains they
+have not published a record for is either a procedure nobody was told about or
+a record that stopped resolving, and no scan count shows either.
 
 **The fact is carried as a field, and the field comes before the entry point
 that counts it.** `blocked_destination` was silent on the TLS check until
