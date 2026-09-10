@@ -31,7 +31,7 @@ func TestControlCharactersInCertificateFieldsAreNeutralised(t *testing.T) {
 	leaf := selfSignedWith(t, pkix.Name{CommonName: "evil" + attack + ".test"},
 		[]string{"good.test", "sneaky" + attack + ".test"})
 
-	report, err := Analyse([]*x509.Certificate{leaf}, "good.test", time.Now())
+	report, err := Analyse([]*x509.Certificate{leaf}, "good.test", time.Now(), testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}

@@ -171,7 +171,16 @@ func run() int {
 	// somebody else's server, which is the exact failure this project exists
 	// to avoid. So it refuses to start, and says where the store is looked
 	// for rather than leaving the reader to guess.
-	if err := trustStoreUsable(x509.SystemCertPool()); err != nil {
+	//
+	// The pool is kept and handed to the scanner rather than read, checked
+	// and dropped. It was dropped, and that was the defect: x509.Verify with
+	// no Roots does not mean "the pool this program just looked at", it means
+	// "decide for yourself" — and on Windows and macOS deciding means the
+	// platform verifier, which reads a different store. So this check passed
+	// against one store and every chain was then judged against another, on
+	// the two platforms self-hosting is most likely to run on.
+	roots, rootsErr := x509.SystemCertPool()
+	if err := trustStoreUsable(roots, rootsErr); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
@@ -192,7 +201,11 @@ func run() int {
 	// The scanner is left at its defaults on purpose. It dials through
 	// safedial, enforces the port allow list, and takes hostnames rather than
 	// addresses. There is no flag here that would turn any of it off.
-	api := httpapi.New(&scan.Scanner{}, limits, nil)
+	//
+	// Roots is the one thing passed in, and it is the pool checked above.
+	// Leaving it nil would send every verification back to whatever the
+	// platform decides, which is the store this program did not check.
+	api := httpapi.New(&scan.Scanner{Roots: roots}, limits, nil)
 
 	if *statsFile != "" {
 		if snapshot, err := loadStats(*statsFile); err == nil {

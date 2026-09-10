@@ -31,7 +31,7 @@ type issuer struct {
 
 // newRoot returns the root these tests trust.
 //
-// One root for the package, installed by TestMain through SSL_CERT_FILE, so a
+// One root for the package, built by TestMain and passed to Analyse, so a
 // chain built here verifies the way a real one does. It used to generate a
 // fresh authority per call and nothing verified at all; see main_test.go for
 // what that was hiding. A test that wants a chain which does not verify calls
@@ -170,7 +170,7 @@ func ruleIDs(r *Report) []string {
 }
 
 func TestAnalyseRejectsEmptyChain(t *testing.T) {
-	if _, err := Analyse(nil, "example.test", refNow); err == nil {
+	if _, err := Analyse(nil, "example.test", refNow, testRoots); err == nil {
 		t.Error("Analyse accepted an empty chain")
 	}
 }
@@ -182,7 +182,7 @@ func TestDescribesTheLeaf(t *testing.T) {
 		ips:      []net.IP{net.ParseIP("192.0.2.1")},
 	})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -228,7 +228,7 @@ func TestUnknownRootIsUntrusted(t *testing.T) {
 	root := newUntrustedRoot(t)
 	leaf := newLeaf(t, root, leafOpts{})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestPresentIssuerIsNotAnIncompleteChain(t *testing.T) {
 	root := newRoot(t)
 	leaf := newLeaf(t, root, leafOpts{})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestMissingIssuerIsAnIncompleteChain(t *testing.T) {
 	root := newRoot(t)
 	leaf := newLeaf(t, root, leafOpts{})
 
-	report, err := Analyse([]*x509.Certificate{leaf}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -283,7 +283,7 @@ func TestSelfSignedIsDetected(t *testing.T) {
 	root := newRoot(t)
 	leaf := newLeaf(t, root, leafOpts{selfSign: true})
 
-	report, err := Analyse([]*x509.Certificate{leaf}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestHostnameMismatch(t *testing.T) {
 	root := newRoot(t)
 	leaf := newLeaf(t, root, leafOpts{dnsNames: []string{"example.test"}})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "other.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "other.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -320,7 +320,7 @@ func TestNoHostnameIsNoted(t *testing.T) {
 	root := newRoot(t)
 	leaf := newLeaf(t, root, leafOpts{})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -347,7 +347,7 @@ func TestExpiredCertificate(t *testing.T) {
 		notAfter:  refNow.AddDate(0, 0, -5),
 	})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -364,7 +364,7 @@ func TestSmallRSAKey(t *testing.T) {
 	root := newRoot(t)
 	leaf := newLeaf(t, root, leafOpts{rsaBits: 1024})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -383,7 +383,7 @@ func TestNoSubjectAlternativeName(t *testing.T) {
 	root := newRoot(t)
 	leaf := newLeaf(t, root, leafOpts{dnsNames: []string{}, ips: []net.IP{}})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -397,7 +397,7 @@ func TestSummaryIsReadable(t *testing.T) {
 	root := newRoot(t)
 	leaf := newLeaf(t, root, leafOpts{})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -438,7 +438,7 @@ func TestThisPackageClaimsNothingAboutRevocation(t *testing.T) {
 	root := newRoot(t)
 	leaf := newLeaf(t, root, leafOpts{})
 
-	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+	report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}
@@ -515,7 +515,7 @@ func TestTheReportSaysWhetherTheNameAndTheDatesHold(t *testing.T) {
 	for _, c := range cases {
 		leaf := newLeaf(t, root, c.leaf)
 
-		report, err := Analyse([]*x509.Certificate{leaf, root.cert}, c.hostname, refNow)
+		report, err := Analyse([]*x509.Certificate{leaf, root.cert}, c.hostname, refNow, testRoots)
 		if err != nil {
 			t.Fatalf("%s: Analyse: %v", c.name, err)
 		}
@@ -566,7 +566,7 @@ func TestWhatACertificateMayBeReachesTheReport(t *testing.T) {
 	for _, c := range cases {
 		leaf := newLeaf(t, root, c.leaf)
 
-		report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow)
+		report, err := Analyse([]*x509.Certificate{leaf, root.cert}, "example.test", refNow, testRoots)
 		if err != nil {
 			t.Fatalf("%s: Analyse: %v", c.name, err)
 		}
@@ -585,7 +585,7 @@ func TestWhatACertificateMayBeReachesTheReport(t *testing.T) {
 	// And the ordinary certificate every other test in this file uses is
 	// accused of none of them, or the wiring is reading the wrong bit.
 	report, err := Analyse([]*x509.Certificate{newLeaf(t, root, leafOpts{}), root.cert},
-		"example.test", refNow)
+		"example.test", refNow, testRoots)
 	if err != nil {
 		t.Fatalf("Analyse: %v", err)
 	}

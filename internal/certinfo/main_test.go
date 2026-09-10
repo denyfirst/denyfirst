@@ -6,11 +6,9 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/pem"
 	"fmt"
 	"math/big"
 	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -24,12 +22,12 @@ import (
 // in that blind spot on 2026-09-02 — the fold over the issuers could be
 // deleted and no test noticed, because the leaf was already insecure.
 //
-// Go's verifier reads SSL_CERT_FILE, so one root written to a PEM before
-// anything verifies gives these tests a store of their own. The catch is that
-// the system pool is built once per process: setting the variable inside a
-// test works when that test runs alone and does nothing in a full package
-// run, because something has verified already. TestMain is the only place
-// early enough.
+// One root, built here and handed to every Analyse call as its Roots. It used
+// to be installed through SSL_CERT_FILE instead, which worked on Linux and on
+// nothing else: only Go's unix root loader reads that variable, so on Windows
+// and macOS the PEM was written and never consulted, and two tests failed there
+// from the day they were written. Passing the pool is what the program does
+// now, so the tests take the same path it does.
 //
 // The store holds exactly one certificate, and no public authority. Nothing
 // here should ever depend on a real root, and a test that started to would
@@ -38,6 +36,17 @@ var (
 	// sharedRoot is trusted. newRoot returns it, so a chain built the ordinary
 	// way in a test verifies the way a real one does.
 	sharedRoot issuer
+
+	// testRoots is the store every Analyse call in this package is given.
+	//
+	// Passed rather than installed through the environment. SSL_CERT_FILE is
+	// read by Go's unix root loader and by nothing else, so on Windows and
+	// macOS the fixture below wrote a PEM that nothing consulted and two tests
+	// failed there from the day they were written. Handing the pool to the
+	// function under test works the same way on every platform — and it is
+	// also what the program now does, so the tests exercise the real path
+	// rather than a second one.
+	testRoots *x509.CertPool
 )
 
 func TestMain(m *testing.M) {
@@ -51,32 +60,14 @@ func TestMain(m *testing.M) {
 
 // run does the work so that deferred cleanup happens before os.Exit.
 func run(m *testing.M) (int, error) {
-	dir, err := os.MkdirTemp("", "denyfirst-roots")
-	if err != nil {
-		return 0, fmt.Errorf("making a directory for the test root: %w", err)
-	}
-	defer os.RemoveAll(dir)
-
 	root, err := makeRoot("denyfirst test root")
 	if err != nil {
 		return 0, err
 	}
 	sharedRoot = root
 
-	path := filepath.Join(dir, "roots.pem")
-	block := &pem.Block{Type: "CERTIFICATE", Bytes: root.cert.Raw}
-	if err := os.WriteFile(path, pem.EncodeToMemory(block), 0o600); err != nil {
-		return 0, fmt.Errorf("writing the test root: %w", err)
-	}
-
-	// Both, because Go consults them separately and a directory left pointing
-	// at the machine's own store would put real authorities back in.
-	if err := os.Setenv("SSL_CERT_FILE", path); err != nil {
-		return 0, err
-	}
-	if err := os.Setenv("SSL_CERT_DIR", dir); err != nil {
-		return 0, err
-	}
+	testRoots = x509.NewCertPool()
+	testRoots.AddCert(root.cert)
 
 	return m.Run(), nil
 }
@@ -124,56 +115,65 @@ func newUntrustedRoot(t *testing.T) issuer {
 	return root
 }
 
-// The store TestMain installs is really installed.
+// The store the tests hand to Analyse is really the store it verifies against.
 //
-// Everything this package now measures about trusted chains rests on it, and
-// a setup that quietly stops working does not announce itself: the tests go
-// back to reporting every chain untrusted and keep passing, which is the blind
-// spot they were arranged to leave.
+// Everything this package measures about trusted chains rests on it, and a
+// setup that quietly stops working does not announce itself: the tests go back
+// to reporting every chain untrusted and keep passing, which is the blind spot
+// they were arranged to leave.
 //
-// Both variables are set because Go consults them separately, and removing
-// either one alone leaves the other doing the work — so this asserts the
-// outcome rather than the mechanism.
-func TestTheTestRootIsInTheStore(t *testing.T) {
+// It used to rest on SSL_CERT_FILE and SSL_CERT_DIR, and that is why this test
+// existed in the first place — the mechanism was fragile enough to need
+// watching. It was also fragile in a way the watching could not catch, because
+// only Go's unix root loader reads those variables: on Windows and macOS the
+// fixture wrote a PEM that nothing consulted, and two tests in this package
+// failed there from the day they were written. Passing the pool to the
+// function under test works identically on every platform, and it is what the
+// program itself now does, so these tests exercise the real path rather than a
+// second one arranged for them.
+func TestTheTestRootIsTheStoreAnalyseUses(t *testing.T) {
 	if sharedRoot.cert == nil {
 		t.Fatal("TestMain built no shared root")
 	}
-
-	pool, err := x509.SystemCertPool()
-	if err != nil {
-		t.Fatalf("reading the system pool: %v", err)
+	if testRoots == nil {
+		t.Fatal("TestMain built no pool for the tests to pass")
 	}
 
+	// The outcome rather than the mechanism: a chain to the test root is
+	// trusted when Analyse is given that pool.
 	leaf := newLeaf(t, sharedRoot, leafOpts{})
-	if _, err := leaf.Verify(x509.VerifyOptions{
-		Roots:       pool,
-		DNSName:     "example.test",
-		CurrentTime: refNow,
-	}); err != nil {
-		t.Fatalf(`a chain to the test root does not verify against the system pool: %v
+	report, err := Analyse([]*x509.Certificate{leaf, sharedRoot.cert}, "example.test", refNow, testRoots)
+	if err != nil {
+		t.Fatalf("Analyse: %v", err)
+	}
+	if !report.Trusted {
+		t.Fatalf(`a chain to the test root is not trusted: %s
 
-TestMain writes that root to a PEM and points SSL_CERT_FILE and SSL_CERT_DIR
-at it before anything else runs. If that has stopped working, every test in
-this package is back to measuring untrusted chains and passing anyway.`, err)
+The pool TestMain builds is what every Analyse call here passes. If that has
+stopped working, every test in this package is back to measuring untrusted
+chains and passing anyway.`, report.VerifyError)
 	}
 
 	// And nothing else is in there. A public authority in the pool would mean
 	// a test could pass for a reason nobody chose, and would make this suite
-	// depend on the machine it runs on: setting only one of the two variables
-	// leaves the other loading the system store, and that is not a failure
-	// that announces itself.
+	// depend on the machine it runs on.
 	//
 	// Compared as a whole rather than counted through Subjects, which is
-	// deprecated precisely because it does not describe a system pool
-	// faithfully — reaching for it here would be using a broken measure to
-	// check that a measurement is sound.
+	// deprecated precisely because it does not describe a pool faithfully —
+	// reaching for it here would be using a broken measure to check that a
+	// measurement is sound.
 	want := x509.NewCertPool()
 	want.AddCert(sharedRoot.cert)
-	if !pool.Equal(want) {
-		t.Error(`the system pool is not exactly the test root.
+	if !testRoots.Equal(want) {
+		t.Error("the pool the tests pass is not exactly the test root, so a result here could " +
+			"depend on which machine it ran on")
+	}
 
-TestMain sets SSL_CERT_FILE and SSL_CERT_DIR, and Go consults them separately:
-leaving either one unset lets the machine's own authorities back in, and every
-test here would then depend on which machine it ran on.`)
+	// The machine's own store is not it. Were the two the same, this suite
+	// would be measuring whatever authorities happen to be installed, and the
+	// separation the fixture exists for would be gone without a symptom.
+	if system, err := x509.SystemCertPool(); err == nil && system.Equal(want) {
+		t.Error("the system pool and the test pool are identical, which means the fixture is not " +
+			"isolating anything")
 	}
 }
