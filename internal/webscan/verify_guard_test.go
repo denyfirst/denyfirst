@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -44,11 +45,16 @@ func TestAnUnverifiedNameIsRefusedBeforeAnythingIsDialled(t *testing.T) {
 		t.Skip("a demonstration build refuses this name before the scope is reached")
 	}
 
-	var dialed bool
+	// atomic because the prober opens several connections at once: tlsprobe
+	// probes every version in parallel, and a plain bool written from those
+	// goroutines and read here is a race the -race build finds. It only finds
+	// it on Linux, because -race needs cgo and a Go installation on Windows
+	// brings no C toolchain, so CI is the first place this shows.
+	var dialed atomic.Bool
 	s := &Scanner{
 		Prober: &webprobe.Prober{
 			Dial: func(context.Context, string, string) (net.Conn, error) {
-				dialed = true
+				dialed.Store(true)
 				return nil, errors.New("nothing is listening")
 			},
 			RequestTimeout: time.Second,
@@ -61,7 +67,7 @@ func TestAnUnverifiedNameIsRefusedBeforeAnythingIsDialled(t *testing.T) {
 	if !errors.Is(err, verify.ErrNotVerified) {
 		t.Errorf("Scan returned %v, want the verification refusal", err)
 	}
-	if dialed {
+	if dialed.Load() {
 		t.Error("an unverified name was refused and a connection was opened anyway")
 	}
 }
@@ -78,12 +84,17 @@ func TestAVerifiedNameIsScanned(t *testing.T) {
 	}
 
 	secret := []byte("s")
-	var dialed bool
+	// atomic because the prober opens several connections at once: tlsprobe
+	// probes every version in parallel, and a plain bool written from those
+	// goroutines and read here is a race the -race build finds. It only finds
+	// it on Linux, because -race needs cgo and a Go installation on Windows
+	// brings no C toolchain, so CI is the first place this shows.
+	var dialed atomic.Bool
 
 	s := &Scanner{
 		Prober: &webprobe.Prober{
 			Dial: func(context.Context, string, string) (net.Conn, error) {
-				dialed = true
+				dialed.Store(true)
 				return nil, errors.New("nothing is listening")
 			},
 			RequestTimeout: time.Second,
@@ -95,7 +106,7 @@ func TestAVerifiedNameIsScanned(t *testing.T) {
 	if _, err := s.Scan(context.Background(), "www.example.test"); err != nil {
 		t.Fatalf("a name under a proven domain was refused: %v", err)
 	}
-	if !dialed {
+	if !dialed.Load() {
 		t.Error("a verified name was accepted and nothing was ever dialled")
 	}
 }
