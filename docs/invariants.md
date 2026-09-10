@@ -661,6 +661,22 @@ reason N8 gives about its own comparison.
 permission — a guard that gives way whenever a resolver is slow is a guard
 somebody can arrange to be slow.
 
+**Asking is not free, and the cost is named rather than left to be found.** The
+web check asks for the `HTTPOnly` surface, the same one it asks about the host
+it was given, so a deployment that accepts the challenge *file* makes one
+request to a redirect target before refusing it: a `GET` of the challenge path
+over 443, identifying itself, following no redirect, with a capped body. "The
+refusal comes before the connection" is therefore true of the probe and not
+literally true of the machine, and a test that asserts nothing was dialled is
+asserting the first.
+
+The alternative — accepting only the zone proof at a hop, which costs a lookup
+and no connection — was not taken. The file proof exists for teams with no DNS
+access, and apex-to-www is the redirect almost every site has; those teams would
+get a chain truncated at the first hop with nothing they could do about it. What
+is spent instead is one fixed, published request, which is strictly less than
+the full probe that used to happen there unasked.
+
 **It is a parameter of `Probe`, not a field on `Prober`.** `Dial` is a field
 because leaving it unset selects the safe answer; this has no safe default,
 since the command line must follow a redirect anywhere and a service must not.

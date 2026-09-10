@@ -187,7 +187,29 @@ func (s *Scanner) reachable(ctx context.Context, host string) string {
 		return ""
 	}
 
-	if err := s.Verify.Covers(ctx, host); err != nil {
+	// HTTPOnly, the same surface Scan asks for, because a redirect hop is the
+	// same kind of connection as the first one: ports 80 and 443, read the way
+	// a browser reads them. So a host that proved control by serving the
+	// challenge file proves enough for a hop as well — the file proof is
+	// narrow because it says nothing about a zone or about a port a browser
+	// never opens, and neither of those is what a redirect asks for.
+	//
+	// It has a cost, and it is written here rather than left to be discovered.
+	// Asking this way means a deployment with a Fetcher configured makes one
+	// request to the redirect target before refusing it: a GET of the
+	// challenge path, over 443, identifying itself, no redirect followed and
+	// a capped body. So "nothing is dialled" is true of the probe and not
+	// literally true of the machine.
+	//
+	// The alternative is to accept only the zone proof at a hop, which costs
+	// one lookup and no connection. It was not taken, because the file proof
+	// exists for teams with no DNS access, and apex-to-www is the redirect
+	// almost every site has: those teams would get a chain truncated at the
+	// first hop with nothing they could do about it. What is spent instead is
+	// one fixed, published request — strictly less than the probe that used to
+	// happen there unasked, and less than the check itself does to any host it
+	// is pointed at.
+	if err := s.Verify.Covers(ctx, host, verify.HTTPOnly); err != nil {
 		if errors.Is(err, verify.ErrNotVerified) {
 			return "the Location header named a domain this deployment has not been shown control of"
 		}
