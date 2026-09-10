@@ -251,10 +251,29 @@ the scanner enforces rather than from a constant of its own — a binary cannot
 say one thing and do another — and the deploy procedure greps for it rather
 than trusting a filename.
 
+**One chain of guards, not one per entry point.** The web check has an address
+now, and it walks the same chain the TLS check does: the client key, the read
+allowance, the cross-site test, the content type, the scan allowance, the body
+cap, the JSON decode, the exclusion list, the deployment list, the deadline,
+the concurrency cap and the per-target budget. Twelve of eighteen steps are
+identical, so a second handler would have been twelve copies of a guard, and
+this invariant is about what happens to the copy nobody is looking at. What
+differs is described as data — how a target is parsed, what budget it spends,
+what runs, what is written — and the chain is written once.
+
+The differences are small and each is a decision. The web check takes a bare
+hostname, so a port is refused rather than dropped: ignoring it would discard
+part of what somebody typed without saying so, which is the failure target
+parsing already refuses for a path. Its budget is the host's HTTPS one rather
+than a name of its own, because the per-target limit is the only one here that
+protects the server being measured and a second budget would let one host be
+made to absorb twice the peak. The scan allowance is shared, because two
+endpoints each with a full one would silently double what a client can spend.
+
 *Enforced in:* `internal/demo` (`demo.go`, `demo_on.go`, `demo_off.go`),
 `internal/scan.Scanner.Scan`, `internal/webscan.Scanner.Scan`,
-`internal/httpapi.Server.handleScan`, `internal/web/assets/index.html`,
-`scripts/build.sh`, `docs/releasing.md`
+`internal/httpapi.Server.handleScan`, `internal/httpapi` (`check`, `target`),
+`internal/web/assets/index.html`, `scripts/build.sh`, `docs/releasing.md`
 *Guarded by:* `TestTheOrdinaryBuildIsNotADemonstration`,
 `TestTheWebScannerRefusesAHostThisProjectDoesNotOwn`,
 `TestARefusedHostIsNeverConnectedTo`,
@@ -272,6 +291,14 @@ than trusting a filename.
 `TestTheDemonstrationPageSaysWhatItIsAndWhereTheToolIs`,
 `TestTheDemonstrationRefusalIsAnsweredAndCounted`,
 `TestEveryRefusalCodeCanBeProduced`,
+`TestTheWebEndpointWalksTheSameChainOfGuards`,
+`TestTheWebEndpointRefusesAPortRatherThanDroppingIt`,
+`TestOneScanAllowanceCoversBothChecks`,
+`TestTheTargetBudgetIsSharedBetweenTheChecks`,
+`TestAnAddressIsRefusedTheSameWayOnBothEndpoints`,
+`TestTheHandlerNeverAcceptsATargetTheProbeWouldRefuse`,
+`TestTheWebTargetIsFoldedBeforeAnythingSeesIt`,
+`TestTheWebEndpointDoesNotAnswerAGet`,
 `TestAVersionSaysWhichHostsTheBinaryWillReach`,
 `TestTheVersionOutputCarriesTheReachLine`,
 `TestTheDemonstrationBuildIsReleasedAndDeployed`
@@ -702,6 +729,7 @@ would hide the half that succeeded.
 *Guarded by:* `TestEveryRefusalCodeCanBeProduced`,
 `TestOnlyKnownRefusalCodesAreCounted`,
 `TestANameThatResolvesOnlyWhereWeWillNotGoIsRecordedAsBlocked`,
+`TestTheWebEndpointCountsABlockedDestination`,
 `TestANameReachedOnOnePortIsNotABlockedDestination`,
 `TestNoHopsIsNotABlockedDestination`,
 `TestOnlyAPolicyRefusalSetsTheBlockedFlag`
@@ -2109,7 +2137,9 @@ clock is free for an integer and is not free for a map.
 `TestARestoredBlockDoesNotCarryTheOldRuleSetName`,
 `TestSnapshotEqualityCoversTheCheckBlocks`,
 `TestTheDailyFigureResetsForEveryCheck`,
-`TestThePublishedCheckFiguresStandStillToo`
+`TestThePublishedCheckFiguresStandStillToo`,
+`TestAWebScanIsCountedAgainstItsOwnCheck`,
+`TestTheWebEndpointAnswersAReport`
 
 ---
 

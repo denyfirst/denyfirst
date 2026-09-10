@@ -30,6 +30,7 @@ var refusalCodes = []string{
 	"invalid_target",      // malformed hostname
 	"hostname_required",   // an address where a name is needed
 	"port_not_allowed",    // outside the implicit-TLS list
+	"port_not_accepted",   // a port given to a check that takes none
 	"bad_request",         // the body was not one JSON object
 	"payload_too_large",   // over the body limit
 	"unsupported_media",   // not application/json

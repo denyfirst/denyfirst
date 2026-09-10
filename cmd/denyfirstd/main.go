@@ -212,6 +212,7 @@ func run() int {
 	root := http.NewServeMux()
 	root.Handle("/api/v1/tls/scan", api)
 	root.Handle("/api/v1/scan", api)
+	root.Handle("/api/v1/web/scan", api)
 	root.Handle("/api/v1/stats", api)
 	root.Handle("/healthz", api)
 	root.Handle("/", web.Handler())

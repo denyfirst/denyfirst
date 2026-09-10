@@ -670,6 +670,25 @@ func (r *Result) Notes() []policy.Note {
 // found five inputs that broke that property in an earlier version of this
 // function, all of them because the host was never examined for shape.
 func SplitTarget(target string) (host, port string, err error) {
+	host, port, _, err = SplitTargetPort(target)
+	return host, port, err
+}
+
+// SplitTargetPort is SplitTarget, and also says whether the caller wrote a
+// port or had one assumed for them.
+//
+// One implementation of target parsing, two views of it (I1). The difference
+// matters to a check that takes no port: the web check reads a site the way a
+// browser does, over 80 and 443, so there is nothing for a caller to choose —
+// and a caller who wrote ":443" anyway has to be told the rule rather than
+// have the port quietly dropped. Dropping it is the failure this function
+// already refuses for a path: discarding part of what somebody typed without
+// saying so, so that the report names the right host and the person is still
+// surprised.
+//
+// It cannot be answered by looking at the returned port. DefaultPort is what
+// a bare hostname is given, and it is also what somebody typing ":443" wrote.
+func SplitTargetPort(target string) (host, port string, explicit bool, err error) {
 	target = strings.TrimSpace(target)
 
 	// A pasted URL is a likely mistake rather than something worth refusing,
@@ -700,26 +719,26 @@ func SplitTarget(target string) (host, port string, err error) {
 			// A bare trailing slash discards nothing.
 			target = target[:i]
 		default:
-			return "", "", errors.New("give the hostname on its own, or a full address beginning with https://; " +
+			return "", "", false, errors.New("give the hostname on its own, or a full address beginning with https://; " +
 				"everything after the slash would be dropped and this will not do that without saying so")
 		}
 	}
 
 	if target == "" {
-		return "", "", errors.New("the target names no host")
+		return "", "", false, errors.New("the target names no host")
 	}
 
-	host, port, err = splitHostPort(target)
+	host, port, explicit, err = splitHostPort(target)
 	if err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
 	if err := checkHostSyntax(host); err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
 	if err := checkPortSyntax(port); err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
-	return canonicalHost(host), port, nil
+	return canonicalHost(host), port, explicit, nil
 }
 
 // canonicalHost reduces the several spellings of one host to a single one.
@@ -759,41 +778,41 @@ func canonicalHost(host string) string {
 // several forms this one must not. "example.com:" parses with an empty port,
 // and a bracketed address with no port fails outright, which left the brackets
 // attached to the hostname in the earlier version here.
-func splitHostPort(target string) (host, port string, err error) {
+func splitHostPort(target string) (host, port string, explicit bool, err error) {
 	// A bracketed IPv6 literal, with or without a port.
 	if strings.HasPrefix(target, "[") {
 		end := strings.IndexByte(target, ']')
 		if end < 0 {
-			return "", "", errors.New("the target opens a bracket that is never closed")
+			return "", "", false, errors.New("the target opens a bracket that is never closed")
 		}
 
 		host = target[1:end]
 		switch rest := target[end+1:]; {
 		case rest == "":
-			return host, DefaultPort, nil
+			return host, DefaultPort, false, nil
 		case strings.HasPrefix(rest, ":"):
-			return host, rest[1:], nil
+			return host, rest[1:], true, nil
 		default:
-			return "", "", errors.New("the target has characters after the closing bracket")
+			return "", "", false, errors.New("the target has characters after the closing bracket")
 		}
 	}
 
 	switch strings.Count(target, ":") {
 	case 0:
-		return target, DefaultPort, nil
+		return target, DefaultPort, false, nil
 
 	case 1:
 		i := strings.IndexByte(target, ':')
-		return target[:i], target[i+1:], nil
+		return target[:i], target[i+1:], true, nil
 
 	default:
 		// Several colons and no brackets: either a bare IPv6 literal, which
 		// has no room for a port, or nonsense. Accepting it only when it
 		// really parses keeps a name such as "a:1:2:3" from being dialled.
 		if _, err := netip.ParseAddr(target); err != nil {
-			return "", "", errors.New("the target has several colons and is not an IPv6 address")
+			return "", "", false, errors.New("the target has several colons and is not an IPv6 address")
 		}
-		return target, DefaultPort, nil
+		return target, DefaultPort, false, nil
 	}
 }
 

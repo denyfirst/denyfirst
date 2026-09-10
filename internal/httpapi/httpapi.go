@@ -49,7 +49,6 @@ import (
 	"errors"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"net/netip"
 	"strconv"
@@ -60,6 +59,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/exclusion"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/scan"
+	"github.com/denyfirst/denyfirst/internal/webscan"
 )
 
 // Defaults chosen to be comfortable by hand and unattractive in bulk.
@@ -145,8 +145,12 @@ func (l Limits) withDefaults() Limits {
 // Server is the HTTP surface. Use New; the zero value is not usable.
 type Server struct {
 	scanner *scan.Scanner
-	limits  Limits
-	rate    *limiter
+
+	// web runs the web check. Set by New, replaceable before serving so a
+	// test can hand it a prober that reaches a server it started.
+	web    *webscan.Scanner
+	limits Limits
+	rate   *limiter
 
 	// reads limits the endpoints that do no scanning. Kept apart from rate
 	// so that polling a health check can never consume a scan allowance, or
@@ -169,6 +173,7 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 
 	s := &Server{
 		scanner: scanner,
+		web:     &webscan.Scanner{},
 		limits:  limits,
 		rate:    newLimiter(limits.Burst, limits.Refill, limits.MaxTrackedIPs, now),
 		reads:   newLimiter(readBurst, readRefill, limits.MaxTrackedIPs, now),
@@ -189,8 +194,13 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 	//
 	// So the old path keeps working, identically, until something says
 	// otherwise in writing.
-	s.mux.HandleFunc("POST /api/v1/tls/scan", s.handleScan)
-	s.mux.HandleFunc("POST /api/v1/scan", s.handleScan)
+	tls, web := s.tlsCheck(), s.webCheck()
+	s.mux.HandleFunc("POST /api/v1/tls/scan", s.scanHandler(tls))
+	s.mux.HandleFunc("POST /api/v1/scan", s.scanHandler(tls))
+
+	// The web check's address. Every guard the TLS endpoint has applies to it,
+	// because there is one chain and both endpoints walk it — see checks.go.
+	s.mux.HandleFunc("POST /api/v1/web/scan", s.scanHandler(web))
 	s.mux.HandleFunc("GET /healthz", s.readLimited(s.handleHealth))
 	s.mux.HandleFunc("GET /api/v1/stats", s.readLimited(s.handleStats))
 
@@ -233,7 +243,19 @@ type apiError struct {
 	Message string `json:"message"`
 }
 
-func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
+// scanHandler builds the endpoint for one check.
+//
+// Every guard below applies to every check. What differs is described by the
+// check itself: how a target is parsed, what budget it spends, what it runs,
+// and what it writes. See checks.go for why this is one chain rather than one
+// handler per endpoint.
+func (s *Server) scanHandler(c check) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s.handleScan(w, r, c)
+	}
+}
+
+func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, c check) {
 	key := clientKey(r, s.limits.TrustedProxies, s.limits.TrustedProxyHops)
 
 	// Everything below this line costs something, including the refusals.
@@ -331,38 +353,19 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	host, port, err := scan.SplitTarget(req.Target)
-	if err != nil {
-		// The message describes the rule rather than echoing the input, so
-		// nothing a caller sent is reflected back.
-		s.refuse(w, http.StatusBadRequest, "invalid_target",
-			"The target must be a hostname, optionally with a port, and must not contain spaces or control characters.")
+	// What a target is depends on the check. The TLS check takes a hostname
+	// and optionally a port; the web check takes a bare hostname, because it
+	// reads a site over 80 and 443 the way a browser reaches an address
+	// somebody types.
+	//
+	// Validity before permission, so that somebody who mistyped is told they
+	// mistyped rather than told this deployment does not do that (N6).
+	t, refused := c.parse(req.Target)
+	if refused != nil {
+		s.refuse(w, refused.status, refused.code, refused.message)
 		return
 	}
-
-	if err := scan.CheckPort(port); err != nil {
-		// The rule is described rather than the input repeated. SplitHostPort
-		// does not require a port to be numeric, so err.Error() would carry
-		// back whatever the caller sent.
-		s.refuse(w, http.StatusBadRequest, "port_not_allowed",
-			"That port is not scannable. This service connects only to "+
-				strings.Join(scan.AllowedPorts, ", ")+".")
-		return
-	}
-
-	// The command line accepts addresses; this does not. A scan of a name
-	// carries that name in the client hello, which is what every browser
-	// does, and a scan of an address carries none, which is what a scanner
-	// does. It also declines to lend this address to working through a range
-	// one entry at a time.
-	if scan.IsIPTarget(host) {
-		s.refuse(w, http.StatusBadRequest, "hostname_required",
-			"Give a hostname rather than an address. A scan of a name looks like "+
-				"an ordinary client to the server receiving it, which is how this "+
-				"service prefers to appear. The command line tool accepts addresses "+
-				"and runs from your own machine.")
-		return
-	}
+	host := t.host
 
 	// A short list of defence and intelligence names, plus anyone who asked
 	// to be left out. The message does not repeat the name back.
@@ -410,7 +413,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	// The message does not name the target, and the limiter does not keep it
 	// either. See targetlimit.go for how a repeated host is recognised
 	// without being recorded.
-	if !s.targets.allow(host, port) {
+	if !s.targets.allow(host, t.scope) {
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(targetRefill)))
 		s.refuse(w, http.StatusTooManyRequests, "target_busy",
 			"That server was scanned very recently. Each host has its own budget, "+
@@ -419,7 +422,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := s.scanner.Scan(ctx, net.JoinHostPort(host, port))
+	out, err := c.run(ctx, t)
 
 	// The deadline is checked whether or not the scan reported an error, and
 	// that is the whole of this change.
@@ -437,11 +440,16 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		// Nothing reachable produces this today, which is why it is written
-		// as a refusal rather than left out: Scan is allowed to fail by its
-		// signature, and a failure that reached a caller uncounted would be
-		// the same hole in a different place. See the reachability test in
-		// refusal_test.go, which names this as the one code it cannot drive.
+		// Nothing reachable produces this today, on either check, which is
+		// why it is written as a refusal rather than left out: both scanners
+		// are allowed to fail by their signature, and a failure that reached
+		// a caller uncounted would be the same hole in a different place.
+		//
+		// The TLS scanner cannot fail once the handler has validated the
+		// target. The web scanner returns an error only for a target its
+		// probe refuses or a name outside the two lists, and all three are
+		// asked above. See the reachability test in refusal_test.go, which
+		// names this as the one code it cannot drive.
 		//
 		// The underlying error can name resolver internals and addresses, so
 		// only the shape of the failure is returned.
@@ -465,7 +473,9 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	//
 	// The message names no address, so nothing about the resolution comes
 	// back to the caller.
-	if result.TLS != nil && result.TLS.BlockedDestination {
+	// Both checks carry the fact as a field rather than as prose, so this
+	// reads the same for either.
+	if out.blocked {
 		s.refuse(w, http.StatusForbidden, "blocked_destination",
 			"That name resolves only to addresses this service will not connect to — "+
 				"private, loopback, link-local or reserved. Scanning one of those from here "+
@@ -477,13 +487,12 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	// Counted only on success, and only as a number. Nothing about which
 	// target produced it is kept, so the figure can be published without
 	// describing anybody.
-	s.counts.record(checkTLS, result.Verdict)
+	//
+	// Counted against its own check, because a verdict stopped meaning one
+	// thing the moment a second check existed (R22).
+	s.counts.record(c.name, out.verdict)
 
-	writeJSON(w, http.StatusOK, scanResponse{
-		Result:   result,
-		Findings: result.Findings(),
-		Notes:    result.Notes(),
-	})
+	writeJSON(w, http.StatusOK, out.body)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -597,4 +606,19 @@ var _ http.Handler = (*Server)(nil)
 // test, and a leaked address cannot be taken back.
 func SilentErrorLog() *log.Logger {
 	return log.New(io.Discard, "", 0)
+}
+
+// UseWebScanner replaces the scanner behind the web check.
+//
+// Call it before serving; it is not safe once requests are being handled, for
+// the same reason RestoreStats is not.
+//
+// It exists because New takes the TLS scanner as an argument and widening that
+// signature would touch every caller and every test to say nothing new. A
+// caller that wants the default — which dials through safedial and reaches only
+// ports 80 and 443 — passes nothing and gets it.
+func (s *Server) UseWebScanner(w *webscan.Scanner) {
+	if w != nil {
+		s.web = w
+	}
 }
