@@ -1,11 +1,21 @@
-package scan
+// Package exclusion holds the names this project refuses to scan.
+//
+// It is asked where a connection is decided rather than where a request
+// arrives, and by every check rather than by one of them. Which names a
+// deployment will not touch is a property of the deployment, exactly as the
+// demonstration list is: the TLS check asks it, the web check asks it, and a
+// mail check will. It lived in internal/scan until 2026-09-10, which meant
+// the web check would have had to import the TLS scanner to find out what it
+// may connect to — the shape internal/demo was extracted to end, arriving a
+// second time.
+package exclusion
 
 import (
 	"errors"
 	"strings"
 )
 
-// Excluded names are refused before anything connects to them.
+// listed names are refused before anything connects to them.
 //
 // The list is short on purpose. A long one goes stale, and a long one that
 // has gone stale says something worse than nothing: that this project decides
@@ -22,7 +32,7 @@ import (
 // at the domain or one listed in its WHOIS or security.txt. That route is
 // published on the site, needs no explanation, and is applied before the
 // reply. It handles far more real cases than any list written in advance.
-var excludedSuffixes = []string{
+var listed = []string{
 	// Military. A TLS handshake is harmless; a handshake against a defence
 	// network, described afterwards by somebody who was not asked, is a
 	// conversation this project has nothing to gain from.
@@ -57,48 +67,48 @@ var excludedSuffixes = []string{
 	"europol.europa.eu",
 }
 
-// extraExcluded holds names added by whoever runs this instance, from the
+// added holds names added by whoever runs this instance, from the
 // exclusion requests that arrive by email.
 //
 // Kept separate from the list above so that a copy of this project starts
 // with the same defaults and its operator's additions stay their own.
-var extraExcluded []string
+var added []string
 
-// ErrExcluded is returned for a name this instance will not scan.
-var ErrExcluded = errors.New("this service does not scan that domain")
+// ErrRefused is returned for a name this instance will not scan.
+var ErrRefused = errors.New("this service does not scan that domain")
 
-// Exclude adds names to the list for this process.
+// Add extends the list for this process.
 //
 // Each entry matches the name itself and anything beneath it, at label
 // boundaries. Call it before serving; it is not safe to call once requests
 // are being handled.
-func Exclude(names ...string) {
+func Add(names ...string) {
 	for _, name := range names {
 		name = strings.ToLower(strings.Trim(strings.TrimSpace(name), "."))
 		if name != "" {
-			extraExcluded = append(extraExcluded, name)
+			added = append(added, name)
 		}
 	}
 }
 
-// IsExcluded reports whether a hostname is one this service refuses.
+// Covers reports whether a hostname is one this service refuses.
 //
 // Matching is at label boundaries rather than by string suffix. "mil" must
 // exclude army.mil and not example.mil.com, and it must not exclude
 // domil.com — a plain HasSuffix does the wrong thing on both counts, and the
 // second is the one that would go unnoticed.
-func IsExcluded(host string) bool {
+func Covers(host string) bool {
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	if host == "" {
 		return false
 	}
 
-	for _, suffix := range excludedSuffixes {
+	for _, suffix := range listed {
 		if matchesSuffix(host, suffix) {
 			return true
 		}
 	}
-	for _, suffix := range extraExcluded {
+	for _, suffix := range added {
 		if matchesSuffix(host, suffix) {
 			return true
 		}

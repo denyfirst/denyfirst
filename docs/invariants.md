@@ -160,7 +160,7 @@ the deployment to the whole internet and every test would still pass. This way
 an emptied list refuses everything, which fails in the safe direction and is
 caught by a test that says the demonstration has nothing to demonstrate on.
 
-**The list matches at label boundaries.** The exclusion list (D-series) matches
+**The list matches at label boundaries.** The exclusion list (N8) matches
 that way too, and there a mistake keeps a host out that should be in. Here a
 mistake lets a host in that should be out, which is how somebody would arrange
 to have us scan them: register `denyfirst.dev.example.com` and a plain suffix
@@ -350,6 +350,74 @@ decision about.
 `TestTheClientFollowsNothingByItself`,
 `TestNoProxyStandsBetweenThisAndTheHost`,
 `TestTheTwoChainsAreIndependent`
+
+---
+
+### N8 — Some names are refused before anything connects to them
+
+A short list of defence and intelligence names, plus anyone who asked to be
+left out. A TLS handshake is harmless; a handshake against a defence network,
+described afterwards by somebody who was not asked, is a conversation this
+project has nothing to gain from.
+
+**The list is short on purpose.** A long one goes stale, and a long one that
+has gone stale says something worse than nothing: that this project decides
+which organisations deserve protection and got the answer wrong. `.gov` is
+deliberately absent — most of what sits under it is an ordinary public website
+a citizen's browser reaches daily, and refusing to look at one would suggest
+this tool does something such a site needs protection from.
+
+Anyone who would rather not be scanned is added on request, from an address at
+the domain or one listed in its WHOIS or `security.txt`. That route handles
+far more real cases than any list written in advance, and the additions are
+kept in a separate variable so a copy of this project starts with the same
+defaults and its operator's additions stay their own.
+
+**It matches at label boundaries.** `mil` must exclude `army.mil`, must not
+exclude `example.mil.com`, and must not exclude `domil.com`. A plain suffix
+test gets the last two wrong, and the third is the one that would go
+unnoticed. The comparison folds case and a trailing dot on its own rather than
+trusting a caller to have done it, which is the argument N3 makes about where
+a guard belongs: `EXAMPLE.COM`, `example.com` and `example.com.` are one
+server.
+
+**Every check asks it, and asks it where the connection is decided.** The list
+is a property of this project rather than of any one check. The TLS scanner
+asked it from the beginning; the web check did not, so until 2026-09-10 a name
+on it was refused by `-check tls` and scanned by `-check web` — one guard, one
+caller, and a second caller that walked around it, which is the failure N6 is
+about arriving through the door N6 predicted.
+
+**It is not part of any check.** It lived in `internal/scan`, which meant the
+web check would have imported the TLS scanner to find out what it may connect
+to, and a mail check after it — the shape that gets worse with every check
+added. It is `internal/exclusion` now, extracted exactly as `internal/demo`
+was on 2026-09-05 and for the same reason.
+
+**It is asked before any source of authority, and nothing overrides it.** A
+deployment list says which hosts an installation is *for*; this says which
+names this project will not touch, whoever is asking and whatever they have
+proven. Both refuse, so on the ordinary build the order decides only which
+sentence is returned and no test without the demonstration tag can see it — a
+sabotage that swapped them escaped every one. It is pinned under the tag
+instead, because the order stops being cosmetic the moment a second source of
+authority exists: a deployment that establishes its scope at run time
+(`docs/scope.md`) must not be able to buy a scan of a name on this list by
+proving control of it.
+
+**The refusal states the rule and does not repeat the name** (I3).
+
+*Enforced in:* `internal/exclusion`, `internal/scan.Scanner.Scan`,
+`internal/webscan.Scanner.Scan`, `internal/httpapi.Server.handleScan`
+*Guarded by:* `TestExcludedNamesAreRefused`,
+`TestExclusionMatchesAtLabelBoundaries`,
+`TestOrdinaryGovernmentSitesAreNotExcluded`,
+`TestExclusionIgnoresCaseAndTrailingDot`, `TestOperatorCanAddNames`,
+`TestScannerRefusesExcludedNames`, `TestTheWebScannerRefusesAnExcludedName`,
+`TestTheWebExclusionRefusalNamesNoHost`,
+`TestTheWebScannerScansANameThatIsNotExcluded`,
+`TestTheExclusionListIsNotOverriddenByTheDeploymentList`,
+`TestEveryRefusalCodeCanBeProduced`
 
 ## Input
 

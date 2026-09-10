@@ -204,13 +204,6 @@ document; roadmap item 2. Until it lands, `docs/self-host.md` says that
 loopback is the default, and should say plainly that binding `denyfirstd` to a
 reachable interface makes it an open scanner.
 
-**`webscan.Scanner.Scan` does not ask the exclusion list.**
-`scan.Scanner.Scan` does, so the same name is refused by one check and scanned
-by the other. The list lives in `internal/scan`, and having `internal/webscan`
-import the TLS scanner to find out what it may connect to is the shape N6
-removed on 2026-09-05 when `internal/demo` was extracted. It needs the same
-extraction.
-
 **A binary says which hosts it will connect to, and a verified deployment has
 no answer yet.** `denyfirstd -version` composes its reach line from the
 compiled-in list. A deployment whose scope is established at run time has to

@@ -22,6 +22,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/certinfo"
 	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
+	"github.com/denyfirst/denyfirst/internal/exclusion"
 	"github.com/denyfirst/denyfirst/internal/ocsp"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
@@ -226,8 +227,8 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 	// Checked here rather than in the HTTP handler so that it holds for every
 	// caller, including the command line and anything written later. A guard
 	// in one entry point disappears the moment a second one is added.
-	if IsExcluded(host) {
-		return nil, ErrExcluded
+	if exclusion.Covers(host) {
+		return nil, exclusion.ErrRefused
 	}
 
 	// The same reasoning, one line further: a demonstration build reaches

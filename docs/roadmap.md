@@ -123,13 +123,6 @@ deployment whose scope is established at run time rather than compiled in has
 to appear on that line as well, or the property the deploy procedure reads
 becomes false for the new mode.
 
-**`webscan.Scanner.Scan` does not ask the exclusion list.** `scan.Scanner.Scan`
-does, so a name on it is refused by the TLS check and scanned by the web one.
-The list is in `internal/scan`, and `internal/webscan` importing the TLS
-scanner to find out what it may connect to is the shape N6 removed on
-2026-09-05 when `internal/demo` was extracted; this needs the same extraction
-into a package of its own.
-
 **A self-hosted `denyfirstd` has no target boundary at all**, which is what
 item 2 above is for. Until it lands, `docs/self-host.md` notes that loopback
 is the default and does not say plainly that binding to a reachable interface

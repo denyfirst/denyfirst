@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/denyfirst/internal/exclusion"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/webprobe"
 )
@@ -80,6 +81,23 @@ func (s *Scanner) Scan(ctx context.Context, host string) (*Result, error) {
 	// what is asked.
 	if err := webprobe.CheckHostname(host); err != nil {
 		return nil, err
+	}
+
+	// A short list of names this project will not scan, whoever asks and
+	// whichever check they ask for (N8).
+	//
+	// The TLS scanner has asked it since the list existed; this one did not,
+	// so until 2026-09-10 a name was refused by one check and scanned by the
+	// other. The list was in internal/scan, and reaching it from here would
+	// have meant importing the TLS scanner to find out what this check may
+	// connect to — so it moved to internal/exclusion, exactly as the
+	// demonstration list moved to internal/demo on 2026-09-05, and for the
+	// same reason.
+	//
+	// Asked here rather than in the HTTP handler, so it holds for the command
+	// line and for anything written later.
+	if exclusion.Covers(host) {
+		return nil, exclusion.ErrRefused
 	}
 
 	// This deployment connects only to hosts this project owns (N6).
