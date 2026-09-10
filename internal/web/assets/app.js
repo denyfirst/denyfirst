@@ -21,6 +21,41 @@ const result = document.getElementById("result");
 
 const VERDICT_ORDER = { insecure: 3, weak: 2, strong: 1 };
 
+/*
+  One script, two checks.
+
+  The pages differ in four things: which endpoint they call, which method page
+  their standing limits point at, what the button says while it waits, and how
+  a report is drawn. Everything else — the builders, the verdict handling, the
+  findings, the notes, the download, the failure path, the counter — is the
+  same work and is written once. Two scripts would be two copies of all of it,
+  and the copy nobody is looking at is the one that falls behind.
+
+  Which check a page is comes from the page rather than from the path, because
+  a path is a thing that moves. The form carries it in a data attribute, which
+  the markup can set and the CSP cannot object to; there is no inline script
+  anywhere on this site and this does not add one.
+*/
+const CHECKS = {
+  tls: {
+    endpoint: "/api/v1/tls/scan",
+    methodPage: "/tls/method",
+    working: "Opening handshakes at every TLS version. This takes a few seconds.",
+    render: (data) => renderTLS(data),
+  },
+  web: {
+    endpoint: "/api/v1/web/scan",
+    methodPage: "/web/method",
+    working: "Reading how the site answers, over HTTPS and over plaintext.",
+    render: (data) => renderWeb(data),
+  },
+};
+
+// Defaulting to the TLS check rather than to nothing, because a page that
+// declared no check would otherwise fail at the first click with an error
+// about undefined rather than about anything a reader could act on.
+const CHECK = CHECKS[(form && form.dataset.check) || "tls"] || CHECKS.tls;
+
 // ── Small builders ──────────────────────────────────────────────────────
 
 function el(tag, className, text) {
@@ -154,7 +189,10 @@ function downloadLink(data) {
 // hyphen; and the whole is cut short, because a name that can be made long is
 // a name that ends up somewhere it does not fit.
 function reportFilename(data) {
-  const target = String((data && data.target) || "report").toLowerCase();
+  // The TLS report names a host and port; the web report names a bare host.
+  // One filename builder, because a reader saving one of each should get two
+  // files named the same way.
+  const target = String((data && (data.target || data.host)) || "report").toLowerCase();
   const safe = target
     .replace(/[^a-z0-9.-]+/g, "-")
     .replace(/^[-.]+|[-.]+$/g, "")
@@ -176,7 +214,7 @@ function summary(data) {
   const head = el("div", "summary-head");
 
   const left = el("div");
-  left.appendChild(el("p", "summary-target", data.target || "—"));
+  left.appendChild(el("p", "summary-target", data.target || data.host || "—"));
 
   const address = data.tls && data.tls.address;
   const meta = [];
@@ -621,7 +659,10 @@ const NOTE_SECTIONS = [
 // shortcomings they read as though they were some. They are on one page, and
 // the report says how many there are and points at it, so moving them is not
 // hiding them.
-const METHOD_PAGE = "/tls/method";
+// Which page, per check: what a TLS handshake cannot establish is not what a
+// header check cannot establish, and a link that pointed at one from the other
+// would send a reader to limits that are not theirs.
+const METHOD_PAGE = CHECK.methodPage;
 
 // notes renders each kind under its own heading.
 //
@@ -702,7 +743,7 @@ function show(node) {
   result.appendChild(node);
 }
 
-function render(data) {
+function renderTLS(data) {
   // Read once. data.verdict is absent rather than "ungraded" when nothing was
   // graded, so every section that cares has to be given the resolved value —
   // passing data.verdict straight through would hand them undefined at
@@ -719,6 +760,132 @@ function render(data) {
   show(frag);
 }
 
+/*
+  The web report: two chains, drawn the same way.
+
+  A chain is the sequence of addresses a browser would be sent through,
+  starting at the secure address and starting again at the plaintext one. It is
+  the whole evidence behind the verdict, so it is on the face of the report
+  rather than folded away — a reader who cannot see where a site sent them
+  cannot check the grade against anything.
+
+  Both chains get identical columns, because they are the same measurement
+  begun at two addresses and a reader comparing them should not have to work
+  out which column moved (W3).
+*/
+
+// hopTransport says how a hop was made, in a word.
+//
+// In words rather than only in colour. A reader who cannot distinguish the two
+// colours, or who prints the page, has to be able to read the one fact this
+// column exists for (W6).
+function hopTransport(hop) {
+  if (hop.tls) return "TLS";
+  return "plaintext";
+}
+
+// hopOutcome is what came back, or why nothing did.
+//
+// A hop that failed is not a response with no headers, and the difference
+// decides a verdict rather than a detail: a host answering 200 in the clear is
+// insecure, and a host with nothing listening on port 80 is the safest
+// arrangement there is (R23). So a failure says so in its own words rather
+// than appearing as a blank status.
+function hopOutcome(hop) {
+  const cell = el("td", hop.error ? "mark-faint" : null);
+  if (hop.error) {
+    cell.appendChild(el("span", null, "no response"));
+    // The reason is a phrase webprobe wrote, never a string from the standard
+    // library, so it carries no address of this machine (I6). It still reaches
+    // textContent rather than a parser, like everything else here.
+    cell.appendChild(el("p", "row-note", hop.error));
+    return cell;
+  }
+  cell.appendChild(el("span", null, String(hop.status || "—")));
+  return cell;
+}
+
+function chain(title, c) {
+  const frag = document.createDocumentFragment();
+  frag.appendChild(sectionTitle(title));
+
+  if (!c || !Array.isArray(c.hops) || !c.hops.length) {
+    // Nothing attempted is not nothing found. Saying so is the same rule R4
+    // states for a verdict, applied to a table.
+    frag.appendChild(el("p", "plain", "Nothing was attempted at this address."));
+    return frag;
+  }
+
+  const table = el("table", "rows");
+  const head = el("tr");
+  for (const label of ["Address", "Transport", "Response"]) {
+    head.appendChild(el("th", null, label));
+  }
+  table.appendChild(el("thead")).appendChild(head);
+
+  const body = el("tbody");
+  for (const hop of c.hops) {
+    const row = el("tr");
+    // The address as it was requested. Attacker-chosen after the first hop —
+    // every one after it came out of a Location header — so it is text in a
+    // cell and never a link: a redirect target this scanner declined to follow
+    // must not become something a reader can click.
+    row.appendChild(el("td", null, hop.url || "—"));
+    row.appendChild(el("td", null, hopTransport(hop)));
+    row.appendChild(hopOutcome(hop));
+    body.appendChild(row);
+  }
+  table.appendChild(body);
+  frag.appendChild(table);
+
+  // Where a chain stopped, and whether stopping was a decision or a failure.
+  // A reader who cannot tell those apart cannot interpret the chain at all
+  // (N7).
+  if (c.truncated) {
+    frag.appendChild(el("p", "group-note",
+      "The redirect limit was reached with another address still waiting, so this chain is " +
+      "incomplete and nothing should be concluded from where it stops."));
+  }
+  if (c.stopped) {
+    frag.appendChild(el("p", "group-note", "This chain was not followed further: " + c.stopped));
+  }
+
+  return frag;
+}
+
+function chains(observed) {
+  const frag = document.createDocumentFragment();
+  if (!observed) return frag;
+
+  frag.appendChild(chain("Reached over HTTPS", observed.secure));
+  frag.appendChild(chain("Reached over plaintext", observed.plain));
+
+  // What was sent, said on the report rather than only on the method page.
+  // The user agent is recorded so that a report says how it was obtained
+  // instead of asking a reader to trust a document.
+  if (observed.userAgent) {
+    const p = el("p", "group-note");
+    p.appendChild(document.createTextNode("Requested as " + observed.userAgent + ". "));
+    const a = el("a", "notes-method-link", "What was sent, in full");
+    a.href = CHECK.methodPage;
+    p.appendChild(a);
+    frag.appendChild(p);
+  }
+
+  return frag;
+}
+
+function renderWeb(data) {
+  const verdict = verdictOf(data);
+
+  const frag = document.createDocumentFragment();
+  frag.appendChild(summary(data));
+  frag.appendChild(findings(data.findings, verdict));
+  frag.appendChild(chains(data.observed));
+  frag.appendChild(notes(data.notes, verdict));
+  show(frag);
+}
+
 // ── Submission ──────────────────────────────────────────────────────────
 
 async function check(target) {
@@ -728,7 +895,7 @@ async function check(target) {
   // somebody's script is not a link they can be redirected from: a redirect
   // on a POST is followed by some clients and dropped by others, and a body
   // that quietly goes nowhere is worse than a path that stays.
-  const response = await fetch("/api/v1/tls/scan", {
+  const response = await fetch(CHECK.endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ target: target }),
@@ -770,10 +937,10 @@ form.addEventListener("submit", async event => {
   button.disabled = true;
   const label = button.textContent;
   button.textContent = "Checking";
-  show(el("p", "working", "Opening handshakes at every TLS version. This takes a few seconds."));
+  show(el("p", "working", CHECK.working));
 
   try {
-    render(await check(target));
+    CHECK.render(await check(target));
   } catch (err) {
     const hint = err.status === 429
       ? "Wait a moment before trying again."

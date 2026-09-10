@@ -2468,6 +2468,7 @@ nothing:
 | `/tls` | the check |
 | `/tls/method` | what *this* check cannot establish |
 | `POST /api/v1/tls/scan` | the check's API |
+| `/web` | the web check |
 | `/web/method` | what the web check sends, and cannot establish |
 | `POST /api/v1/web/scan` | the web check's API |
 | `/privacy`, `/terms` | the project's promises |
@@ -2477,9 +2478,28 @@ nothing:
 There are two checks now, so the rule that was written ahead of time is being
 used: the test holds a list of check prefixes rather than one, and a third
 check added without an entry fails rather than quietly putting a page at the
-root. `/web` itself is still to come; its method page arrived first because
-the web probe's user agent has been naming that address in other people's
+root. The method page arrived before the page a visitor scans from, because
+the web probe's user agent had been naming that address in other people's
 access logs since the endpoint landed (N7).
+
+**A page says which check it is, and the script believes the page.** One
+script serves both, because the builders, the verdict handling, the findings,
+the notes, the download and the failure path are the same work — two copies of
+all of it would be the drift this file is mostly about. What differs is a
+table: the endpoint, the method page, the waiting message and the renderer.
+The page declares its row in a data attribute rather than the script inferring
+it from the path, because a path is a thing that moves and this project has
+moved two already; a script reading the URL would be wrong the day one moves
+again, quietly, by drawing a web report with the transport check's renderer.
+
+**And the footer goes to the check the reader is on.** The footer is the one
+piece of markup every page shares, so it carried a single method address while
+there was a single check — and the day `/web` served a report, "How a report
+is read" underneath it pointed at the limits of a TLS handshake. That is the
+confusion these pages are separate to prevent, arriving through the only
+element that is on every page at once. Each page names its own; a page that is
+not a check's takes a default, because a reader who arrived from a report has
+to be able to get back to what it means.
 
 Privacy and terms are promises about everything this project runs, not about
 one scan, and a copy under each check would be several copies of a promise to
@@ -2522,7 +2542,9 @@ meant has never existed under that name.
 `internal/web.standingIn`, `internal/httpapi.New`
 *Guarded by:* `TestTheProjectsPagesStayAtTheRootAndTheChecksDoNot`,
 `TestTheRootStandsInAndSaysSoInTheStatusCode`,
-`TestEveryInternalLinkResolves`, `TestTheScriptCallsTheChecksOwnPath`,
+`TestEveryInternalLinkResolves`, `TestEachCheckCallsItsOwnPaths`,
+`TestEachScanPageDeclaresItsCheck`,
+`TestEachCheckPageSendsAReaderToItsOwnLimits`,
 `TestEveryAddressThisProjectSendsOutResolves`,
 `TestBothScanPathsAreServedAndNeitherRedirects`,
 `TestNeitherScanPathAnswersAGet`, `TestOldPathsRedirect`

@@ -7,7 +7,14 @@
     -->
     <h1>Check what a server<br>actually negotiates,<br>not what it advertises.</h1>
 
-    <form class="ask-form" id="scan-form" autocomplete="off">
+    <form class="ask-form" id="scan-form" autocomplete="off" data-check="tls">
+      <!--
+        Which check this page runs, declared rather than inferred. One script
+        serves this page and /web; it could have worked out which by reading
+        the path, and would have been wrong the day a path moves — which has
+        happened twice here already, quietly enough that the only symptom
+        would be a report drawn by the other check's renderer.
+      -->
       <!--
         The label names the control, and the control is different in the two
         deployments: one takes a hostname, the other offers a choice between

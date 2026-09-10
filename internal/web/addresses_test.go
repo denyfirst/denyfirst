@@ -235,21 +235,115 @@ func TestEveryInternalLinkResolves(t *testing.T) {
 	}
 }
 
-// The script calls the check's own path.
+// Each check calls its own path, and points at its own method page.
 //
-// The page moved under the check and the call it makes moved with it. The old
-// path is still answered — see the API's own test for why it is not a
-// redirect — but the page this repository ships uses the current one.
-func TestTheScriptCallsTheChecksOwnPath(t *testing.T) {
+// One script serves both pages, so the addresses are a table in it rather than
+// a constant. That is the thing worth checking: not that some string is
+// present, but that each check names the endpoint and the page that belong to
+// it. A table where one row carried the other's path would send a reader to
+// limits that are not theirs and would grade one check with the other's rules.
+func TestEachCheckCallsItsOwnPaths(t *testing.T) {
 	source := script(t)
 
-	if !strings.Contains(source, `fetch("/api/v1/tls/scan"`) {
-		t.Error("the page does not call the check's own API path")
+	for _, tc := range []struct {
+		check      string
+		endpoint   string
+		methodPage string
+	}{
+		{"tls", "/api/v1/tls/scan", "/tls/method"},
+		{"web", "/api/v1/web/scan", "/web/method"},
+	} {
+		for _, want := range []string{
+			`endpoint: "` + tc.endpoint + `"`,
+			`methodPage: "` + tc.methodPage + `"`,
+		} {
+			if !strings.Contains(source, want) {
+				t.Errorf("the %s check does not declare %s", tc.check, want)
+			}
+		}
+
+		// And both addresses are ones this service answers.
+		if _, ok := pages[tc.methodPage]; !ok {
+			t.Errorf("the %s check points at %s, which this site does not serve", tc.check, tc.methodPage)
+		}
 	}
+
+	// The old path is still answered — see the API's own test for why it is
+	// not a redirect — but the page this repository ships uses the current one.
 	if strings.Contains(source, `fetch("/api/v1/scan"`) {
 		t.Error("the page still calls the old API path")
 	}
-	if !strings.Contains(source, `const METHOD_PAGE = "/tls/method"`) {
-		t.Error("the report points at a method page that is no longer there")
+
+	// The endpoint is read from the table rather than written at the call.
+	if !strings.Contains(source, "fetch(CHECK.endpoint,") {
+		t.Error("the script does not fetch the endpoint the page declared, so the table decides nothing")
+	}
+}
+
+// A page says which check it is, and the script believes the page.
+//
+// Not the path. A path is a thing that moves — this project has moved two of
+// them already — and a script that worked out which check it was running by
+// reading the URL would be wrong the day one moves again, quietly, by grading
+// a web report with the TLS renderer.
+func TestEachScanPageDeclaresItsCheck(t *testing.T) {
+	for path, check := range map[string]string{
+		"/tls": "tls",
+		"/web": "web",
+	} {
+		body, ok := rendered[path]
+		if !ok {
+			t.Errorf("%s is not served", path)
+			continue
+		}
+		if !strings.Contains(string(body), `data-check="`+check+`"`) {
+			t.Errorf("%s does not declare itself as the %q check, so the script would fall back to "+
+				"another check's endpoint and renderer", path, check)
+		}
+	}
+}
+
+// A check's page sends a reader to that check's limits, footer included.
+//
+// The footer is the one piece of markup every page shares, and it carried one
+// address while there was one check. The moment there were two, /web served a
+// report and then offered "How a report is read" pointing at the limits of a
+// TLS handshake — which is the confusion the method pages are separate to
+// prevent, arriving through the only element that is on every page at once.
+//
+// Caught by looking at the rendered page rather than by reading the layout,
+// because what a reader clicks is the rendered href.
+func TestEachCheckPageSendsAReaderToItsOwnLimits(t *testing.T) {
+	for path, want := range map[string]string{
+		"/tls":        "/tls/method",
+		"/tls/method": "/tls/method",
+		"/web":        "/web/method",
+		"/web/method": "/web/method",
+	} {
+		body := string(rendered[path])
+		if body == "" {
+			t.Errorf("%s is not served", path)
+			continue
+		}
+
+		other := "/tls/method"
+		if want == "/tls/method" {
+			other = "/web/method"
+		}
+
+		if !strings.Contains(body, `href="`+want+`">How a report is read`) {
+			t.Errorf("%s does not point its footer at %s", path, want)
+		}
+		if strings.Contains(body, `href="`+other+`">How a report is read`) {
+			t.Errorf("%s points its footer at %s, which is another check's limits", path, other)
+		}
+	}
+
+	// A page that is not a check's still points somewhere, because a reader
+	// who arrived from a report has to be able to get back to what it means.
+	for _, path := range []string{"/privacy", "/terms"} {
+		if !strings.Contains(string(rendered[path]), `>How a report is read`) {
+			t.Errorf("%s carries no link explaining how a report is read", path)
+		}
 	}
 }
