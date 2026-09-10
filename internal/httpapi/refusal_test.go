@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -174,6 +175,33 @@ func TestEveryRefusalCodeCanBeProduced(t *testing.T) {
 		}
 		if body := w.Body.String(); strings.Contains(body, "127.0.0.1") {
 			t.Errorf("the refusal repeats an address back to the caller: %s", body)
+		}
+	}
+
+	// ── a domain this deployment has not been shown control of ──
+	//
+	// Driven here rather than left defensive, because unlike not_demonstrated
+	// this one needs no build tag: any deployment that configures a scope can
+	// produce it, and a figure nobody drives is a figure nobody notices has
+	// stopped moving.
+	{
+		scope, _ := scopeProving()
+		s := New(&scan.Scanner{
+			Prober: &tlsprobe.Prober{Dial: recordingDial(new(atomic.Bool))},
+			Verify: scope,
+		}, Limits{Burst: 1000, Refill: time.Nanosecond}, nil)
+
+		w := postFrom(t, s, `{"target":"unproven.test"}`, "203.0.113.90:5000")
+		if w.Code != http.StatusForbidden {
+			t.Errorf("status = %d, want 403 for a domain this deployment has not been shown "+
+				"control of", w.Code)
+		}
+		note(w, "not_verified")
+
+		if got := s.Stats().Refused["not_verified"]; got != 1 {
+			t.Errorf("not_verified counted %d times, want 1: this figure is how an operator "+
+				"sees that people are asking about domains they have not published a record "+
+				"for, which no scan count can show", got)
 		}
 	}
 

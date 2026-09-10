@@ -59,6 +59,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/exclusion"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/scan"
+	"github.com/denyfirst/denyfirst/internal/verify"
 	"github.com/denyfirst/denyfirst/internal/webscan"
 )
 
@@ -173,7 +174,24 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 
 	s := &Server{
 		scanner: scanner,
-		web:     &webscan.Scanner{},
+
+		// The web check is built from the boundary the caller configured
+		// rather than from nothing.
+		//
+		// It was built from nothing, and that was a hole. denyfirstd passed a
+		// verification scope to the TLS scanner and never touched this one, so
+		// the same service refused an unproven host on /api/v1/tls/scan and
+		// scanned it on /api/v1/web/scan. Every guard was in place, every unit
+		// test passed, and the deployment had no boundary on half its surface:
+		// the component was secure and the composition was not.
+		//
+		// N6 says a guard belongs where the connection is made rather than in
+		// the handler that calls it today, and it does. What that rule does not
+		// say, and what this line is, is that a guard every constructor has to
+		// remember to pass is a guard somebody forgets. So the caller
+		// configures the boundary once, on the scanner it hands in, and every
+		// check this service adds inherits it here.
+		web:     &webscan.Scanner{Verify: scanner.Verify},
 		limits:  limits,
 		rate:    newLimiter(limits.Burst, limits.Refill, limits.MaxTrackedIPs, now),
 		reads:   newLimiter(readBurst, readRefill, limits.MaxTrackedIPs, now),
@@ -439,6 +457,32 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, c check) {
 			"The scan did not finish within the time allowed.")
 		return
 	}
+	// A name this deployment has not been shown control of.
+	//
+	// Recognised here rather than asked here, and that is the difference
+	// between this boundary and the two above it. The exclusion list and the
+	// demonstration list are tables, so asking them in the handler costs
+	// nothing. This one is a lookup, and asking it before the scan and again
+	// inside the scanner would be two queries somebody else's resolver serves
+	// for one request. So the scanner asks it — which is where N6 wants it, at
+	// the connection, so that a check added later cannot walk around it — and
+	// this reads the answer.
+	//
+	// Reading it is not cosmetic. Without this line the refusal arrived as
+	// scan_failed with a 502 saying the target could not be reached: a
+	// sentence about somebody else's server for a decision made entirely
+	// here. An operator reads a network fault, checks the host, finds it
+	// healthy, and has been told nothing about the record they never
+	// published. It also counted a deliberate refusal as a failure, in the one
+	// set of figures anybody has to watch this service by.
+	if errors.Is(err, verify.ErrNotVerified) {
+		s.refuse(w, http.StatusForbidden, "not_verified",
+			"This deployment scans only domains it has been shown control of. Publish a TXT "+
+				"record at "+verify.Label+" beneath the domain, carrying the token this "+
+				"deployment expects for it, and ask again. The operator can print that token.")
+		return
+	}
+
 	if err != nil {
 		// Nothing reachable produces this today, on either check, which is
 		// why it is written as a refusal rather than left out: both scanners
@@ -447,9 +491,17 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, c check) {
 		//
 		// The TLS scanner cannot fail once the handler has validated the
 		// target. The web scanner returns an error only for a target its
-		// probe refuses or a name outside the two lists, and all three are
+		// probe refuses or a name outside the lists, and all of those are
 		// asked above. See the reachability test in refusal_test.go, which
 		// names this as the one code it cannot drive.
+		//
+		// A deployment that requires proof of control adds one way through
+		// here that a deployment without it does not have: the challenge
+		// lookup itself failing. That is not the domain being unverified —
+		// which is answered above and says so — it is this service being
+		// unable to ask, and "could not be reached" is the honest shape of
+		// it. The alternative would tell an operator to publish a record they
+		// have already published.
 		//
 		// The underlying error can name resolver internals and addresses, so
 		// only the shape of the failure is returned.
@@ -618,7 +670,22 @@ func SilentErrorLog() *log.Logger {
 // caller that wants the default — which dials through safedial and reaches only
 // ports 80 and 443 — passes nothing and gets it.
 func (s *Server) UseWebScanner(w *webscan.Scanner) {
-	if w != nil {
-		s.web = w
+	if w == nil {
+		return
 	}
+
+	// The boundary is carried over rather than replaced.
+	//
+	// This is a door for tests, and a door for tests is how a boundary comes
+	// to be off in production — the replacement carries a prober and no scope,
+	// and the service that configured one silently stops asking. Whatever a
+	// caller hands in, the scope this server was built with survives it.
+	//
+	// A caller that genuinely wants no verification builds a server without
+	// one, which is what every test here does and what the command line is.
+	if w.Verify == nil {
+		w.Verify = s.scanner.Verify
+	}
+
+	s.web = w
 }
