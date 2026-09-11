@@ -122,6 +122,15 @@ func TestEveryRuleSetThatShippedNamesItsRelease(t *testing.T) {
 		return n
 	}
 
+	// familyOf is the rule set a version name belongs to, with the number
+	// taken off: denyfirst-tls-v7 and denyfirst-tls-v6 are one family, and
+	// denyfirst-web-v3 is another. A name this cannot read answers as itself,
+	// so an unrecognised heading is its own family and cannot be silently
+	// folded in with one it has nothing to do with.
+	familyOf := func(name string) string {
+		return number.ReplaceAllString(name, "")
+	}
+
 	current := numberOf(TLSVersion)
 	if current < 1 {
 		t.Fatalf("policy version %q does not end in -vN, so this test cannot tell "+
@@ -189,20 +198,32 @@ func TestEveryRuleSetThatShippedNamesItsRelease(t *testing.T) {
 		}
 	}
 
-	// At most one section may say a release has not carried it yet: the one
-	// being prepared. Two is either a section that shipped and was reverted
-	// to "Unreleased", or two rule sets being prepared at once with no way to
-	// tell which tag will carry which.
-	unreleased := []string{}
+	// At most one section per rule set may say a release has not carried it
+	// yet: the one being prepared. Two for the same rule set is either a
+	// section that shipped and was reverted to "Unreleased", or two versions
+	// of one thing being prepared at once with no way to tell which tag will
+	// carry which.
+	//
+	// Per rule set rather than in total, since 2026-09-11. This project grades
+	// with two now and they version independently, so the web rules and the
+	// TLS rules can each have a change waiting — and they are carried by the
+	// same next tag, which is exactly the ambiguity this is written against
+	// rather than an instance of it. Counting them together turned a correct
+	// state into a failure and would have pushed somebody towards the wrong
+	// fix: not bumping a version that a verdict change requires.
+	unreleased := map[string][]string{}
 	for name, text := range section {
 		if strings.Contains(text, "Unreleased") {
-			unreleased = append(unreleased, name)
+			family := familyOf(name)
+			unreleased[family] = append(unreleased[family], name)
 		}
 	}
-	if len(unreleased) > 1 {
-		sort.Strings(unreleased)
-		t.Errorf("%d sections say they are unreleased (%s). Only the one being prepared may.",
-			len(unreleased), strings.Join(unreleased, ", "))
+	for family, names := range unreleased {
+		if len(names) > 1 {
+			sort.Strings(names)
+			t.Errorf("%d %s sections say they are unreleased (%s). Only the one being prepared may.",
+				len(names), family, strings.Join(names, ", "))
+		}
 	}
 
 	for name, text := range section {

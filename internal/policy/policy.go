@@ -58,7 +58,13 @@ import (
 // `policy.WebVersion` reads as the general version and the web one, which is
 // exactly the confusion renaming the value was meant to end. No rule moved
 // with this either; it is a name, and every value it names is unchanged.
-const TLSVersion = "denyfirst-tls-v6"
+// v7, 2026-09-11. One new way to reach an existing verdict: cert.revoked can
+// now be raised by a revocation list published by the issuing authority, and
+// not only by a stapled response. No rule changed its meaning and no threshold
+// moved — but a certificate whose revocation was previously unknowable can now
+// come back insecure, and that is a verdict change on an unchanged server,
+// which is a version change.
+const TLSVersion = "denyfirst-tls-v7"
 
 // ReviewBy is when these rules should next be read against their sources.
 //

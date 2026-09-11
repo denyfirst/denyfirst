@@ -749,6 +749,93 @@ with nowhere to put one is stronger than a rule saying not to (I6).
 `TestARedirectOffTheDemonstrationIsNotFollowed`,
 `TestARedirectInsideTheDemonstrationIsFollowed`
 
+---
+
+### N11 — An address a certificate names is an address the scanned party chose
+
+A certificate carries revocation list distribution points, and a scanner that
+reads one is fetching an address written by the party it is measuring. A
+certificate naming `http://10.0.0.1/` is that server aiming this scanner at the
+network it runs in, and a certificate naming forty addresses is one scan turned
+into forty requests somebody else pays for.
+
+So the same guards every other outbound connection has: `safedial`, which
+refuses private, loopback, link-local and reserved destinations; ports 80 and
+443 only, because a port taken from a certificate would make this a port
+scanner aimed by the target; `http` and `https` only, because a certificate may
+name `ldap://` and following one means speaking a protocol the measured party
+chose; no redirect followed, since that is an address chosen by whoever answered
+an address chosen by the server; credentials stripped; and two distribution
+points at most.
+
+**And what comes back is believed only after it is verified.** A list arrives
+over plaintext HTTP from an address a stranger named, so whoever can answer that
+request chooses the bytes. Without a signature check against the issuing
+certificate they could report a sound certificate as revoked — or, far worse, a
+revoked one as sound. Four things are required before a single field is read:
+the list parses, its signature verifies against the issuer, it is inside its own
+validity window, and it arrived under the size cap.
+
+**The size cap refuses rather than truncates**, and the direction of that
+failure is the whole reason it matters. Every serial is absent from a truncated
+list, and absence is exactly what "not revoked" is read from — so a list cut at
+the cap answers *good* about a revoked certificate.
+
+**A serial is compared as a number, never as bytes.** The same integer is
+encoded with or without a leading zero byte depending on whether its top bit is
+set, so a byte comparison reports a revoked certificate as sound for every
+serial above `0x7f` — which is most of them, and which would pass every test
+written with small numbers.
+
+**Anything short of an answer is "not checked", never "not revoked"** (R4). The
+report says which of the four failed, in this project's own words rather than in
+a network error that would name a resolver or an address (I6).
+
+**This is the one check that asks a third party, and the asking is bounded by
+what it discloses.** Fetching a list tells an authority that somebody downloaded
+a list; it does not say which certificate, because one list covers thousands.
+That is a smaller disclosure than OCSP, which names the serial in the question,
+and it is why this is done where OCSP is not. The demonstration deployment
+promises on its privacy page that it asks no authority anything, so the call is
+compiled out of that build — `demo.Enabled` is a constant and the branch is
+eliminated, which keeps the promise true by construction rather than by a
+setting. Everywhere else it runs with no switch: on a deployment that requires
+proof of control the certificate belongs to whoever asked, and a switch they had
+to find first would be a gap in a report dressed as a choice.
+
+Both directions are driven. A test under the tag fails if the demonstration
+fetches, and a test without it fails if the ordinary build does not — a guard
+that refuses everywhere is as wrong as one that refuses nowhere, and the second
+failure would be silent, since "revocation was not checked" is a sentence this
+project prints honestly in so many other places that nobody would look twice.
+
+*Enforced in:* `internal/crl`, `internal/scan.Scanner.Scan`,
+`internal/scan.listStatus`, `internal/policy.GradeStapling`,
+`internal/policy.RevocationLine`
+*Guarded by:* `TestACertificateOnTheListIsRevoked`,
+`TestACertificateNotOnTheListIsGood`,
+`TestAListTheIssuerDidNotSignIsRefused`,
+`TestAStaleListIsNotAnAnswer`,
+`TestAListNotYetInEffectIsNotAnAnswer`,
+`TestAnOversizedListIsRefusedRatherThanTruncated`,
+`TestASerialIsComparedAsANumber`,
+`TestOnlyHTTPAddressesAreFetched`,
+`TestCredentialsInADistributionPointAreStripped`,
+`TestACertificateNamingNoListSaysSo`,
+`TestWithoutTheIssuerThereIsNoAnswer`,
+`TestAListThatWasNotServedEstablishesNothing`,
+`TestSomethingThatIsNotAListIsNotParsedAsOne`,
+`TestNoReasonDescribesTheMachine`,
+`TestTheDefaultDiallerRefusesPrivateAddresses`,
+`TestAnUnknownListStatusIsNotAnAnswer`,
+`TestTheOrdinaryBuildReadsTheRevocationList`,
+`TestTheDemonstrationAsksNoAuthorityAnything`,
+`TestAListThatNamesTheCertificateIsReported`,
+`TestAListThatDoesNotNameTheCertificateSaysAsOfWhen`,
+`TestAListThatCouldNotBeReadSaysWhy`,
+`TestOneWithdrawalIsOneFinding`,
+`TestADeploymentThatReadsNoListIsUnchanged`
+
 ## Input
 
 

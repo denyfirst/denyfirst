@@ -104,6 +104,35 @@ type StapleFacts struct {
 	// certificate with no responder and no distribution point has no
 	// published way to be checked at all.
 	HasCRL bool
+
+	// The fields below carry what a revocation list established, where one was
+	// fetched. They are the second source for the same question, and they
+	// exist because the first one dried up: the CA/Browser Forum made OCSP
+	// optional and lists mandatory, and authorities issuing for much of the
+	// web stopped publishing OCSP altogether. A certificate from one of them
+	// names no responder, so nothing can be stapled, so a check that read only
+	// stapled responses had nothing to say about revocation at all.
+
+	// ListStatus is what a verified, current list said: "good", "revoked", or
+	// empty when no list established anything.
+	//
+	// Empty rather than "unknown", and never filled from a list that failed to
+	// parse, failed its signature check against the issuer, or fell outside
+	// its own validity window. A status read out of bytes nobody could verify
+	// is a claim by whoever answered a plaintext request.
+	ListStatus string
+
+	// ListRevokedAt is when the list says the certificate was withdrawn.
+	ListRevokedAt time.Time
+
+	// ListAsOf is the list's own thisUpdate, so a report can say how old the
+	// answer is rather than presenting it as this moment's.
+	ListAsOf time.Time
+
+	// ListReason says why no list established anything, in this project's own
+	// words. Empty when none was attempted at all — which is the state of the
+	// demonstration deployment, where this check is not compiled in.
+	ListReason string
 }
 
 // StapleFinding is the graded result.
@@ -198,6 +227,33 @@ func GradeStapling(f StapleFacts) StapleFinding {
 			rfc6960, rfc9325)
 	}
 
+	// The same finding, reached the other way.
+	//
+	// One rule and not two, deliberately. A reader does not need to learn that
+	// this project has two mechanisms for one question; they need to know the
+	// authority has withdrawn the certificate. The sentence says which source
+	// answered, because a list is a snapshot and a stapled response is not, and
+	// a reader acting on this will want to know how old the answer is.
+	//
+	// Guarded against saying it twice: a server can staple a response saying
+	// revoked *and* name a list that agrees, and one withdrawal reported as two
+	// findings is the double-charging R6 is written about.
+	if f.ListStatus == "revoked" && !(f.Validated && f.Status == "revoked") {
+		when := ""
+		if !f.ListRevokedAt.IsZero() {
+			when = " on " + f.ListRevokedAt.UTC().Format("2006-01-02")
+		}
+		asOf := ""
+		if !f.ListAsOf.IsZero() {
+			asOf = " The list was published on " + f.ListAsOf.UTC().Format("2006-01-02") + "."
+		}
+		add("cert.revoked", Insecure,
+			"The certificate has been revoked",
+			"A revocation list published by the issuing authority, verified against it and current, names this certificate as revoked"+when+
+				". Revocation is how a certificate is withdrawn before it expires, usually because its key was exposed or it was issued in error. Clients that check will refuse the connection."+asOf,
+			rfc5280, rfc9325)
+	}
+
 	// A responder that has never heard of a certificate it should be
 	// authoritative for is not reassurance, and reading it as "not revoked"
 	// is the mistake RFC 6960 warns about directly.
@@ -276,12 +332,37 @@ func GradeStapling(f StapleFacts) StapleFinding {
 	case f.HasCRL:
 		// The common case for a certificate issued now, and the one every
 		// scanner that still grades this gets wrong.
-		out.observe(
-			"No status response was stapled, and the certificate names no responder to fetch one from. " +
-				"The CA/Browser Forum no longer requires certificate authorities to run OCSP, and several " +
-				"have withdrawn it, so there is nothing here for the server to have sent. Revocation for " +
-				"this certificate is published as a list instead, which clients fetch on their own " +
-				"schedule rather than per connection.")
+		//
+		// What follows the first two sentences depends on whether this
+		// deployment read the list. Both endings are true where they are said,
+		// and neither is said where it is not: a report from a deployment that
+		// does not fetch lists must not imply that one was consulted, and a
+		// report from one that did must not leave a reader thinking the
+		// question went unanswered.
+		said := "No status response was stapled, and the certificate names no responder to fetch one from. " +
+			"The CA/Browser Forum no longer requires certificate authorities to run OCSP, and several " +
+			"have withdrawn it, so there is nothing here for the server to have sent. "
+
+		switch {
+		case f.ListStatus != "":
+			said += "Revocation for this certificate is published as a list instead, and this scan " +
+				"fetched that list, verified it against the issuing authority and checked it was " +
+				"current. A list is a snapshot published on a schedule, so what it establishes is " +
+				"true as of its publication date rather than as of this moment — which is the same " +
+				"position every client checking this way is in."
+
+		case f.ListReason != "":
+			said += "Revocation for this certificate is published as a list instead. This scan tried " +
+				"to read it and could not, so revocation was not established here: " + f.ListReason +
+				". That is a limit of this scan rather than a fault of the server."
+
+		default:
+			said += "Revocation for this certificate is published as a list instead, which clients " +
+				"fetch on their own schedule rather than per connection. This deployment does not " +
+				"fetch it, so nothing here says whether this certificate has been withdrawn."
+		}
+
+		out.observe(said)
 
 	default:
 		// Neither mechanism. This is rare and it is worth saying plainly,
