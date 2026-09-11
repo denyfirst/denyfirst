@@ -38,6 +38,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/denyfirst/denyfirst/internal/ctsearch"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/scan"
@@ -80,7 +81,7 @@ func main() {
 // added and did exactly that: -resolver was declared, documented in the usage
 // text, and never assigned, so the sabotage that removed the assignment changed
 // no test.
-func tlsScanner(timeout time.Duration, allowPrivate bool, resolver string) *scan.Scanner {
+func tlsScanner(timeout time.Duration, allowPrivate bool, resolver string, searchLogs bool) *scan.Scanner {
 	scanner := &scan.Scanner{
 		Prober: &tlsprobe.Prober{TotalTimeout: timeout},
 
@@ -102,6 +103,13 @@ func tlsScanner(timeout time.Duration, allowPrivate bool, resolver string) *scan
 		// from the registry with nothing to say which adapter is live — so an
 		// operator who knows their network has to be able to say so (R7).
 		scanner.Resolver = &dnsclient.Client{Server: resolver}
+	}
+
+	if searchLogs {
+		// The operator asked for it, which is the only way this happens here.
+		// The monitor is behind an interface, so an operator running their own
+		// is a substitution rather than a rewrite.
+		scanner.Logs = &ctsearch.CRTSh{Timeout: timeout}
 	}
 
 	if allowPrivate {
@@ -157,6 +165,25 @@ func run() int {
 		resolver = flag.String("resolver", "",
 			"`address` of the resolver to ask for CAA records, host:port; empty reads\n"+
 				"\tthis machine's own configuration")
+
+		// Whether to ask a public log what certificates exist for the name.
+		//
+		// Off by default, and it is the only check here that is. Everything
+		// else this tool does either reaches the server being scanned — which
+		// the operator chose — or reads something already in hand. This sends
+		// the name to a monitor this project does not run, and the question
+		// contains the name.
+		//
+		// On a service that required proof of control the name belongs to
+		// whoever asked and there is nothing to hide from themselves, so it
+		// simply runs there. Here it cannot: this command scans whatever it is
+		// pointed at, and the name may be somebody else's. Telling a third
+		// party which domain you are looking at is the operator's disclosure to
+		// make, not a default to inherit (N12).
+		searchLogs = flag.Bool("check-logs", false,
+			"ask a public certificate transparency monitor which certificates exist for\n"+
+				"\tthe name, to find any you did not order. Off by default: the question\n"+
+				"\tnames the domain to a service this project does not run")
 	)
 
 	showVersion := flag.Bool("version", false, "print the release and policy versions, then exit")
@@ -210,7 +237,7 @@ func run() int {
 		return runWeb(ctx, targets, *timeout, *allowPrivate, *asJSON)
 	}
 
-	scanner := tlsScanner(*timeout, *allowPrivate, *resolver)
+	scanner := tlsScanner(*timeout, *allowPrivate, *resolver, *searchLogs)
 
 	results := make([]result, 0, len(targets))
 
@@ -506,6 +533,9 @@ func printCertificate(w io.Writer, r result) {
 	}
 	if r.TransparencyLine != "" {
 		fmt.Fprintf(w, "    Transparency %s\n", wrap(r.TransparencyLine, 60, "                 "))
+	}
+	if r.LoggedLine != "" {
+		fmt.Fprintf(w, "    Logged       %s\n", wrap(r.LoggedLine, 60, "                 "))
 	}
 }
 

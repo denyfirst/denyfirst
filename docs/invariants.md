@@ -836,6 +836,105 @@ project prints honestly in so many other places that nobody would look twice.
 `TestOneWithdrawalIsOneFinding`,
 `TestADeploymentThatReadsNoListIsUnchanged`
 
+---
+
+### N12 — A question that names the domain is a disclosure, and is treated as one
+
+Asking which certificates exist for `example.com` contains `example.com`. That
+is the shape of the OCSP query this project refuses, and it is **not** the shape
+of reading a revocation list, where one list covers thousands and the question
+names nothing. Those two were conflated once while this was being designed, and
+the difference decides everything about how the check is offered.
+
+What makes it acceptable where OCSP was not is **not** the monitor's
+reputation — a certificate authority is not automatically a safe recipient of
+query data, and several of them sell monitoring. It is that certificate
+transparency is **public by design**. The certificates for a name are already
+published to anyone who looks, so nothing new about the domain is disclosed;
+what is disclosed is that somebody is looking. That reason survives a change of
+provider, and a reason about the provider would not.
+
+So the offer differs by deployment, and the question to ask of any future check
+that discloses something is the same one: *whose is it, and what exactly does
+the other party learn?*
+
+| | |
+|---|---|
+| the demonstration | never — it promises it queries no log, and the branch is compiled out |
+| a service that required proof of control | runs, no switch: the name belongs to whoever asked |
+| the command line | `-check-logs`, because there the name may be somebody else's |
+
+**Nothing found is the reassuring answer, so every failure must be
+distinguishable from it.** A monitor that is down, rate limiting, or answering
+with a page rather than a document reports that nothing was established, never
+that nothing exists (R4). The size cap refuses rather than truncates, for the
+same reason.
+
+**One certificate is one certificate.** Every certificate is submitted to the
+logs twice, once as a precertificate and once as itself, so a name with one
+certificate comes back as two records sharing a serial. The first real answer
+this was built against — this project's own domain — showed exactly that, and
+counting records would have told an operator they had twice as many
+certificates as they do. On a check whose question is *is there one you did not
+order*, a phantom duplicate is the worst available false alarm.
+
+**A serial is compared as a number, never as text.** A monitor writes leading
+zeros; the same integer written without one is a different string. The
+consequence points the wrong way from the revocation check's version of this
+mistake: there a text comparison would clear a revoked certificate, here it
+reports the certificate the server just presented as one a stranger obtained.
+
+**The address was read from the service rather than remembered.** `?q=` with
+`output=json` answers 404 and `/json` answers 502; the form that works is
+`?Identity=`. A check written from memory would have shipped asking for a page
+that does not exist and reporting every name as having no certificates — which
+is the reassuring half, arrived at by a bug.
+
+**The answer is untrusted input.** Issuer and subject names come from
+certificates anybody may obtain and log, so they are chosen by whoever obtained
+them. Each is bounded and stripped of control characters before it reaches a
+report, and the name is escaped into the query: a name carrying `&` that arrived
+unescaped would add parameters to somebody else's query string.
+
+**It is reported and never graded.** A certificate in a log is a fact; whether
+it should exist is a question about somebody's purchasing that no scan can
+answer. An early renewal, a content delivery network issuing on the customer's
+behalf, and a certificate obtained by somebody who should not have one are
+identical from here, so a verdict would be a threshold this project invented
+(R21) and a claim about what a measurement implies rather than what it
+established (R17). What the report does is put the operator in front of the
+list, because they know what they ordered and nobody else does.
+
+**And it says what it did not search.** Only the exact name, so a certificate
+obtained for a subdomain — which is how this is usually done — does not appear.
+Silence there would let a clean answer read as a clean estate.
+
+*Enforced in:* `internal/ctsearch`, `internal/scan.Scanner.searchLogs`,
+`internal/scan.sameSerial`, `internal/policy.LoggedLine`,
+`internal/policy.DescribeLogged`, `cmd/denyfirst-scan.tlsScanner`
+*Guarded by:* `TestOneCertificateLoggedTwiceIsOneCertificate`,
+`TestTwoDifferentCertificatesAreTwo`,
+`TestTheNameIsEscapedIntoTheQuery`,
+`TestAwkwardNamesDoNotEscapeTheQuery`,
+`TestNothingThatIsNotAnAnswerReadsAsNoneFound`,
+`TestAnEmptyAnswerIsNotAFailure`,
+`TestWhatTheMonitorSaysIsBoundedAndStripped`,
+`TestALongHistoryIsBoundedAndSaysSo`,
+`TestAnOversizedAnswerIsRefusedRatherThanTruncated`,
+`TestAnEmptyNameIsNotSearchedFor`,
+`TestASerialFromAMonitorIsComparedAsANumber`,
+`TestTheDemonstrationQueriesNoTransparencyLog`,
+`TestTheOrdinaryBuildSearchesTheLogsWhenAsked`,
+`TestNoSearcherMeansNoSearch`,
+`TestTheLogSearchIsOffUntilItIsAskedFor`,
+`TestADeploymentThatSearchedNoLogsSaysNothing`,
+`TestAFailedSearchIsNotAnEmptyEstate`,
+`TestOneCertificateInUseReadsAsSettled`,
+`TestACertificateNotPresentedIsSaidPlainly`,
+`TestWhatTheLogsHoldIsNeverGraded`,
+`TestTheReportSaysSubdomainsWereNotSearched`,
+`TestATruncatedListSaysSoAndKeepsItsCount`
+
 ## Input
 
 

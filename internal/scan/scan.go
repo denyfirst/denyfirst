@@ -12,6 +12,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"net/netip"
 	"slices"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/denyfirst/denyfirst/internal/certinfo"
 	"github.com/denyfirst/denyfirst/internal/crl"
+	"github.com/denyfirst/denyfirst/internal/ctsearch"
 	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/exclusion"
@@ -124,6 +126,22 @@ type Result struct {
 	// anything that could execute them. R16.
 	RevocationLine   string `json:"revocationLine,omitempty"`
 	TransparencyLine string `json:"transparencyLine,omitempty"`
+
+	// LoggedLine and Logged are what the public certificate logs hold for this
+	// name, where a deployment searched them.
+	//
+	// Absent where none did, which is the demonstration and anything that has
+	// not configured a searcher. An empty line is the honest shape for a check
+	// that did not run: a sentence saying nothing was found would be a claim
+	// about the logs made by a scan that never asked them (R4).
+	//
+	// The entries are carried as well as the sentence because this is the one
+	// section a reader has to act on themselves. Only they know what they
+	// ordered, so only they can tell an early renewal from a stranger's
+	// certificate — and a count without a list gives them nothing to check
+	// against (N12).
+	LoggedLine string           `json:"loggedLine,omitempty"`
+	Logged     *ctsearch.Result `json:"logged,omitempty"`
 
 	// KeyExchangeLine is what the extra post-quantum handshake established,
 	// in the sentence both faces show.
@@ -251,6 +269,24 @@ type Scanner struct {
 	// whoever asked — a switch they had to find first would be a gap in a
 	// report dressed as a choice.
 	Revocation *crl.Fetcher
+
+	// Logs searches the public certificate logs for other certificates issued
+	// for the name being scanned.
+	//
+	// Nil means no search. Unlike Revocation this is off unless a caller sets
+	// it, and the difference is what the question discloses. Reading a
+	// revocation list names no certificate — one list covers thousands. Asking
+	// which certificates exist for example.com contains example.com, which is
+	// the shape of the OCSP query this project refuses.
+	//
+	// What makes it acceptable where OCSP was not is that certificate
+	// transparency is public by design: the certificates for a name are already
+	// published to anyone who looks, so nothing new about the domain is
+	// disclosed and only the looking is. A deployment that required proof of
+	// control is asking about a name its operator owns; the command line may be
+	// asking about somebody else's, which is why it is a switch there and not
+	// here (N12).
+	Logs ctsearch.Searcher
 
 	// Now supplies the current time, so certificate arithmetic is
 	// reproducible in tests. Nil means time.Now.
@@ -454,6 +490,23 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 		}
 		certReport.Notes = append(certReport.Notes, policy.DescribeTransparency(transparency)...)
 		out.TransparencyLine = policy.TransparencyLine(transparency)
+
+		// What the logs hold for this name, where a caller asked for it.
+		//
+		// The two lines above read receipts the handshake carried, which say
+		// that *this* certificate was logged. They cannot say what else was.
+		// A certificate somebody else obtained for this name is on somebody
+		// else's server and will never appear in a handshake here — the logs
+		// are the only place it is visible, and that is the whole reason this
+		// check exists (N12).
+		//
+		// Not on the demonstration: demo.Enabled is a constant, so the branch
+		// is eliminated there rather than switched off, and the promise on that
+		// deployment's privacy page that it queries no log stays true by
+		// construction.
+		if !demo.Enabled && s.Logs != nil && len(tlsReport.Certificates) > 0 {
+			out.LoggedLine, out.Logged = s.searchLogs(ctx, host, tlsReport.Certificates[0], certReport)
+		}
 	}
 
 	// The key exchange, which is a property of the transport rather than of
@@ -1074,4 +1127,68 @@ func listStatus(s crl.Status) string {
 	default:
 		return ""
 	}
+}
+
+// searchLogs asks what the public logs hold for this name and turns it into the
+// sentence a report shows.
+//
+// The comparison against the certificate in hand is the point of it. A count of
+// certificates is a curiosity; a count of certificates that are valid today and
+// are not the one this server just presented is a list the operator can act on.
+func (s *Scanner) searchLogs(ctx context.Context, host string, leaf *x509.Certificate, report *certinfo.Report) (string, *ctsearch.Result) {
+	found := s.Logs.Search(ctx, host)
+
+	facts := policy.LogFacts{
+		Searched:  true,
+		Distinct:  found.Distinct,
+		Truncated: found.Truncated,
+		Reason:    found.Reason,
+
+		// Exact name only, today. Said rather than assumed: a report that let a
+		// clean answer read as a clean estate would be claiming coverage this
+		// search did not have (R4).
+		SubdomainsSearched: false,
+	}
+
+	for _, e := range found.Entries {
+		// Valid at this moment. An expired certificate is history; one valid
+		// now and not in use is a key somebody can present for this name today.
+		now := s.now()
+		if !e.NotBefore.IsZero() && now.Before(e.NotBefore) {
+			continue
+		}
+		if !e.NotAfter.IsZero() && now.After(e.NotAfter) {
+			continue
+		}
+		if sameSerial(e.Serial, leaf) {
+			continue
+		}
+		facts.Unseen++
+	}
+
+	if report != nil {
+		report.Notes = append(report.Notes, policy.DescribeLogged(facts)...)
+	}
+	return policy.LoggedLine(facts), &found
+}
+
+// sameSerial reports whether a serial a monitor wrote as hexadecimal is the
+// serial of the certificate in hand.
+//
+// Parsed and compared as a number, never as text. A monitor writes leading
+// zeros — the first real answer this was run against carried "06fe4d40…" — and
+// a string comparison against the same integer written without one reports a
+// certificate as a stranger's. That is the same mistake the revocation check is
+// written not to make, in the other direction: there it would clear a revoked
+// certificate, here it would raise an alarm about the operator's own.
+func sameSerial(hexSerial string, leaf *x509.Certificate) bool {
+	if leaf == nil || leaf.SerialNumber == nil {
+		return false
+	}
+
+	n, ok := new(big.Int).SetString(strings.TrimSpace(hexSerial), 16)
+	if !ok {
+		return false
+	}
+	return n.Cmp(leaf.SerialNumber) == 0
 }
