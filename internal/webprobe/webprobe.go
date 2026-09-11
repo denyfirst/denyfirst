@@ -53,6 +53,8 @@ package webprobe
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -62,6 +64,7 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/safedial"
+	"github.com/denyfirst/denyfirst/internal/truststore"
 )
 
 // DialFunc matches net.Dialer.DialContext and safedial.Dialer.DialContext.
@@ -117,6 +120,22 @@ type Prober struct {
 	// followed, which is what a test of the first response wants.
 	MaxRedirects int
 
+	// Roots is the trust store every certificate on a chain is judged against.
+	//
+	// Nil means the system store, loaded explicitly. It does not mean "let
+	// crypto/tls decide": a nil RootCAs reaches x509.Verify as a nil Roots,
+	// which on Windows and macOS hands the whole question to the platform
+	// verifier — a different store from the one a service checked when it
+	// started (R7).
+	//
+	// This check had no TLSClientConfig at all until 2026-09-11, so that was
+	// the behaviour, and here it is worse than a wrong grade. A certificate the
+	// deciding store cannot verify is a handshake that fails, and a failed
+	// handshake is reported as a site that is not reachable over HTTPS. A fact
+	// about the machine running the scan, printed as a finding about somebody
+	// else's server.
+	Roots *x509.CertPool
+
 	// UserAgent identifies this client. Empty selects DefaultUserAgent.
 	//
 	// Whatever is set here is sent verbatim, so a caller embedding this
@@ -138,6 +157,16 @@ const DefaultUserAgent = "denyfirst/1 (+https://denyfirst.dev/web/method)"
 
 // ErrNotAHostname is returned for a target that is not a bare hostname.
 var ErrNotAHostname = errors.New("webprobe: target must be a bare hostname")
+
+// resolveRoots is truststore.Resolve, as a variable so that a test can make it
+// fail.
+//
+// The branch it guards matters most on a machine whose certificate store cannot
+// be read, which is the machine no test runs on — and a test that skips itself
+// everywhere is the same silence A7 is about, arriving in a test file. The rule
+// itself is truststore's, because the TLS check asks the same question of the
+// same kind of nil (R7).
+var resolveRoots = truststore.Resolve
 
 // Reach answers whether this probe may connect to a host a redirect named.
 //
@@ -337,6 +366,22 @@ type Report struct {
 	// measurement of the host, and the caller turns it into a refusal with
 	// its own status code rather than passing it through.
 	BlockedDestination bool `json:"-"`
+
+	// TrustStoreUnreadable reports that this machine's certificate store could
+	// not be read, so nothing on either chain was verified against anything.
+	//
+	// Serialised, unlike the field above, because a reader has to see it. Every
+	// HTTPS hop fails when it is set — truststore answers a failure with an
+	// empty pool, which is the safe answer and not a usable one — and a chain of
+	// failed handshakes reads as a site that is not served over HTTPS. That
+	// would be a fact about the machine running the scan printed as a finding
+	// about somebody else's server, which is the failure R4 is about.
+	//
+	// A field rather than prose, for the reason A7 gives about
+	// BlockedDestination: the sentence lives in internal/policy and is written
+	// from this, so a count or a renderer built on it does not break the first
+	// time the sentence is improved.
+	TrustStoreUnreadable bool `json:"trustStoreUnreadable,omitempty"`
 }
 
 // Probe fetches the headers of one host over both schemes.
@@ -365,7 +410,13 @@ func (p *Prober) Probe(ctx context.Context, host string, reach Reach) (*Report, 
 
 	report := &Report{Host: host, UserAgent: p.userAgent()}
 
-	client := p.client()
+	// Resolved here rather than inside the client, so that a store which could
+	// not be read reaches the report instead of being spent as a chain of
+	// failed handshakes nobody can explain.
+	roots, rootsErr := resolveRoots(p.Roots)
+	report.TrustStoreUnreadable = rootsErr != nil
+
+	client := p.clientWith(roots)
 
 	// The host asked about is authorised already — the caller said so by
 	// asking — so it is seeded rather than looked up again. A redirect from
@@ -640,6 +691,17 @@ func cookies(headers []string) []Cookie {
 // and the decision to follow is taken here rather than by the standard
 // library's own rules.
 func (p *Prober) client() *http.Client {
+	roots, _ := resolveRoots(p.Roots)
+	return p.clientWith(roots)
+}
+
+// clientWith builds the client around a store that has already been resolved.
+//
+// Split from client() so that Probe can see whether resolving failed. The
+// reason has to reach a report: truststore answers a failure with an empty pool,
+// which fails every handshake closed, and a chain of failed handshakes reads as
+// a site that is not reachable over HTTPS unless something says otherwise (R4).
+func (p *Prober) clientWith(roots *x509.CertPool) *http.Client {
 	dial := p.Dial
 	if dial == nil {
 		d := &safedial.Dialer{
@@ -658,6 +720,24 @@ func (p *Prober) client() *http.Client {
 		},
 		Transport: &http.Transport{
 			DialContext: dial,
+
+			// Everything this config does not say is deliberate.
+			//
+			// No InsecureSkipVerify, obviously, and no MinVersion either: the
+			// package default is what a browser does, and naming a version here
+			// would move a measurement rather than a setting — a host reachable
+			// only over an old protocol would start being reported as not
+			// reachable at all.
+			//
+			// No ServerName. One config serves every hop of both chains, and a
+			// name set here would be checked against the certificate of a host
+			// the redirect moved on from, so every redirect off the first name
+			// would fail verification and be reported as a broken site.
+			//
+			// No ClientSessionCache. A cache shared across hosts is a cache
+			// that can resume somebody else's session, and a resumed handshake
+			// is not the handshake this check means to measure.
+			TLSClientConfig: &tls.Config{RootCAs: roots},
 
 			// What a browser negotiates. Headers are the same either way, but
 			// a probe that speaks a protocol no visitor speaks is measuring

@@ -191,7 +191,12 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 		// remember to pass is a guard somebody forgets. So the caller
 		// configures the boundary once, on the scanner it hands in, and every
 		// check this service adds inherits it here.
-		web:     &webscan.Scanner{Verify: scanner.Verify},
+		// Roots travels with the boundary and for the same reason. A service
+		// that read its own trust store, checked it was not empty and refused
+		// to start without one handed it to the TLS scanner; the web check was
+		// built without it and judged its chains against whatever the platform
+		// picks (R7). One kind of omission, two fields.
+		web:     &webscan.Scanner{Verify: scanner.Verify, Roots: scanner.Roots},
 		limits:  limits,
 		rate:    newLimiter(limits.Burst, limits.Refill, limits.MaxTrackedIPs, now),
 		reads:   newLimiter(readBurst, readRefill, limits.MaxTrackedIPs, now),
@@ -685,6 +690,13 @@ func (s *Server) UseWebScanner(w *webscan.Scanner) {
 	// one, which is what every test here does and what the command line is.
 	if w.Verify == nil {
 		w.Verify = s.scanner.Verify
+	}
+
+	// And the trust store, for the same reason. A replacement handed in to
+	// reach a test server carries no store, and a service that resolved one
+	// would silently stop judging web chains against it.
+	if w.Roots == nil {
+		w.Roots = s.scanner.Roots
 	}
 
 	s.web = w

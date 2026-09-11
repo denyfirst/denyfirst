@@ -16,6 +16,7 @@ package webscan
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"time"
 
@@ -39,6 +40,16 @@ type Scanner struct {
 	// scan a name. Nil means none is required, which is what the command line
 	// wants and what a service must not have.
 	Verify *verify.Scope
+
+	// Roots is the trust store every certificate on a chain is judged against.
+	//
+	// Nil means the system store, loaded explicitly rather than left for
+	// crypto/tls to interpret — see webprobe.Prober.Roots for what nil means
+	// there and why it is not this. Carried on the Scanner rather than only on
+	// the Prober so that a caller configuring the check has one place to say
+	// it, and so a service that resolved its own store can hand over the store
+	// it resolved.
+	Roots *x509.CertPool
 
 	// Now supplies the current time, so a duration is reproducible in tests.
 	// Nil means time.Now.
@@ -136,6 +147,20 @@ func (s *Scanner) Scan(ctx context.Context, host string) (*Result, error) {
 	if prober == nil {
 		prober = &webprobe.Prober{}
 	}
+
+	// A copy, so that configuring the store does not reach into a Prober the
+	// caller owns and may be using elsewhere. Prober holds values and functions
+	// and no lock, and vet's copylocks check fails if that stops being true.
+	//
+	// Carried over rather than replaced, for the reason UseWebScanner carries a
+	// boundary over: a caller that set a store on the prober has said something,
+	// and a scanner that overwrote it would widen or narrow what decides
+	// "trusted" without anybody asking.
+	p := *prober
+	if p.Roots == nil {
+		p.Roots = s.Roots
+	}
+	prober = &p
 
 	// And again, for every host a redirect names.
 	//
@@ -251,6 +276,18 @@ func Grade(observed *webprobe.Report) *Result {
 		out.Findings = append(out.Findings, r.Findings...)
 		out.Notes = append(out.Notes, r.Notes...)
 		out.Verdict = policy.Worst(out.Verdict, r.Verdict)
+	}
+
+	// A store that could not be read, said before the standing limits because
+	// it qualifies this report rather than describing every report.
+	//
+	// Without it a reader is handed a site reported as not served over HTTPS,
+	// with no way to tell that from the truth: every handshake failed because
+	// nothing on this machine could say what a trusted root is. A fact about
+	// the machine running the scan printed as a finding about somebody else's
+	// server is the failure R4 exists for.
+	if observed.TrustStoreUnreadable {
+		out.Notes = append(out.Notes, policy.TrustStoreUnreadable())
 	}
 
 	// The limits of the method, last, and from the one place that declares

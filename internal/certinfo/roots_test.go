@@ -54,42 +54,10 @@ func TestTheRootsPassedInAreTheOnesThatDecide(t *testing.T) {
 	}
 }
 
-// A nil pool is resolved here rather than left for Verify to interpret.
-//
-// Nil is still accepted, because a caller with nothing to say should get the
-// machine's own store. What must not happen is nil reaching VerifyOptions,
-// which is the branch that hands the whole question to the platform.
-func TestANilPoolBecomesTheSystemPoolRatherThanThePlatformVerifier(t *testing.T) {
-	got, err := resolveRoots(nil)
-	if err != nil {
-		t.Skipf("this machine has no readable system store: %v", err)
-	}
-	if got == nil {
-		t.Fatal("resolveRoots returned nil, which is the value that sends Verify to the platform")
-	}
-
-	system, err := x509.SystemCertPool()
-	if err != nil {
-		t.Skipf("this machine has no readable system store: %v", err)
-	}
-	if !got.Equal(system) {
-		t.Error("a nil pool resolved to something other than the system store")
-	}
-}
-
-// A pool a caller passes is returned unchanged.
-func TestAPoolPassedInIsNotReplaced(t *testing.T) {
-	mine := x509.NewCertPool()
-	mine.AddCert(sharedRoot.cert)
-
-	got, err := resolveRoots(mine)
-	if err != nil {
-		t.Fatalf("resolveRoots: %v", err)
-	}
-	if !got.Equal(mine) {
-		t.Error("the pool passed in was replaced, so a caller cannot decide what its chains are judged against")
-	}
-}
+// What Resolve does with a nil pool, and with one a caller passed, is tested in
+// internal/truststore — the package that decides it, since the web check asks
+// the same question. What this package still has to answer is what it says when
+// the answer came back as a failure.
 
 // A store that cannot be read is a fact about this machine, not about the
 // server (R4).
@@ -104,26 +72,19 @@ func TestAPoolPassedInIsNotReplaced(t *testing.T) {
 // most on a machine whose store cannot be read, which is the machine no test
 // runs on, and a test that skips itself everywhere says nothing at all.
 func TestAnUnreadableStoreIsNotReportedAsAnUntrustedServer(t *testing.T) {
-	original := systemCertPool
-	systemCertPool = func() (*x509.CertPool, error) {
-		return nil, errors.New("no store on this machine")
+	original := resolveRoots
+	resolveRoots = func(*x509.CertPool) (*x509.CertPool, error) {
+		// What truststore returns when the store cannot be read: an empty pool
+		// rather than nil, because nil is the value that sends Verify to the
+		// platform — and on the machine whose store could not be read, that
+		// path reports chains as trusted.
+		return x509.NewCertPool(), errors.New("no store on this machine")
 	}
-	t.Cleanup(func() { systemCertPool = original })
+	t.Cleanup(func() { resolveRoots = original })
 
-	pool, err := resolveRoots(nil)
-	if err == nil {
-		t.Fatal("a store that could not be read was reported as readable")
-	}
-	if pool == nil {
-		t.Fatal("a failure returned a nil pool, which is the value that sends Verify to the platform")
-	}
-	if !pool.Equal(x509.NewCertPool()) {
-		t.Error("a failure returned a pool with something in it")
-	}
-
-	// And the report says so in words rather than calling the server
-	// untrusted, which would be a finding about somebody else's certificate
-	// produced by this machine's problem.
+	// The report says so in words rather than calling the server untrusted,
+	// which would be a finding about somebody else's certificate produced by
+	// this machine's problem.
 	leaf := newLeaf(t, sharedRoot, leafOpts{})
 	report, err := Analyse([]*x509.Certificate{leaf, sharedRoot.cert}, "example.test", refNow, nil)
 	if err != nil {
