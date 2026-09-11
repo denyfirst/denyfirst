@@ -3,7 +3,6 @@ package webscan
 import (
 	"context"
 	"crypto/x509"
-	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -18,17 +17,6 @@ import (
 
 // The store a caller configures has to reach the prober, and a store that could
 // not be read has to reach the reader.
-
-// offlineProber answers nothing, so these tests need no network.
-func offlineProber() *webprobe.Prober {
-	return &webprobe.Prober{
-		Dial: func(context.Context, string, string) (net.Conn, error) {
-			return nil, errors.New("nothing is listening")
-		},
-		RequestTimeout: 200 * time.Millisecond,
-		TotalTimeout:   time.Second,
-	}
-}
 
 // A store set on the scanner is the store the handshake is judged against.
 //

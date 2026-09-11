@@ -119,7 +119,19 @@ go test ./...
 
 # every platform the release ships, not only this one
 for os in linux darwin windows; do GOOS="$os" go vet ./... || break; done
+
+# what CI's "Static analysis" job runs, at the version it pins
+go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
+"$(go env GOPATH)/bin/staticcheck" ./...
 ```
+
+**staticcheck belongs in this list and was missing from it.** It is a required
+check, `go vet` does not cover what it covers — an unused helper left behind by
+a rewritten test is U1000 and vet says nothing — and a gate that exists only in
+CI is a gate every change discovers by failing a pull request. Installing it
+adds nothing to `go.mod`: `go install pkg@version` builds in its own module, so
+the claim that this project has no third-party dependencies is untouched, and
+the version here is the one ci.yml pins so the two cannot disagree.
 
 That last line is not decoration. `go vet ./...` never reads a file behind a
 build tag for another platform — it is not merely unvetted, it is never
