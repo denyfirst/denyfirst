@@ -255,6 +255,19 @@ they had to find first would be a gap in a report dressed as a choice — which
 is the shape of the question to ask about every future check that discloses
 something. *Whose is it, and what exactly does the other party learn?*
 
+**The same question, asked of the certificate logs, gets a different answer —
+and that is the point of asking it.** Searching for the certificates issued for
+a name sends the name to a monitor. That is the OCSP shape, not the revocation
+list shape, so it is offered differently: never on the demonstration, with no
+switch on a deployment that required proof of control, and behind `-check-logs`
+on the command line, where the name may be somebody else's.
+
+What makes it acceptable at all is that certificate transparency is public by
+design — the certificates for a name are already published to anyone who looks,
+so only the looking is disclosed. That reason survives a change of provider. A
+reason about the provider being a security company would not, and is not the
+one relied on here (N12).
+
 **It is visible.** `_denyfirst-challenge.example.com` sits in public DNS and
 says the organisation uses this tool. That is the ordinary cost of every
 challenge-based scheme and it is not worth hiding; it is worth naming, here

@@ -256,3 +256,119 @@ func TrustStoreUnreadable() Note {
 		"certificates presented reach a trusted root was not established. That is a fact about " +
 		"the machine running this scan and not about the server it looked at.")
 }
+
+// LogFacts is what a search of the public certificate logs established.
+//
+// Reported and never graded, and that line is the whole of the design. A
+// certificate in a log is a fact; whether it should exist is a question about
+// somebody's purchasing that no scan can answer. A colleague renewing early, a
+// content delivery network issuing on the customer's behalf and a certificate
+// obtained by somebody who should not have one all look identical from here, so
+// grading would mean inventing a threshold nobody can argue with — which is
+// what R21 is written against, and what R17 forbids in a different word: say
+// what was measured, not what it implies.
+//
+// What the report can do is put the operator in front of the list. They know
+// what they ordered, and nobody else does.
+type LogFacts struct {
+	// Searched is false when no search was made: a deployment that does not
+	// query logs, which is the demonstration.
+	Searched bool
+
+	// Distinct is how many distinct certificates the logs hold for this name,
+	// after the precertificate and the certificate have been counted once.
+	Distinct int
+
+	// Unseen is how many of those are valid at this moment and are not the
+	// certificate this scan was served.
+	//
+	// The number worth looking at. A certificate that has expired is history;
+	// one that is valid now and is not the one in use is a key somebody can
+	// present for this name today.
+	Unseen int
+
+	// Truncated is true when more exist than were listed.
+	Truncated bool
+
+	// SubdomainsSearched is false while the search is by exact name. A
+	// certificate obtained for a subdomain is a real way to be attacked and is
+	// not covered, so a report says so rather than letting a clean answer read
+	// as a clean estate (R4).
+	SubdomainsSearched bool
+
+	// Reason says why nothing was established.
+	Reason string
+}
+
+// LoggedLine describes what the logs hold, in one sentence.
+func LoggedLine(f LogFacts) string {
+	switch {
+	case !f.Searched:
+		return ""
+	case f.Reason != "":
+		return "not established: " + f.Reason
+	case f.Distinct == 0:
+		// Odd rather than reassuring, and said as such. A publicly trusted
+		// certificate has to be logged before a browser will accept it, so a
+		// name being served over TLS with nothing in the logs means the search
+		// did not see what the handshake did.
+		return "no certificates for this exact name were found, which is unusual for a name served over TLS"
+	case f.Unseen == 0:
+		if f.Distinct == 1 {
+			return "one certificate for this exact name, and it is the one this server presented"
+		}
+		return plural(f.Distinct, "certificate") + " for this exact name, and none valid today is unaccounted for"
+	case f.Distinct == 1:
+		// One certificate, and it is not the one in use. The sharpest shape
+		// this check produces, and it deserves its own sentence rather than
+		// the "one of which" construction, which reads as though there were
+		// several.
+		return "one certificate for this exact name, valid today, and it is not the one this server presented"
+
+	case f.Unseen == 1:
+		return plural(f.Distinct, "certificate") +
+			" for this exact name, one of which is valid today and was not the one presented here"
+
+	default:
+		return plural(f.Distinct, "certificate") + " for this exact name, " +
+			strconv.Itoa(f.Unseen) +
+			" of which are valid today and were not the one presented here"
+	}
+}
+
+// DescribeLogged says what the number means and what it does not.
+func DescribeLogged(f LogFacts) []Note {
+	if !f.Searched {
+		return nil
+	}
+	if f.Reason != "" {
+		return []Note{Unsettled("Which certificates public logs hold for this name was not " +
+			"established: " + f.Reason + ". That is a limit of this scan rather than a fact " +
+			"about the server.")}
+	}
+
+	var out []Note
+
+	if f.Unseen > 0 {
+		out = append(out, Observed("Every publicly trusted certificate is recorded in append-only "+
+			"logs before a browser will accept it, so a certificate obtained for this name by "+
+			"anybody, from any authority, appears there. "+plural(f.Unseen, "certificate")+
+			" valid today was not the one this server presented. That is not a finding: an early "+
+			"renewal, a content delivery network issuing on your behalf, and a second server all "+
+			"look the same from here. It is a list only you can check, and the reason to check it "+
+			"is that a certificate somebody else obtained looks exactly like one you did."))
+	}
+
+	if f.Truncated {
+		out = append(out, Unsettled("More certificates exist for this name than are listed here. "+
+			"The count is complete; the list is not."))
+	}
+
+	if !f.SubdomainsSearched {
+		out = append(out, Unsettled("Only this exact name was searched for. A certificate "+
+			"obtained for a subdomain would not appear above, and obtaining one for a subdomain "+
+			"is a way this is done."))
+	}
+
+	return out
+}

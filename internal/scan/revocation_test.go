@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/crl"
+	"github.com/denyfirst/denyfirst/internal/ctsearch"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
 )
 
@@ -129,7 +130,7 @@ func watchingFetcher(asked *atomic.Bool) *crl.Fetcher {
 // any host outside the list compiled into it, so a test under that tag has to
 // scan a name that list allows while still reaching a server this test started.
 // The certificate the listener serves carries that name.
-func scanTo(t *testing.T, target, dialTo string, fetcher *crl.Fetcher) *Result {
+func scanTo(t *testing.T, target, dialTo string, fetcher *crl.Fetcher, logs ctsearch.Searcher) *Result {
 	t.Helper()
 
 	d := &net.Dialer{Timeout: 5 * time.Second}
@@ -143,6 +144,7 @@ func scanTo(t *testing.T, target, dialTo string, fetcher *crl.Fetcher) *Result {
 		AllowAnyPort:   true,
 		AllowIPTargets: true,
 		Revocation:     fetcher,
+		Logs:           logs,
 	}
 
 	out, err := s.Scan(context.Background(), target)
@@ -172,5 +174,53 @@ func TestAnUnknownListStatusIsNotAnAnswer(t *testing.T) {
 		if got := listStatus(tc.in); got != tc.want {
 			t.Errorf("listStatus(%s) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+// watchingSearcher records whether anything asked it to search, and finds
+// nothing when it is asked.
+type watchingSearcher struct{ asked *atomic.Bool }
+
+func (w watchingSearcher) Search(context.Context, string) ctsearch.Result {
+	w.asked.Store(true)
+	return ctsearch.Result{}
+}
+
+// A serial a monitor wrote is compared as a number, never as text.
+//
+// The real answer this was built against carried "06fe4d40c60a52d890d674da…"
+// for a certificate whose serial, written without a leading zero, is
+// "6fe4d40c60a52d890d674da…". A text comparison calls those different, and the
+// consequence points the wrong way: the certificate the server just presented
+// would be reported as one somebody else obtained. On a check whose whole
+// purpose is "is there one you did not order", that is the false alarm that
+// destroys it.
+func TestASerialFromAMonitorIsComparedAsANumber(t *testing.T) {
+	leaf := &x509.Certificate{SerialNumber: big.NewInt(0x6fe4d4)}
+
+	for _, written := range []string{
+		"6fe4d4",    // as the number is written
+		"06fe4d4",   // as a monitor writes it
+		"0006fe4d4", // and with more padding
+		" 06fe4d4 ", // with space around it
+		"06FE4D4",   // and in the other case
+	} {
+		if !sameSerial(written, leaf) {
+			t.Errorf("sameSerial(%q) said no; the certificate the server presented would be "+
+				"reported as one somebody else obtained", written)
+		}
+	}
+
+	for _, other := range []string{"6fe4d5", "", "not-hex", "0"} {
+		if sameSerial(other, leaf) {
+			t.Errorf("sameSerial(%q) said yes; a certificate somebody else obtained would be "+
+				"counted as the one in use and never reported", other)
+		}
+	}
+
+	// Nothing to compare against is not a match. A nil leaf reporting every
+	// serial as its own would silence the check entirely.
+	if sameSerial("6fe4d4", nil) {
+		t.Error("a nil certificate matched a serial")
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/denyfirst/denyfirst/internal/ctsearch"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/scan"
@@ -144,7 +145,13 @@ func report(t *testing.T, port string, resolver *dnsclient.Client) string {
 		},
 		AllowAnyPort: true,
 		Resolver:     resolver,
-		Now:          func() time.Time { return reportNow },
+
+		// A searcher that answers without a network, so the fixture produces a
+		// Logged line. Without one the terminal shows nothing there and the
+		// comparison below cannot tell a conditional field from a missing one.
+		Logs: stubLogs{},
+
+		Now: func() time.Time { return reportNow },
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -546,5 +553,26 @@ func TestTheLimitCountReadsAsEnglishAtOne(t *testing.T) {
 	}
 	if got := limitsLine(4); !strings.HasPrefix(got, "4 apply") {
 		t.Errorf("four limits are printed as %q", got)
+	}
+}
+
+// stubLogs answers a certificate search without a network.
+//
+// The fixture needs one so that the Logged line exists to be compared. It
+// answers with a certificate that is not the one the fixture's server presents,
+// which is also the interesting case: a name with a certificate valid today
+// that this scan was not served.
+type stubLogs struct{}
+
+func (stubLogs) Search(context.Context, string) ctsearch.Result {
+	return ctsearch.Result{
+		Distinct: 1,
+		Entries: []ctsearch.Entry{{
+			Serial:    "0a0b0c",
+			Issuer:    "C=XX, O=Another Authority",
+			Names:     []string{"example.test"},
+			NotBefore: reportNow.Add(-24 * time.Hour),
+			NotAfter:  reportNow.Add(24 * time.Hour),
+		}},
 	}
 }

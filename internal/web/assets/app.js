@@ -581,6 +581,13 @@ function certificate(cert, tls, issuance, stapling, report) {
   // by adding it — and a sentence nobody opens is a sentence nobody reads.
   pair("Issuance", issuance && issuance.line);
   pair("Transparency", report && report.transparencyLine);
+
+  // What the public logs hold for this name, where a deployment searched them.
+  // Absent where none did, which is this one: the sentence is composed in
+  // internal/policy and arrives empty when no search was made, so nothing here
+  // decides whether to show it.
+  pair("Logged", report && report.loggedLine);
+
   pair("SHA-256", leaf.fingerprintSha256);
 
   frag.appendChild(pairs);
