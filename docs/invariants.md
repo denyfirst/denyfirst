@@ -1663,9 +1663,46 @@ returned in that case is empty rather than nil, because nil would send the
 verification back to the platform — and on the machine whose store could not
 be read, that path reports chains as trusted.
 
+**A check that cannot run on a platform is a check that does not run there, and
+this rule is about that too.** The CAA lookup said *not checked* on every
+Windows machine from the day it was written until 2026-09-11. Nothing was
+wrong with the check: `internal/dnsclient` found the resolver by reading
+`/etc/resolv.conf`, Windows has no such file, and the honest failure was
+reported honestly. So the same scan of the same host produced a complete report
+on Linux and a report missing a whole row on Windows — which is precisely what
+this invariant forbids, arriving as a platform the code did not have a path for
+rather than as a wrong answer.
+
+The comment saying so had been there the whole time. Written down as a known
+limit, a missing platform reads as a decision; it was not one, and nothing
+ever came back to it. **An honest note about a gap is not a substitute for
+closing it**, and "the report says the check did not happen" is the floor
+rather than the answer.
+
+Two things came out of fixing it, and the second is the one worth keeping. The
+resolver is now found per platform — resolv.conf on unix, the registry on
+Windows — which was the obvious half. The other half is that **one resolver is
+not a machine's answer**: the first attempt read the Windows registry
+correctly, returned the primary resolver of the live adapter, and the check
+still said *not checked*, because that resolver belongs to a virtual adapter
+and does not answer. Windows had a second one configured for exactly that case
+and was using it for everything else. So every configured resolver is tried in
+order, the one that answered is asked first next time — a CAA walk makes up to
+six queries and must not pay a dead resolver's timeout on each — and the same
+change closes the same latent defect on unix, where `resolv.conf` lists several
+for the same reason and only the first was read.
+
+**And a platform's file is compiled nowhere, so it is vetted everywhere.** `go
+vet ./...` on Linux does not read a file behind `//go:build windows`; it is not
+merely unvetted, it is never compiled, so a syntax error in it passes every
+gate and fails in `scripts/build.sh` on a release evening. CI now vets `linux`,
+`darwin` and `windows`. vet type-checks rather than links, so it costs seconds
+and needs no cross toolchain.
+
 *Enforced in:* `internal/certinfo.chainComplete`,
 `internal/certinfo.resolveRoots`, `internal/scan.Scanner.Roots`,
-`cmd/denyfirstd`
+`cmd/denyfirstd`, `internal/dnsclient` (`resolver_unix.go`,
+`resolver_windows.go`, `Client.ask`), `.github/workflows/ci.yml`
 *Guarded by:* `TestMissingIssuerIsAnIncompleteChain`,
 `TestPresentIssuerIsNotAnIncompleteChain`,
 `TestTheRootsPassedInAreTheOnesThatDecide`,
@@ -1674,7 +1711,24 @@ be read, that path reports chains as trusted.
 `TestAnUnreadableStoreIsNotReportedAsAnUntrustedServer`,
 `TestTheTestRootIsTheStoreAnalyseUses`,
 `TestTheScannersTrustStoreIsWhatJudgesTheChain`,
-`TestAnEmptyTrustStoreStopsTheServiceStarting`
+`TestAnEmptyTrustStoreStopsTheServiceStarting`,
+`TestADeadResolverIsFollowedByTheNextOne`,
+`TestTheResolverThatAnsweredIsAskedFirstNextTime`,
+`TestEveryResolverFailingKeepsTheFirstReason`,
+`TestAnEmptyResolverSetSaysSo`,
+`TestAConfiguredResolverIsTheOnlyOneAsked`,
+`TestEveryNameserverIsRead`, `TestAnUnusableNameserverIsSkipped`,
+`TestTheNameserverListIsBounded`,
+`TestAFileWithNoNameserverIsNoResolver`,
+`TestAMissingResolvConfIsNoResolver`,
+`TestANameserverListIsSplitHoweverItWasWritten`,
+`TestARegistryStringIsDecoded`,
+`TestTheMachineReportsUsableResolvers`,
+`TestTheResolverListDropsWhatCannotBeAsked`,
+`TestTheResolverListIsBounded`,
+`TestTheResolverFlagReachesTheScanner`,
+`TestNoResolverFlagLeavesTheMachinesOwnConfiguration`,
+`TestEveryReleasedPlatformIsVetted`
 
 ### R8 — Rules that change on a schedule are written as schedules
 

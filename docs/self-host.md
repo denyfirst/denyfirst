@@ -79,6 +79,25 @@ exit status of a pipeline nobody touched.
 ./denyfirst-scan -check web example.com      # how the site is reached over HTTP
 ```
 
+### If the Issuance line says "not checked"
+
+That row is the CAA record set: which authorities the domain allows to issue a
+certificate for it. Reading it needs a resolver, and the resolver is this
+machine's own — read from `/etc/resolv.conf` on unix, assembled from the
+registry on Windows. Every one the machine has configured is tried in order,
+because the second is there for exactly the case where the first does not
+answer.
+
+If it still says *not checked*, name one:
+
+```sh
+./denyfirst-scan -resolver 192.168.1.1:53 example.com
+```
+
+Any resolver you would ordinarily use. There is deliberately no default: a
+public resolver chosen by this program would quietly decide who learns which
+names you are looking at, and that is your decision rather than ours.
+
 The web check answers what a TLS report cannot: whether the site is *also*
 served in the clear, whether the plaintext address sends a visitor to the
 secure one, and whether anything tells a browser to come back over TLS. A host

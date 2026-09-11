@@ -116,7 +116,16 @@ reported" and exits, because none has registered yet. Wait a few seconds.
 gofmt -l internal cmd
 go vet ./...
 go test ./...
+
+# every platform the release ships, not only this one
+for os in linux darwin windows; do GOOS="$os" go vet ./... || break; done
 ```
+
+That last line is not decoration. `go vet ./...` never reads a file behind a
+build tag for another platform — it is not merely unvetted, it is never
+compiled — so a syntax error in `resolver_windows.go` passes every other gate
+and fails in `scripts/build.sh` on a release evening. vet type-checks rather
+than links, so it costs seconds and needs no cross toolchain.
 
 Two things about `go test ./...`:
 
