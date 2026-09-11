@@ -15,19 +15,33 @@ import (
 	"testing"
 	"time"
 
+	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/scan"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
 )
 
 // offlineScanner never reaches the network, so the tests describe the HTTP
 // layer rather than the state of the internet.
+//
+// It stopped the prober and not the resolver until 2026-09-11, and the word
+// "never" above was wrong for that whole time: a nil Resolver is a real DNS
+// client, so every scan in this package asked a real resolver about a .test
+// name and waited for it to give up. That cost minutes per run and, worse,
+// made two tests depend on how fast the network was that day. One spends a
+// host's budget faster than it refills; the other counts three scans and got
+// two. Both passed alone, both failed inside a full run, and neither failure
+// was about what the test was written to check.
+//
+// A fixture that is offline in one of the two ways it reaches the network is
+// not an offline fixture — it is a slow one with a name that stops anybody
+// looking.
 func offlineScanner() *scan.Scanner {
+	refuse := func(_ context.Context, _, _ string) (net.Conn, error) {
+		return nil, errors.New("no network in tests")
+	}
 	return &scan.Scanner{
-		Prober: &tlsprobe.Prober{
-			Dial: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return nil, errors.New("no network in tests")
-			},
-		},
+		Prober:   &tlsprobe.Prober{Dial: refuse},
+		Resolver: &dnsclient.Client{Server: "resolver.invalid:53", Dial: refuse},
 	}
 }
 
