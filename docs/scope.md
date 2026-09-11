@@ -112,6 +112,13 @@ scanned, so it is not weaker, only smaller. Therefore:
 - A `.well-known` file authorises **that hostname only** — never the zone,
   never another name, and never a check that does not read HTTP.
 
+That last clause was written before anything needed it and the mail check is
+the first thing that does. It reads three records in the zone and connects to
+nothing, so it asks for the zone proof and refuses the file proof (N13). A
+deployment that accepted a page under a name as authority to read that zone's
+mail policy would be handing somebody who runs one host the configuration of a
+zone somebody else runs.
+
 **A verified zone is not a list of hosts you control.** This is the part most
 easily got wrong. Subdomains are delegated: `shop.example.com` is a `CNAME` to
 a shop platform, `mail.example.com` to a mail provider, `docs.example.com` to
@@ -194,8 +201,12 @@ building one.
 
 **Completeness comes from more passive checks, not from active ones.** An
 organisation that installs this to find its own gaps is owed all of them, and
-the way there is more that can be read — mail policy, which is DNS only; every
-address a name resolves to; the operator's own ports; several trust stores.
+the way there is more that can be read. Mail policy was the first of those and
+is now built: DNS only, no connection to anything, and the finding it exists
+for — a sender policy over the ten lookups RFC 7208 allows, which switches the
+policy off while leaving it looking correct — is invisible from inside the
+operator's own zone. Still ahead: every address a name resolves to; the
+operator's own ports; several trust stores.
 What is given up by refusing the active class is roughly one finding, because
 almost everything reachable by malformed input is either reachable by a fuller
 ordinary handshake or has a precondition that is plainly visible. Where it is

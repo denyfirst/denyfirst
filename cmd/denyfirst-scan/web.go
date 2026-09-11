@@ -17,8 +17,9 @@ import (
 
 // The checks this command can run, spelled once.
 const (
-	checkTLS = "tls"
-	checkWeb = "web"
+	checkTLS  = "tls"
+	checkWeb  = "web"
+	checkMail = "mail"
 )
 
 // checkKnown refuses a check nobody wrote.
@@ -28,10 +29,10 @@ const (
 // believes it is testing something it has never tested.
 func checkKnown(name string) error {
 	switch name {
-	case checkTLS, checkWeb:
+	case checkTLS, checkWeb, checkMail:
 		return nil
 	}
-	return fmt.Errorf("unknown check %q: it is %s or %s", name, checkTLS, checkWeb)
+	return fmt.Errorf("unknown check %q: it is %s, %s or %s", name, checkTLS, checkWeb, checkMail)
 }
 
 // limitsFor selects the limits of the check being run, and the page that
@@ -42,8 +43,14 @@ func checkKnown(name string) error {
 // limits and pointed at the TLS method page, and a sabotage saying so escaped
 // every test in this package.
 func limitsFor(check string) ([]policy.StandingLimit, string) {
-	if check == checkWeb {
+	switch check {
+	case checkWeb:
 		return policy.WebStandingLimits(), webMethodPage
+	case checkMail:
+		// No page of its own yet, so the limit is printed in full rather than
+		// pointed at. A URL for a page nobody has written is worse than no
+		// URL, because a reader follows it.
+		return policy.MailStandingLimits(), mailMethodPage
 	}
 	return policy.StandingLimits(), tlsMethodPage
 }

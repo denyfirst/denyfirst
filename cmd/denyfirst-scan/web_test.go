@@ -21,7 +21,7 @@ func TestAnUnknownCheckIsRefused(t *testing.T) {
 	if err := checkKnown(""); err == nil {
 		t.Fatal("an empty check was accepted")
 	}
-	for _, ok := range []string{checkTLS, checkWeb} {
+	for _, ok := range []string{checkTLS, checkWeb, checkMail} {
 		if err := checkKnown(ok); err != nil {
 			t.Errorf("checkKnown(%q) = %v", ok, err)
 		}
@@ -79,11 +79,11 @@ func TestLimitsFollowTheCheckBeingRun(t *testing.T) {
 	}
 }
 
-func TestTheVersionNamesBothRuleSets(t *testing.T) {
-	// This binary carries two, and a reader holding one report cannot tell
+func TestTheVersionNamesEveryRuleSet(t *testing.T) {
+	// This binary carries three, and a reader holding one report cannot tell
 	// which produced it from the release number.
 	line := versionLine()
-	for _, want := range []string{version, policy.TLSVersion, policy.WebVersion} {
+	for _, want := range []string{version, policy.TLSVersion, policy.WebVersion, policy.MailVersion} {
 		if !strings.Contains(line, want) {
 			t.Errorf("-version does not name %q:\n%s", want, line)
 		}

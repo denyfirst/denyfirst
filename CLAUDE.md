@@ -13,10 +13,14 @@ session identifier, and nothing about who is working on it.
 
 ## What this is
 
-A scanner that measures how a host is reached and grades what it finds. Two
+A scanner that measures how a host is reached and grades what it finds. Three
 checks so far: the TLS handshake and the certificate behind it
-(`denyfirst-tls-v6`), and how a website is reached over HTTP
-(`denyfirst-web-v2`).
+(`denyfirst-tls-v7`), how a website is reached over HTTP (`denyfirst-web-v3`),
+and what a domain's DNS says about its mail (`denyfirst-mail-v1`).
+
+Each carries its own rule-set name and its own version, and they move
+independently. A report says which one graded it, because a verdict from one
+means nothing under another.
 
 **The tool is what you run. The site is a demonstration of it.** The public
 deployment at denyfirst.dev connects only to hosts this project owns, and that
@@ -157,7 +161,7 @@ above exercises it:
 
 ```sh
 go build -tags demo ./...
-go test -tags demo ./internal/demo/ ./internal/scan/ ./internal/webscan/ ./internal/web/
+go test -tags demo ./internal/demo/ ./internal/scan/ ./internal/webscan/ ./internal/mailscan/ ./internal/web/
 ```
 
 Nine `internal/httpapi` tests fail under that tag on every commit: they scan
@@ -198,7 +202,8 @@ in it is there because it has already gone wrong once.
 | `internal/tlsprobe`, `internal/certinfo` | the TLS measurement |
 | `internal/webprobe` | the HTTP measurement: one `GET` of `/`, headers only (N7) |
 | `internal/policy` | every rule, versioned, each citing the document it rests on |
-| `internal/scan`, `internal/webscan` | a check: measure, then grade |
+| `internal/scan`, `internal/webscan`, `internal/mailscan` | a check: measure, then grade |
+| `internal/spf` | walks a sender policy and counts what evaluating it costs |
 | `internal/demo` | which hosts this deployment may reach, compiled in |
 | `internal/verify` | which domains a deployment has been shown control of (N9) |
 | `internal/challenge` | fetches the file half of that proof, and nothing else |
@@ -207,6 +212,7 @@ in it is there because it has already gone wrong once.
 | `internal/truststore` | which store decides the word "trusted", for both checks (R7) |
 | `internal/crl` | reads the revocation list a certificate names (N11) |
 | `internal/ctsearch` | finds certificates a public log holds for a name (N12) |
+| `internal/dnsclient` | the resolver; CAA, TXT, and the walk up the tree (N5) |
 | `internal/httpapi` | the service; the only package that sees untrusted input |
 | `internal/web` | the pages |
 | `docs/invariants.md` | why all of the above is the way it is |
