@@ -14,6 +14,42 @@ free to improve without breaking that.
 
 ---
 
+## `denyfirst-tls-v6` → `denyfirst-tls-v7`
+
+Unreleased.
+
+**A revocation list can now raise the `cert.revoked` finding.** Until this version a
+certificate was reported as revoked only when the server stapled a status
+response that verified against the issuing authority and said so. That path has
+been drying up: the CA/Browser Forum made OCSP optional and revocation lists
+mandatory, and authorities issuing for much of the web stopped publishing OCSP
+altogether. A certificate from one of them names no responder, so nothing can be
+stapled, so revocation went unestablished for most of the internet — and *not
+established* is what a report honestly said.
+
+The rule identifier is unchanged and its verdict is unchanged. What changed is
+that a second source can reach it, so a server whose certificate was withdrawn,
+and which was previously graded on everything else, can now come back
+`insecure`. Nothing about such a server moved; what moved is that the withdrawal
+became visible.
+
+One withdrawal is still one finding. A server that staples a revoked response
+*and* names a list that agrees raises `cert.revoked` once.
+
+A list is believed only after it is fetched from an address the certificate
+names, parsed under a size cap, verified against the issuing certificate, and
+found to be inside its own validity window. Anything short of all four leaves
+revocation unestablished, and the report says which of them failed — a list that
+could not be checked is not a certificate that is not revoked.
+
+**The demonstration deployment does not do this.** It promises on its privacy
+page that it asks no certificate authority anything, and the promise is kept by
+the call being compiled out of that build rather than by a default somebody
+could change. A report from denyfirst.dev is graded by the same rule set and
+says revocation was not checked, which is true there.
+
+---
+
 ## `denyfirst-web-v2` → `denyfirst-web-v3`
 
 Unreleased.

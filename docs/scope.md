@@ -240,6 +240,21 @@ The same holds in the other direction and is worth saying, because it is the
 part an operator notices: a record at `example.com` covers `www.example.com`,
 so the ordinary redirect is followed and the report is whole.
 
+**It settles whose certificate is being examined, which decides one
+disclosure.** Reading a revocation list tells the authority that somebody
+downloaded a list — not which certificate was being looked at, since one list
+covers thousands and authorities serve them from content delivery networks to
+the whole internet. That is a smaller disclosure than the one this project
+refused when it refused OCSP, where the serial is named in the question.
+
+It is still a request, and the demonstration deployment promises it makes none,
+so the call is compiled out of that build. Everywhere else it runs with no
+switch: on a deployment that requires proof of control the certificate belongs
+to whoever asked, and a person has nothing to hide from themselves. A switch
+they had to find first would be a gap in a report dressed as a choice — which
+is the shape of the question to ask about every future check that discloses
+something. *Whose is it, and what exactly does the other party learn?*
+
 **It is visible.** `_denyfirst-challenge.example.com` sits in public DNS and
 says the organisation uses this tool. That is the ordinary cost of every
 challenge-based scheme and it is not worth hiding; it is worth naming, here

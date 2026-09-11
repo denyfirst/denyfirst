@@ -59,11 +59,61 @@ func RevocationLine(f StapleFacts) string {
 		return "a status response was stapled and it establishes nothing; the findings say why"
 	}
 
+	// Nothing arrived in the handshake. What a list established, where one was
+	// read, is the rest of the answer — and for most certificates issued now it
+	// is the whole of it, since the authority publishes no responder for
+	// anything to be stapled from.
+	if line := listLine(f); line != "" {
+		return line
+	}
+
 	if f.HasResponder {
 		return "not stapled; the certificate names a responder a client would have to ask"
 	}
 
 	return "not stapled; the certificate names no responder, so there is none to send"
+}
+
+// listLine says what a revocation list established, or nothing at all when none
+// was read.
+//
+// Empty rather than a sentence about the absence, so that the caller falls
+// through to what it said before this existed. A deployment that does not fetch
+// lists — the demonstration, where the code is not compiled in — reads exactly
+// as it always did rather than acquiring a sentence about a check it does not
+// run.
+func listLine(f StapleFacts) string {
+	switch f.ListStatus {
+	case "revoked":
+		when := ""
+		if !f.ListRevokedAt.IsZero() {
+			when = " on " + f.ListRevokedAt.UTC().Format("2006-01-02")
+		}
+		return "the authority's revocation list says this certificate was revoked" + when
+
+	case "good":
+		// The date matters more than the word. A list is a snapshot an
+		// authority publishes on a schedule, so "not revoked" is true as of
+		// then and not as of now, and a reader acting on it needs to know
+		// which. A stapled response carries its own freshness; this does not.
+		asOf := ""
+		if !f.ListAsOf.IsZero() {
+			asOf = ", published " + f.ListAsOf.UTC().Format("2006-01-02") + ","
+		}
+		if f.Stapled {
+			return "the stapled response established nothing; the authority's revocation list" +
+				asOf + " does not name this certificate"
+		}
+		return "not stapled; the authority's revocation list" + asOf + " does not name this certificate"
+	}
+
+	// A list was attempted and answered nothing. Said rather than swallowed:
+	// the reason is this project's own sentence, and a reader who is told the
+	// check did not happen can act on it, while silence reads as a pass (R4).
+	if f.ListReason != "" && f.HasCRL {
+		return "not stapled, and revocation was not established from a list: " + f.ListReason
+	}
+	return ""
 }
 
 // TransparencyLine describes the receipts in one sentence.

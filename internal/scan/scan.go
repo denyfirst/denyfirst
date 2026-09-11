@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/certinfo"
+	"github.com/denyfirst/denyfirst/internal/crl"
 	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/exclusion"
@@ -236,6 +237,21 @@ type Scanner struct {
 	// store that decides.
 	Roots *x509.CertPool
 
+	// Revocation fetches the list an authority publishes, where one is named.
+	//
+	// Nil means a default one, which dials through safedial and is the shape
+	// every caller wants: the address comes from the certificate the scanned
+	// server sent, so it is chosen by the party being measured.
+	//
+	// It runs everywhere except the demonstration build, and the reason is on
+	// that build's privacy page rather than here: the demonstration promises it
+	// asks no authority anything. Elsewhere there is nothing to switch on. A
+	// revoked certificate is the most serious thing this check can find, and on
+	// a deployment that requires proof of control the certificate belongs to
+	// whoever asked — a switch they had to find first would be a gap in a
+	// report dressed as a choice.
+	Revocation *crl.Fetcher
+
 	// Now supplies the current time, so certificate arithmetic is
 	// reproducible in tests. Nil means time.Now.
 	Now func() time.Time
@@ -384,6 +400,38 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 				facts.Status = string(response.Status)
 				facts.RevokedAt = response.RevokedAt
 			}
+		}
+
+		// The third source for the same question, and the one that still
+		// answers it.
+		//
+		// The two above read what the handshake carried. Since the CA/Browser
+		// Forum made OCSP optional and lists mandatory, authorities issuing
+		// for much of the web publish no responder at all — so for most
+		// certificates there is nothing to staple and the report above has
+		// nothing to say. This fetches the list the certificate names.
+		//
+		// Not on the demonstration build. demo.Enabled is a constant, so the
+		// call below is compiled out there rather than switched off, and the
+		// promise on that deployment's privacy page — that it asks no
+		// authority anything — stays true by construction.
+		if !demo.Enabled && len(tlsReport.Certificates) > 0 {
+			leaf := tlsReport.Certificates[0]
+
+			fetcher := s.Revocation
+			if fetcher == nil {
+				fetcher = &crl.Fetcher{Roots: s.Roots}
+			}
+
+			// The issuer from the chain the server sent, as above: a list is
+			// believed only once its signature verifies against the
+			// certificate that issued the leaf.
+			list := fetcher.Check(ctx, leaf, issuerOf(leaf, tlsReport.Certificates), s.now())
+
+			facts.ListStatus = listStatus(list.Status)
+			facts.ListRevokedAt = list.RevokedAt
+			facts.ListAsOf = list.ThisUpdate
+			facts.ListReason = list.Reason
 		}
 
 		stapling := policy.GradeStapling(facts)
@@ -1009,4 +1057,21 @@ func distinctLogs(sets ...[]string) int {
 		}
 	}
 	return len(seen)
+}
+
+// listStatus turns what the fetcher established into the word policy grades on.
+//
+// Empty for anything that is not an answer. crl.Unknown covers a list that
+// could not be fetched, parsed, verified against the issuer, or trusted for
+// being outside its own validity window, and every one of those has to reach a
+// report as "not checked" rather than as "not revoked" (R4).
+func listStatus(s crl.Status) string {
+	switch s {
+	case crl.Good:
+		return "good"
+	case crl.Revoked:
+		return "revoked"
+	default:
+		return ""
+	}
 }

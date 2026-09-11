@@ -205,6 +205,7 @@ in it is there because it has already gone wrong once.
 | `internal/exclusion` | names no deployment scans, whoever asks (N8) |
 | `internal/safedial` | refuses private, loopback and reserved destinations |
 | `internal/truststore` | which store decides the word "trusted", for both checks (R7) |
+| `internal/crl` | reads the revocation list a certificate names (N11) |
 | `internal/httpapi` | the service; the only package that sees untrusted input |
 | `internal/web` | the pages |
 | `docs/invariants.md` | why all of the above is the way it is |

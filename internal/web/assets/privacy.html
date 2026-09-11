@@ -276,6 +276,27 @@
       against it.
     </p>
 
+    <p>
+      <strong>A copy you run yourself does one thing this deployment does
+      not.</strong> Most certificates issued now name no responder at all
+      &mdash; the CA/Browser Forum made that machinery optional and revocation
+      lists mandatory &mdash; so there is nothing for a server to staple and
+      nothing here to read, and revocation goes unestablished for most of the
+      web. A self-hosted copy downloads the list instead. Doing so tells the
+      authority that somebody fetched a list; it does not say which certificate
+      was being looked at, because one list covers thousands. That is a
+      different question from the one this section refuses, and it is a
+      question about a certificate the operator usually owns.
+    </p>
+
+    <p>
+      It is not done here, and the call that would do it is compiled out of the
+      build this deployment runs. The sentence above is kept true by there
+      being nothing to switch on rather than by a setting left off, which is
+      the same reason the list of hosts this deployment will connect to is
+      compiled in.
+    </p>
+
     <h3>Why more than one connection</h3>
 
     <p>
