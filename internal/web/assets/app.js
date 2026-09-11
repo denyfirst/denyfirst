@@ -38,18 +38,42 @@ const VERDICT_ORDER = { insecure: 3, weak: 2, strong: 1 };
 */
 const CHECKS = {
   tls: {
+    label: "Transport",
+    says: "the handshake and the certificate behind it",
     endpoint: "/api/v1/tls/scan",
     methodPage: "/tls/method",
     working: "Opening handshakes at every TLS version. This takes a few seconds.",
-    render: (data) => renderTLS(data),
+    build: (data) => buildTLS(data),
   },
   web: {
+    label: "Reach",
+    says: "how the site is reached over HTTP and HTTPS",
     endpoint: "/api/v1/web/scan",
     methodPage: "/web/method",
     working: "Reading how the site answers, over HTTPS and over plaintext.",
-    render: (data) => renderWeb(data),
+    build: (data) => buildWeb(data),
+  },
+  mail: {
+    label: "Mail",
+    says: "what the domain's DNS says about its mail",
+
+    // No method page of its own yet. The console prints the standing limits
+    // in full rather than pointing at a page nobody has written, which is the
+    // same decision the command line made — a URL for a page that does not
+    // exist is worse than no URL, because a reader follows it.
+    endpoint: "/api/v1/mail/scan",
+    methodPage: "",
+    working: "Reading the sender policy, the DMARC record and the TLS reporting record.",
+    build: (data) => buildMail(data),
   },
 };
+
+// The order the console runs and draws them in.
+//
+// Fixed rather than taken from the object, because a report whose sections
+// move between two scans of an unchanged estate is a diff a reader has to work
+// out is not a change.
+const CHECK_ORDER = ["tls", "web", "mail"];
 
 // Defaulting to the TLS check rather than to nothing, because a page that
 // declared no check would otherwise fail at the first click with an error
@@ -214,7 +238,7 @@ function summary(data) {
   const head = el("div", "summary-head");
 
   const left = el("div");
-  left.appendChild(el("p", "summary-target", data.target || data.host || "—"));
+  left.appendChild(el("p", "summary-target", data.target || data.host || data.domain || "—"));
 
   const address = data.tls && data.tls.address;
   const meta = [];
@@ -750,7 +774,7 @@ function show(node) {
   result.appendChild(node);
 }
 
-function renderTLS(data) {
+function buildTLS(data) {
   // Read once. data.verdict is absent rather than "ungraded" when nothing was
   // graded, so every section that cares has to be given the resolved value —
   // passing data.verdict straight through would hand them undefined at
@@ -764,7 +788,7 @@ function renderTLS(data) {
   frag.appendChild(ciphers(data.tls, data));
   frag.appendChild(certificate(data.certificate, data.tls, data.issuance, data.stapling, data));
   frag.appendChild(notes(data.notes, verdict));
-  show(frag);
+  return frag;
 }
 
 /*
@@ -882,7 +906,7 @@ function chains(observed) {
   return frag;
 }
 
-function renderWeb(data) {
+function buildWeb(data) {
   const verdict = verdictOf(data);
 
   const frag = document.createDocumentFragment();
@@ -890,19 +914,97 @@ function renderWeb(data) {
   frag.appendChild(findings(data.findings, verdict));
   frag.appendChild(chains(data.observed));
   frag.appendChild(notes(data.notes, verdict));
-  show(frag);
+  return frag;
+}
+
+/*
+  The mail report: what the zone says, and what it costs to evaluate.
+
+  Two rows of evidence rather than a chain, because there is no chain — nothing
+  was connected to. The lookup count is on the face of the report rather than
+  only in the notes, since it is the number this check exists for: a domain at
+  nine of ten is one provider away from switching its own policy off, and no
+  other tool an operator runs will tell them.
+*/
+function buildMail(data) {
+  const verdict = verdictOf(data);
+
+  const frag = document.createDocumentFragment();
+  frag.appendChild(summary(data));
+  frag.appendChild(findings(data.findings, verdict));
+  frag.appendChild(zone(data.observed));
+  frag.appendChild(notes(data.notes, verdict));
+  return frag;
+}
+
+// zone draws what the three lookups established.
+//
+// Every value here is written by this program from booleans and counts, never
+// pasted from the zone: a record's text is chosen by whoever is being measured,
+// and the sentences a reader acts on should not be.
+function zone(facts) {
+  const frag = document.createDocumentFragment();
+  if (!facts) return frag;
+
+  frag.appendChild(sectionTitle("What the zone says"));
+
+  const table = el("table", "grid");
+  const body = el("tbody");
+
+  const row = (name, value, mark) => {
+    const tr = el("tr");
+    tr.appendChild(el("th", null, name));
+    const td = el("td", mark ? markClass(mark) : null, value);
+    tr.appendChild(td);
+    body.appendChild(tr);
+  };
+
+  // SPF, and the three states that are not "a policy was read".
+  if (facts.spfReason) {
+    row("SPF", "not read: " + facts.spfReason);
+  } else if (!facts.spfRecords) {
+    row("SPF", "none published");
+  } else if (facts.spfRecords > 1) {
+    row("SPF", facts.spfRecords + " records, which is a permanent error", "insecure");
+  } else {
+    row("SPF", "ends in " + (facts.spfAll || "no ") + "all");
+    row(
+      "Lookups",
+      facts.spfLookups + " of the ten RFC 7208 allows",
+      facts.spfLookupLimit ? "insecure" : null,
+    );
+  }
+
+  if (facts.dmarcReason) {
+    row("DMARC", "not read: " + facts.dmarcReason);
+  } else if (!facts.dmarcRecords) {
+    row("DMARC", "none published");
+  } else if (facts.dmarcRecords > 1) {
+    row("DMARC", facts.dmarcRecords + " records, so a receiver applies none", "weak");
+  } else if (!facts.dmarcPolicy) {
+    row("DMARC", "published, and names no policy", "weak");
+  } else {
+    row("DMARC", "p=" + facts.dmarcPolicy + " at " + (facts.dmarcPercent || 0) + "%");
+  }
+
+  row("TLS-RPT", facts.tlsReporting ? "yes" : "no");
+
+  table.appendChild(body);
+  frag.appendChild(table);
+  return frag;
 }
 
 // ── Submission ──────────────────────────────────────────────────────────
 
-async function check(target) {
+async function check(target, spec) {
+  spec = spec || CHECK;
   // Addressed under the check it runs, like the page it is called from.
   //
   // /api/v1/scan is still served and answers identically, because a path in
   // somebody's script is not a link they can be redirected from: a redirect
   // on a POST is followed by some clients and dropped by others, and a body
   // that quietly goes nowhere is worse than a path that stays.
-  const response = await fetch(CHECK.endpoint, {
+  const response = await fetch(spec.endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ target: target }),
@@ -931,7 +1033,7 @@ async function check(target) {
   return body;
 }
 
-form.addEventListener("submit", async event => {
+if (form) form.addEventListener("submit", async event => {
   event.preventDefault();
 
   const target = input.value.trim();
@@ -947,7 +1049,7 @@ form.addEventListener("submit", async event => {
   show(el("p", "working", CHECK.working));
 
   try {
-    CHECK.render(await check(target));
+    show(CHECK.build(await check(target)));
   } catch (err) {
     const hint = err.status === 429
       ? "Wait a moment before trying again."
@@ -999,3 +1101,141 @@ async function showTally() {
 }
 
 showTally();
+// ── The console ─────────────────────────────────────────────────────────
+
+/*
+  One target, several checks, one report.
+
+  This is the surface a self-hosted installation puts at "/", and it is a
+  different thing from the pages at /tls and /web rather than a prettier
+  version of them. Those explain a check to somebody who arrived from a log
+  line. This runs an estate's checks for the person who runs the estate, and
+  the two audiences want opposite things: one wants the argument, the other
+  wants the answer and the evidence under it.
+
+  What it is not is a second renderer. Every section here is built by the same
+  functions the single-check pages call, from the same JSON, so a sentence
+  cannot say one thing on one page and something else on the other — which is
+  R16, and which this project has already had to fix twice.
+
+  Sequential rather than parallel, for two reasons. Each check spends a token
+  from the scanned host's budget, and three at once from one page is the shape
+  the budget exists to discourage. And a section that appears as it finishes is
+  a page that is doing something, where three that appear together after nine
+  seconds is a page that looks broken.
+*/
+const consoleForm = document.getElementById("console-form");
+const consoleTarget = document.getElementById("console-target");
+const consoleButton = document.getElementById("console-submit");
+const consoleResults = document.getElementById("console-results");
+
+// selectedChecks reads the boxes, in the order the console draws them.
+function selectedChecks() {
+  const boxes = document.querySelectorAll("input[name='check']");
+  const chosen = new Set();
+  boxes.forEach(box => {
+    if (box.checked && CHECKS[box.value]) chosen.add(box.value);
+  });
+  return CHECK_ORDER.filter(name => chosen.has(name));
+}
+
+// consoleSection is one check's block: a heading that says which check and
+// how it ended, and room for the report underneath.
+function consoleSection(spec) {
+  const section = el("section", "run");
+
+  const head = el("div", "run-head");
+  head.appendChild(el("h2", "run-name", spec.label));
+  head.appendChild(el("p", "run-says", spec.says));
+
+  const state = el("p", "run-state", "running");
+  head.appendChild(state);
+  section.appendChild(head);
+
+  const body = el("div", "run-body");
+  section.appendChild(body);
+
+  return { section, state, body };
+}
+
+/*
+  A check that could not run says so in its own section and stops nothing.
+
+  The whole reason the runs are separate. A domain with no mail policy at all,
+  a host that refuses a handshake, a name this deployment has not been shown
+  control of — each of those is an answer about one check, and letting it end
+  the other two would turn one refusal into a blank page. An operator reading
+  "Transport: strong, Mail: refused" knows exactly where they stand; an
+  operator reading nothing does not.
+*/
+async function runCheck(name, target) {
+  const spec = CHECKS[name];
+  const { section, state, body } = consoleSection(spec);
+  consoleResults.appendChild(section);
+
+  body.appendChild(el("p", "working", spec.working));
+
+  try {
+    const data = await check(target, spec);
+    clear(body);
+    body.appendChild(spec.build(data));
+
+    const verdict = verdictOf(data);
+    state.textContent = data.verdict ? verdict : "not graded";
+    state.className = "run-state " + verdictClass("stamp", verdict);
+    return verdict;
+  } catch (err) {
+    clear(body);
+
+    const hint = err.status === 429
+      ? "Wait a moment before trying again. Each host has its own budget, whoever asks."
+      : err.status === 503
+        ? "Several scans are running. Try again shortly."
+        : null;
+
+    body.appendChild(failure(err.message || "The check did not complete.", hint));
+    state.textContent = "not run";
+    state.className = "run-state stamp-ungraded";
+    return null;
+  }
+}
+
+if (consoleForm) {
+  consoleForm.addEventListener("submit", async event => {
+    event.preventDefault();
+
+    const target = consoleTarget.value.trim();
+    if (!target) {
+      clear(consoleResults);
+      consoleResults.hidden = false;
+      consoleResults.appendChild(failure("Enter a hostname to check."));
+      consoleTarget.focus();
+      return;
+    }
+
+    const chosen = selectedChecks();
+    if (chosen.length === 0) {
+      clear(consoleResults);
+      consoleResults.hidden = false;
+      consoleResults.appendChild(failure("Choose at least one check."));
+      return;
+    }
+
+    consoleButton.disabled = true;
+    const label = consoleButton.textContent;
+    consoleButton.textContent = "Checking";
+
+    clear(consoleResults);
+    consoleResults.hidden = false;
+
+    try {
+      // Awaited one at a time on purpose. See the note above.
+      for (const name of chosen) {
+        await runCheck(name, target);
+      }
+    } finally {
+      consoleButton.disabled = false;
+      consoleButton.textContent = label;
+    }
+  });
+}

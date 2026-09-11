@@ -244,6 +244,59 @@ type scanPage struct {
 	Hosts []demo.Host
 }
 
+// ToolName is what this tool is called on the pages it serves.
+//
+// One constant, because the name appears in a heading, in a page title and in a
+// description, and three copies of a name is three places for it to be changed
+// in two. It is deliberately not the rule-set names: those carry the name too,
+// and they are declared in internal/policy where the rules are, so that a
+// report and the page that explains it cannot disagree about which tool graded
+// it.
+const ToolName = "denyfirst"
+
+// consoleCheck is one row of the console's check list.
+//
+// Built from internal/policy rather than written into the markup, so the rule
+// set a box offers is the rule set the report comes back carrying. A page that
+// named its own would be a second source for the one string a reader uses to
+// decide whether two reports are comparable.
+type consoleCheck struct {
+	ID     string
+	Label  string
+	Says   string
+	Policy string
+}
+
+// consolePage is what assets/console.html reads.
+type consolePage struct {
+	Tool   string
+	Checks []consoleCheck
+
+	// Verified says this installation was given a boundary, and ReadsPages
+	// follows from it: a page is read only where control was proven.
+	//
+	// Both are on the page because an operator reading a report has to know
+	// which were true when it was produced. A report silent about mixed content
+	// because no body was read looks exactly like one silent because the page
+	// had none, and only one of those is a fact about the site (R4).
+	Verified   bool
+	ReadsPages bool
+}
+
+// consoleChecks is the list the console offers, in the order it runs them.
+//
+// Named for what each one reads rather than for how hard it pushes. docs/scope.md
+// refuses the words full, deep and active, because each quietly authorises
+// something this project has already declined to do, and a control labelled
+// "Full scan" would undo that argument in the one place a user actually looks.
+func consoleChecks() []consoleCheck {
+	return []consoleCheck{
+		{"tls", "Transport", "the handshake and the certificate behind it", policy.TLSVersion},
+		{"web", "Reach", "how the site is reached over HTTP and HTTPS", policy.WebVersion},
+		{"mail", "Mail", "what the domain's DNS says about its mail", policy.MailVersion},
+	}
+}
+
 // methodPage is what assets/method.html ranges over.
 type methodPage struct {
 	Limits []policy.StandingLimit
@@ -296,8 +349,25 @@ var moved = map[string]string{
 // Every response here carries Cache-Control: no-store, so neither kind is
 // cached in practice. The status code is still the honest one, because it is
 // read by people and by intermediaries that ignore the header.
-var standingIn = map[string]string{
-	"/": "/tls",
+// standingIn holds the temporary redirects, and it is built rather than
+// declared because the root differs by deployment.
+//
+// On the demonstration, "/" still stands in for /tls. That deployment exists to
+// explain a check to somebody who arrived from a log line, and a console asking
+// them to pick checks answers a question they did not ask.
+//
+// On an installation somebody runs themselves, "/" is the tool. Nobody there
+// needs persuading that scanning is safe — they installed it — and what they
+// want on the first screen is a field. Serving the same page to both was the
+// thing that made a self-hosted installation feel like the website running
+// locally rather than like an instrument.
+var standingIn = rootRedirect()
+
+func rootRedirect() map[string]string {
+	if demo.Enabled {
+		return map[string]string{"/": "/tls"}
+	}
+	return map[string]string{}
 }
 
 // files are the assets served as they are.
@@ -324,44 +394,126 @@ var files = map[string]struct {
 var rendered = map[string][]byte{}
 
 func init() {
-	layout := template.Must(template.ParseFS(assets, "assets/layout.html"))
-
 	for path, p := range pages {
-		if p.Method == "" {
-			p.Method = defaultMethodPage
-		}
-
-		fragment, err := assets.ReadFile(p.Fragment)
+		body, err := render(p)
 		if err != nil {
-			// At startup, so a missing fragment stops the process instead of
-			// producing a page with a hole in it.
-			panic("web: reading " + p.Fragment + ": " + err.Error())
-		}
-		if p.Data != nil {
-			// Parsed as a template, and its values escaped by html/template
-			// on the way in. They come from this repository either way; the
-			// escaping is not a defence against them but the reason a
-			// sentence containing an angle bracket cannot silently become
-			// markup.
-			body := template.Must(template.New(p.Fragment).Parse(string(fragment)))
-
-			var filled bytes.Buffer
-			if err := body.Execute(&filled, p.Data); err != nil {
-				panic("web: filling " + p.Fragment + ": " + err.Error())
-			}
-			fragment = filled.Bytes()
-		}
-		p.Body = template.HTML(fragment) //nolint:gosec // a file in this repository, not user input
-
-		var out bytes.Buffer
-		if err := layout.Execute(&out, p); err != nil {
+			// At startup, so a broken page stops the process instead of
+			// reaching a visitor with a hole in it.
 			panic("web: rendering " + path + ": " + err.Error())
 		}
-		rendered[path] = out.Bytes()
+		rendered[path] = body
+	}
+
+	// The console, with nothing configured yet. Configure replaces it once the
+	// program knows what this installation is; until then it describes the
+	// stricter reading of its own state, which is the safe way round.
+	//
+	// Rendered here at all so that every path in the table answers from the
+	// moment the package loads, including in a test that never calls Configure.
+	if !demo.Enabled {
+		rendered["/"] = renderConsole(false)
 	}
 }
 
+// render turns one page into the bytes served for it.
+//
+// Split out of init() so that a page whose content depends on how the program
+// was started can be built later, through exactly the same steps. Two rendering
+// paths would be two chances for the shell, the method link or the escaping to
+// differ between pages, and the one that differs is the one nobody is looking
+// at.
+func render(p *page) ([]byte, error) {
+	layout, err := template.ParseFS(assets, "assets/layout.html")
+	if err != nil {
+		return nil, err
+	}
+
+	if p.Method == "" {
+		p.Method = defaultMethodPage
+	}
+
+	fragment, err := assets.ReadFile(p.Fragment)
+	if err != nil {
+		return nil, err
+	}
+	if p.Data != nil {
+		// Parsed as a template, and its values escaped by html/template on the
+		// way in. They come from this repository either way; the escaping is
+		// not a defence against them but the reason a sentence containing an
+		// angle bracket cannot silently become markup.
+		body, err := template.New(p.Fragment).Parse(string(fragment))
+		if err != nil {
+			return nil, err
+		}
+
+		var filled bytes.Buffer
+		if err := body.Execute(&filled, p.Data); err != nil {
+			return nil, err
+		}
+		fragment = filled.Bytes()
+	}
+	p.Body = template.HTML(fragment) //nolint:gosec // a file in this repository, not user input
+
+	var out bytes.Buffer
+	if err := layout.Execute(&out, p); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
 // Handler serves the site.
+// Configure tells the pages what this installation is.
+//
+// Called once, before Handler, by whatever builds the service. Everything else
+// here is rendered at init() from facts that are true at build time; this is
+// the one thing that is not, because whether a boundary was configured is
+// decided on the command line.
+//
+// Not calling it leaves the console saying no proof of control is required and
+// no page is read, which is the safe direction for it to be wrong in. A page
+// claiming a boundary that is not there would tell an operator their service is
+// safe to expose when it is not; a page understating one costs them a second
+// look at a flag.
+func Configure(verified bool) {
+	rendered["/"] = renderConsole(verified)
+}
+
+// renderConsole builds the tool surface.
+//
+// A function rather than an entry in the pages table, because it is the one
+// page whose content depends on how the program was started. It is rendered at
+// init() too, so that a caller who never calls Configure still gets a page
+// rather than a blank response.
+func renderConsole(verified bool) []byte {
+	p := &page{
+		Title:       ToolName + " — check a name you run",
+		Description: "Run this project's checks against one name: the handshake and certificate, how the site is reached, and what the domain's DNS says about its mail.",
+		Fragment:    "assets/console.html",
+		Script:      true,
+		Method:      defaultMethodPage,
+		Data: consolePage{
+			Tool:   ToolName,
+			Checks: consoleChecks(),
+
+			// ReadsPages follows from Verified rather than being passed
+			// beside it. They are one fact — internal/httpapi sets
+			// ReadMarkup from the same scope — and two fields could be made
+			// to disagree by a caller, which would put a claim about what
+			// was read on a page with nothing behind it.
+			Verified:   verified,
+			ReadsPages: verified,
+		},
+	}
+
+	body, err := render(p)
+	if err != nil {
+		// At startup, so a broken template stops the process rather than
+		// serving half a page to whoever asks first.
+		panic("rendering the console: " + err.Error())
+	}
+	return body
+}
+
 func Handler() http.Handler {
 	return http.HandlerFunc(serve)
 }

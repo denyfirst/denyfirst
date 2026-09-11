@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/webprobe"
 )
 
@@ -140,18 +141,9 @@ func pathOfDenyfirstURL(t *testing.T, s string) string {
 // finished changing, and this one has not. The method page's redirect is the
 // other kind, because it is not coming back to the root.
 func TestTheRootStandsInAndSaysSoInTheStatusCode(t *testing.T) {
-	w := get(t, "/")
-
-	if w.Code != http.StatusFound {
-		t.Errorf("GET / returned %d, want 302 — the root is going to change, and a "+
-			"permanent redirect would say the opposite", w.Code)
-	}
-	if got := w.Header().Get("Location"); got != "/tls" {
-		t.Errorf("GET / redirects to %q, want /tls", got)
-	}
-
 	// Nothing may be in both tables: an address is either finished moving or
-	// it is not.
+	// it is not. True of every build, so it is asserted before the branch —
+	// an assertion below one is an assertion half the builds never run.
 	for path := range standingIn {
 		if to, found := moved[path]; found {
 			t.Errorf("%s stands in and is also permanently moved to %s", path, to)
@@ -166,6 +158,35 @@ func TestTheRootStandsInAndSaysSoInTheStatusCode(t *testing.T) {
 	if got := m.Header().Get("Location"); got != "/tls/method" {
 		t.Errorf("GET /method redirects to %q, want /tls/method", got)
 	}
+
+	// The root itself differs by deployment since 2026-09-12, and this is where
+	// that is asserted rather than assumed.
+	//
+	// On the demonstration it still stands in for /tls: that deployment exists
+	// to explain a check to somebody who arrived from a log line, and a console
+	// asking them to choose checks answers a question they did not ask. On an
+	// installation somebody runs themselves the root is the tool, because
+	// nobody there needs persuading that scanning is safe.
+	w := get(t, "/")
+
+	if !demo.Enabled {
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET / returned %d on a self-hosted build, want 200: the root is the tool "+
+				"there, not a redirect to one check of three", w.Code)
+		}
+		if got := w.Header().Get("Location"); got != "" {
+			t.Errorf("GET / redirects to %q on a self-hosted build", got)
+		}
+		return
+	}
+
+	if w.Code != http.StatusFound {
+		t.Errorf("GET / returned %d, want 302 — the root is going to change, and a "+
+			"permanent redirect would say the opposite", w.Code)
+	}
+	if got := w.Header().Get("Location"); got != "/tls" {
+		t.Errorf("GET / redirects to %q, want /tls", got)
+	}
 }
 
 // Every link the pages carry points at something this server answers.
@@ -174,6 +195,13 @@ func TestTheRootStandsInAndSaysSoInTheStatusCode(t *testing.T) {
 // page of the site — so one stale href is stale everywhere at once.
 func TestEveryInternalLinkResolves(t *testing.T) {
 	answered := func(path string) bool {
+		// rendered rather than pages, because the console is not in that table:
+		// its content depends on how the program was started, so it is built
+		// separately and lands here. A link checker reading only the table
+		// would call the root unanswered on every installation that serves it.
+		if _, ok := rendered[path]; ok {
+			return true
+		}
 		if _, ok := pages[path]; ok {
 			return true
 		}
@@ -188,7 +216,7 @@ func TestEveryInternalLinkResolves(t *testing.T) {
 	}
 
 	seen := 0
-	for path := range pages {
+	for path := range rendered {
 		body := get(t, path).Body.String()
 		for _, part := range strings.Split(body, `href="`)[1:] {
 			href := part[:strings.Index(part, `"`)]
@@ -252,6 +280,13 @@ func TestEachCheckCallsItsOwnPaths(t *testing.T) {
 	}{
 		{"tls", "/api/v1/tls/scan", "/tls/method"},
 		{"web", "/api/v1/web/scan", "/web/method"},
+
+		// The mail check has no method page of its own yet, so its row
+		// declares none. An empty string rather than a borrowed page: the
+		// console prints that check's limits in full instead, which is the
+		// same decision the command line made. A URL for a page nobody has
+		// written is worse than no URL, because a reader follows it.
+		{"mail", "/api/v1/mail/scan", ""},
 	} {
 		for _, want := range []string{
 			`endpoint: "` + tc.endpoint + `"`,
@@ -262,7 +297,10 @@ func TestEachCheckCallsItsOwnPaths(t *testing.T) {
 			}
 		}
 
-		// And both addresses are ones this service answers.
+		// And any address it points at is one this service answers.
+		if tc.methodPage == "" {
+			continue
+		}
 		if _, ok := pages[tc.methodPage]; !ok {
 			t.Errorf("the %s check points at %s, which this site does not serve", tc.check, tc.methodPage)
 		}
@@ -275,8 +313,24 @@ func TestEachCheckCallsItsOwnPaths(t *testing.T) {
 	}
 
 	// The endpoint is read from the table rather than written at the call.
-	if !strings.Contains(source, "fetch(CHECK.endpoint,") {
-		t.Error("the script does not fetch the endpoint the page declared, so the table decides nothing")
+	//
+	// It reads spec.endpoint rather than CHECK.endpoint since 2026-09-12: the
+	// console runs several checks from one page, so which one is being run is
+	// an argument now instead of a constant chosen when the page loaded. The
+	// property being asserted is unchanged — the fetch takes its address from
+	// the table, whatever selected the row.
+	if !strings.Contains(source, "fetch(spec.endpoint,") {
+		t.Error("the script does not fetch the endpoint the table declared, so the table decides nothing")
+	}
+
+	// And the console runs every check the table holds.
+	//
+	// A check declared and never offered is a check nobody can run from the
+	// page that exists to run them.
+	for _, name := range []string{"tls", "web", "mail"} {
+		if !strings.Contains(source, `"`+name+`"`) {
+			t.Errorf("the console's order does not name the %s check", name)
+		}
 	}
 }
 

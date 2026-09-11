@@ -929,3 +929,224 @@ h1 {
 }
 
 .summary-worst { color: var(--ink-soft); }
+
+/* ── The console ─────────────────────────────────────────────────────────
+
+   The surface a self-hosted installation puts at "/".
+
+   Deliberately not the look of the pages at /tls and /web. Those are written
+   for somebody who arrived from a log line and is deciding whether to worry,
+   so they lead with a sentence and give the argument room. This is written for
+   the person who installed it, who decided already: the field is the first
+   thing, the type is smaller, and the space between things is tighter, because
+   what they want is density and an answer rather than persuasion.
+
+   Same tokens throughout. A second palette would be a second thing to keep in
+   step, and the colours already carry meaning a reader has learned. */
+
+.console {
+  max-width: 54rem;
+  margin: 0 auto;
+}
+
+.console-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding-bottom: 1.1rem;
+  margin-bottom: 1.6rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.console-name {
+  font-family: var(--mono);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--ink);
+}
+
+.console-where {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+.console-form { margin-bottom: 2rem; }
+
+/* The check list. A row each, so the rule set that will grade a report is
+   readable beside the box that runs it — the string a reader needs in order to
+   know whether two reports are comparable at all. */
+.checks {
+  border: 0;
+  padding: 0;
+  margin: 1.1rem 0 0;
+}
+
+.check {
+  display: grid;
+  grid-template-columns: auto minmax(5.5rem, auto) 1fr auto;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.42rem 0;
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+}
+
+.check:last-child { border-bottom: 0; }
+
+.check-name {
+  font-family: var(--mono);
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.check-says {
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+}
+
+.check-policy {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.console-results { margin-top: 2rem; }
+
+/* One check's block. The heading carries the verdict, so a reader scrolling
+   three reports can see where they stand without opening any of them. */
+.run {
+  border-top: 2px solid var(--ink);
+  padding-top: 0.9rem;
+  margin-bottom: 2.6rem;
+}
+
+.run-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0.3rem 1rem;
+  margin-bottom: 1.1rem;
+}
+
+.run-name {
+  font-family: var(--mono);
+  font-size: 0.96rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0;
+  color: var(--ink);
+}
+
+.run-says {
+  grid-column: 1;
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--ink-soft);
+}
+
+.run-state {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink-faint);
+}
+
+.run-body { min-height: 1.4rem; }
+
+/* A plain two-column table, used where a report has rows rather than a chain:
+   what a zone publishes, and what this installation is. */
+.grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.grid th {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  padding: 0.4rem 1.2rem 0.4rem 0;
+  white-space: nowrap;
+  vertical-align: baseline;
+  width: 1%;
+}
+
+.grid td {
+  padding: 0.4rem 0;
+  color: var(--ink);
+  vertical-align: baseline;
+}
+
+.console-state {
+  margin-top: 3rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--rule);
+}
+
+.state-grid {
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) 1fr;
+  gap: 0.55rem 1.4rem;
+  margin: 0.9rem 0 0;
+  font-size: 0.88rem;
+}
+
+.state-grid dt {
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+}
+
+.state-grid dd {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.state-policy {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  color: var(--ink);
+  margin-right: 0.7rem;
+}
+
+.console-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.4rem;
+  margin: 1.4rem 0 0;
+  font-size: 0.84rem;
+}
+
+@media (max-width: 34rem) {
+  .check {
+    grid-template-columns: auto 1fr;
+    row-gap: 0.15rem;
+  }
+  .check-says,
+  .check-policy { grid-column: 2; }
+
+  .state-grid { grid-template-columns: 1fr; gap: 0.15rem 0; }
+  .state-grid dd { margin-bottom: 0.7rem; }
+}
