@@ -257,10 +257,11 @@ func (c *counters) record(check string, verdict policy.Verdict) {
 	c.data.Checks[check] = counts
 }
 
-// checkTLS and checkWeb are the keys in Snapshot.Checks. Spelled once.
+// checkTLS, checkWeb and checkMail are the keys in Snapshot.Checks. Spelled once.
 const (
-	checkTLS = "tls"
-	checkWeb = "web"
+	checkTLS  = "tls"
+	checkWeb  = "web"
+	checkMail = "mail"
 )
 
 // project copies the TLS check's figures into the fields at the top of a

@@ -466,3 +466,39 @@ func skipUnderDemo(t *testing.T) {
 		t.Skip("a demonstration build refuses example.com before any lookup; see demo_guard_test.go")
 	}
 }
+
+// A typed nil resolver is treated as no resolver.
+//
+// `resolver == nil` does not catch an interface carrying a nil *dnsclient.Client,
+// so a caller writing `Resolver: someScanner.Resolver` hands this package
+// something that passes every nil test and dereferences nothing on first use.
+// It panicked on the first real request to the mail endpoint on 2026-09-11.
+//
+// The caller was fixed too. This is here because the trap is in the language
+// rather than in that caller, and the cost of being wrong is a service that
+// crashes on a request a stranger sends.
+func TestATypedNilResolverIsTreatedAsNone(t *testing.T) {
+	skipUnderDemo(t)
+
+	var missing *dnsclient.Client
+	s := &Scanner{Resolver: missing}
+
+	if s.Resolver == nil {
+		t.Fatal("the fixture is not the state being tested: a typed nil should not compare equal to nil")
+	}
+
+	// It must not panic. Whether the lookups succeed depends on the machine's
+	// own resolver and is not what this asserts.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("a typed nil resolver panicked: %v", r)
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if _, err := s.Scan(ctx, "example.com"); err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+}

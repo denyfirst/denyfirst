@@ -8,13 +8,12 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/scan"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
 	"github.com/denyfirst/denyfirst/internal/verify"
@@ -123,35 +122,37 @@ func postTo(t *testing.T, s *Server, path, body, remoteAddr string) *httptest.Re
 	return w
 }
 
-var postRoute = regexp.MustCompile(`mux\.HandleFunc\("POST ([^"]+)"`)
-
-// scanningRoutes are the addresses a stranger can post a target to, read from
-// the source rather than listed here.
+// scanningRoutes are the addresses a stranger can post a target to, taken from
+// the service itself rather than listed here.
 //
 // Listed here, this test would say what somebody remembered to add to it. The
 // defect it exists to catch was a check wired up without a boundary, and a
-// hand-written list is the same kind of omission one file further along. So
-// the routes come from the registrations themselves: add an endpoint, and it
-// is tested by existing.
+// hand-written list is the same kind of omission one file further along. So the
+// routes come from the registrations themselves: add an endpoint, and it is
+// tested by existing.
 //
-// Every POST on this service is a scan today. If one that is not is ever
-// added, this stops being a true statement and the person adding it has to say
-// which kind it is — which is the conversation worth having.
-func scanningRoutes(t *testing.T) []string {
+// This read the source with a regular expression until 2026-09-12, when the
+// registrations moved into a table and the regex matched nothing. It failed
+// loudly rather than passing over an empty list, which is the one thing such a
+// test has to get right — and the table it could not read is a better source
+// than the text it was reading, because it is what the mux is actually built
+// from rather than a spelling that happens to describe it.
+//
+// Every POST on this service is a scan today. If one that is not is ever added,
+// this stops being a true statement and the person adding it has to say which
+// kind it is — which is the conversation worth having.
+func scanningRoutes(t *testing.T, s *Server) []string {
 	t.Helper()
 
-	source, err := os.ReadFile("httpapi.go")
-	if err != nil {
-		t.Fatalf("reading the routes: %v", err)
-	}
-
 	var routes []string
-	for _, m := range postRoute.FindAllStringSubmatch(string(source), -1) {
-		routes = append(routes, m[1])
+	for _, rt := range s.routes {
+		if rt.method == http.MethodPost {
+			routes = append(routes, rt.path)
+		}
 	}
 	if len(routes) < 2 {
-		t.Fatalf("found %d POST routes in httpapi.go, expected the scan endpoints; the "+
-			"registration was rewritten and this test is now reading nothing", len(routes))
+		t.Fatalf("found %d POST routes, expected the scan endpoints; the registration was "+
+			"rewritten and this test is now reading nothing", len(routes))
 	}
 	return routes
 }
@@ -163,7 +164,7 @@ func TestEveryScanningEndpointRequiresProofOfControl(t *testing.T) {
 	var tlsReached, webReached atomic.Bool
 	s := verifyingService(scope, &tlsReached, &webReached)
 
-	for i, route := range scanningRoutes(t) {
+	for i, route := range scanningRoutes(t, s) {
 		// A host of its own per route, so that nothing here is answered by
 		// the per-target budget instead of by the boundary.
 		host := fmt.Sprintf("unproven%d.test", i)
@@ -400,4 +401,65 @@ func TestTheServiceReadsPagesOnlyWhereItRequiredProof(t *testing.T) {
 			"anything about. N9 says a service must not scan those at all; until somebody fixes " +
 			"that, it does not also read their pages.")
 	}
+}
+
+// The mail check asks the boundary, by name.
+//
+// TestEveryScanningEndpointRequiresProofOfControl derives its routes from the
+// service so that a new endpoint is tested by existing, and that is the right
+// default. What it cannot do is notice that it is testing one endpoint fewer
+// than it used to: narrowing its filter leaves it passing over a shorter list.
+//
+// So the newest check is also named here. Not a list replacing the derivation —
+// both run, and this one fails if the mail endpoint stops asking the boundary
+// even while the generic test goes on passing over the other three.
+func TestTheMailCheckRequiresProofOfControl(t *testing.T) {
+	scope, dns := scopeProving()
+
+	var tlsReached, webReached atomic.Bool
+	s := verifyingService(scope, &tlsReached, &webReached)
+
+	// The resolver would answer nothing anyway, and it is never reached: the
+	// refusal comes before the first lookup.
+	w := postTo(t, s, "/api/v1/mail/scan", `{"target":"unproven-mail.test"}`, "203.0.113.60:5000")
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("the mail endpoint answered %d for a domain this deployment has not been shown "+
+			"control of, want 403", w.Code)
+	}
+	if got := errorCode(t, w); got != "not_verified" {
+		t.Errorf("the mail endpoint refused with %q, want not_verified", got)
+	}
+	if dns.asked.Load() == 0 {
+		t.Error("nothing asked for a challenge record, so this was refused by something other " +
+			"than the boundary and would keep passing without it")
+	}
+}
+
+// A proven domain reaches the mail check.
+//
+// The other direction, and it matters as much: a boundary that refuses
+// everything is not a boundary, it is an outage, and a test that only ever
+// asserts refusal cannot tell them apart.
+func TestAProvenDomainReachesTheMailCheck(t *testing.T) {
+	scope, _ := scopeProving("proven-mail.test")
+
+	var tlsReached, webReached atomic.Bool
+	s := verifyingService(scope, &tlsReached, &webReached)
+
+	// A resolver that answers nothing, so the scan completes without a network
+	// and without depending on whatever zone this machine can reach.
+	s.mail.Resolver = silentZone{}
+
+	w := postTo(t, s, "/api/v1/mail/scan", `{"target":"proven-mail.test"}`, "203.0.113.61:5000")
+	if w.Code != http.StatusOK {
+		t.Fatalf("a domain that published its record was answered %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// silentZone publishes nothing and fails nothing.
+type silentZone struct{}
+
+func (silentZone) LookupTXT(context.Context, string) (dnsclient.TXTAnswer, error) {
+	return dnsclient.TXTAnswer{}, nil
 }
