@@ -178,7 +178,7 @@ func TestNoMarkupReachesTheResult(t *testing.T) {
 		rendered += f.Title + " " + f.Rationale + "\n"
 	}
 	if final := got.Observed.Secure.Final(); final != nil && final.Markup != nil {
-		for _, r := range final.Markup.Plaintext {
+		for _, r := range final.Markup.References {
 			rendered += string(r.Kind) + " " + r.Host + "\n"
 		}
 	}
@@ -290,5 +290,110 @@ func TestThePlaintextChainIsNotJudgedForMixedContent(t *testing.T) {
 	}
 	if len(facts.Blocking) != 0 || len(facts.Forms) != 0 || len(facts.Passive) != 0 {
 		t.Errorf("a nil chain produced references: %+v", facts)
+	}
+}
+
+// What the page pulls in from elsewhere reaches the report.
+func TestWhatThePagePullsInFromElsewhereReachesTheReport(t *testing.T) {
+	page := `<!doctype html><html><head>` +
+		`<script src="https://cdn.example/a.js"></script>` +
+		`<script src="https://pinned.example/b.js" integrity="sha384-abc"></script>` +
+		`<link rel="stylesheet" href="//old.example/c.css">` +
+		`</head><body>` +
+		`<form action="https://payments.example/checkout"></form>` +
+		`<img src="https://images.example/logo.png">` +
+		`</body></html>`
+
+	got, err := (&Scanner{Prober: pageProber(t, page), ReadMarkup: true}).Scan(context.Background(), pageHost)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	text := noteText(got)
+
+	// Nothing here is a fault. A browser loads all of it.
+	for _, f := range got.Findings {
+		if strings.HasPrefix(f.RuleID, "content.") {
+			t.Errorf("%s graded a page that loads everything over TLS", f.RuleID)
+		}
+	}
+
+	for _, want := range []string{"cdn.example", "old.example", "pinned.example", "payments.example"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("%q is not in the report:\n%s", want, text)
+		}
+	}
+
+	// Which sentence each origin lands in, not merely that it is somewhere.
+	//
+	// A sabotage sending every third-party script to the unpinned list escaped
+	// on 2026-09-11 because every origin still appeared in the report — in the
+	// wrong clause, telling a site that pinned its scripts that it had not.
+	// That is the whole difference between the two sentences.
+	unpinned, pinned, ok := strings.Cut(text, "pinned this way already")
+	if !ok {
+		t.Fatalf("the report names nothing as already pinned:\n%s", text)
+	}
+	if !strings.Contains(pinned, "pinned.example") {
+		t.Errorf("a script carrying an integrity attribute is not named as one:\n%s", text)
+	}
+	if strings.Contains(unpinned, "pinned.example") {
+		t.Errorf("a script carrying an integrity attribute is listed among those without one:\n%s", text)
+	}
+	for _, want := range []string{"cdn.example", "old.example"} {
+		if !strings.Contains(unpinned, want) {
+			t.Errorf("%q carries no integrity attribute and is not listed among those that do "+
+				"not:\n%s", want, text)
+		}
+	}
+
+	// An image from elsewhere is not code this page executes and there is no
+	// attribute for a browser to check, so it is not in the integrity
+	// sentence. Naming it there would be advice about a guarantee that does
+	// not apply.
+	if strings.Contains(text, "images.example") {
+		t.Errorf("an image from another origin was reported as unpinned code:\n%s", text)
+	}
+}
+
+// A page loading only its own things is told nothing about origins.
+func TestAPageLoadingItsOwnThingsIsToldNothing(t *testing.T) {
+	page := `<!doctype html><html><head>` +
+		`<script src="/own.js"></script>` +
+		`<link rel="stylesheet" href="/own.css">` +
+		`</head><body><form action="/search"></form></body></html>`
+
+	got, err := (&Scanner{Prober: pageProber(t, page), ReadMarkup: true}).Scan(context.Background(), pageHost)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+
+	text := noteText(got)
+	for _, unwanted := range []string{"integrity", "posts to another origin", "other origins"} {
+		if strings.Contains(text, unwanted) {
+			t.Errorf("a page loading only its own things was told about %q:\n%s", unwanted, text)
+		}
+	}
+}
+
+// A plaintext script from elsewhere is the plaintext finding, not the integrity
+// sentence.
+//
+// The larger question first. A browser refuses the script outright, so whether
+// it carried a hash is beside the point — and a report that answered the
+// smaller question would leave the page's actual breakage unsaid.
+func TestPlaintextIsAnsweredBeforeIntegrity(t *testing.T) {
+	page := `<script src="http://cdn.example/a.js"></script>`
+
+	got, err := (&Scanner{Prober: pageProber(t, page), ReadMarkup: true}).Scan(context.Background(), pageHost)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+
+	if !hasRule(got, "content.mixed-blocked") {
+		t.Fatalf("the blocked script was not graded: %+v", got.Findings)
+	}
+	if strings.Contains(noteText(got), "integrity attribute") {
+		t.Errorf("a script a browser refuses outright was also reported as unpinned:\n%s",
+			noteText(got))
 	}
 }

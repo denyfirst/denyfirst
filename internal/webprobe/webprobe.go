@@ -559,7 +559,7 @@ func (p *Prober) fetch(ctx context.Context, client *http.Client, target string) 
 	hop.Status = resp.StatusCode
 	hop.Headers = recorded(resp.Header)
 	hop.Cookies = cookies(resp.Header.Values("Set-Cookie"))
-	hop.Markup = p.pageFacts(resp)
+	hop.Markup = p.pageFacts(resp, hostOf(target))
 	return hop
 }
 
@@ -581,7 +581,12 @@ func (p *Prober) fetch(ctx context.Context, client *http.Client, target string) 
 // A response that is not HTML is not markup. Scanning a PDF or a tarball for
 // tag-shaped bytes would produce findings out of a file format, and the bytes
 // would have been carried to find them.
-func (p *Prober) pageFacts(resp *http.Response) *markup.Facts {
+//
+// host is the name this response was fetched from, which is what decides
+// whether a reference the page makes is to somebody else. The address actually
+// fetched, so a chain that redirected ends up asking about the origin serving
+// the page rather than the one that pointed at it.
+func (p *Prober) pageFacts(resp *http.Response, host string) *markup.Facts {
 	if demo.Enabled || !p.ReadMarkup {
 		return nil
 	}
@@ -592,7 +597,7 @@ func (p *Prober) pageFacts(resp *http.Response) *markup.Facts {
 		return nil
 	}
 
-	facts := markup.Read(resp.Body)
+	facts := markup.Read(resp.Body, host)
 	return &facts
 }
 

@@ -174,8 +174,8 @@ func TestThePageIsReadWhenItIsAskedFor(t *testing.T) {
 	if !hop.Markup.MetaCSP {
 		t.Error("the policy in the markup was not seen")
 	}
-	if len(hop.Markup.Plaintext) != 1 || hop.Markup.Plaintext[0].Host != "cdn.example" {
-		t.Errorf("the plaintext script was not seen: %+v", hop.Markup.Plaintext)
+	if len(hop.Markup.References) != 1 || hop.Markup.References[0].Host != "cdn.example" {
+		t.Errorf("the plaintext script was not seen: %+v", hop.Markup.References)
 	}
 }
 
@@ -279,8 +279,8 @@ func TestAThreeHundredWithNowhereToGoIsAPage(t *testing.T) {
 	if hop.Markup == nil {
 		t.Fatal("a response with no Location was treated as a redirect")
 	}
-	if len(hop.Markup.Plaintext) != 1 {
-		t.Errorf("the page was read and produced %+v", hop.Markup.Plaintext)
+	if len(hop.Markup.References) != 1 {
+		t.Errorf("the page was read and produced %+v", hop.Markup.References)
 	}
 }
 

@@ -243,3 +243,125 @@ func TestContentFindingsNameTheWebRuleSet(t *testing.T) {
 		}
 	}
 }
+
+// Code from another origin without an integrity attribute is named, not graded.
+//
+// No document requires subresource integrity, and pinning has a real cost: a
+// provider shipping a fix breaks every page pinned to the version before it. A
+// verdict would be a threshold this project invented (R21) landing on a
+// deliberate decision — so the report names the origins and says what a browser
+// does, which is the part an operator cannot see.
+func TestUnpinnedThirdPartyCodeIsNamedAndNotGraded(t *testing.T) {
+	got := GradeContent(ContentFacts{
+		Read:       true,
+		Unverified: []string{"cdn.example", "analytics.example"},
+	})
+
+	if len(got.Findings) != 0 {
+		t.Errorf("graded %v", findingIDs(got))
+	}
+	if got.Verdict != "" {
+		t.Errorf("verdict = %q, and nothing here is graded", got.Verdict)
+	}
+
+	text := contentText(got)
+	for _, host := range []string{"cdn.example", "analytics.example"} {
+		if !strings.Contains(text, host) {
+			t.Errorf("%q is not named, so an operator is told they have a problem and not where "+
+				"it is:\n%s", host, text)
+		}
+	}
+	if !strings.Contains(text, "integrity") {
+		t.Errorf("the report does not say what the attribute is:\n%s", text)
+	}
+}
+
+// Where a site has pinned some, the report says so.
+//
+// A list of gaps with no denominator reads as a site that has never heard of
+// the attribute, and a report that only ever says what is missing is one an
+// operator learns to skim.
+func TestWhatIsAlreadyPinnedIsNamedBesideWhatIsNot(t *testing.T) {
+	got := GradeContent(ContentFacts{
+		Read:       true,
+		Unverified: []string{"analytics.example"},
+		Verified:   []string{"cdn.example"},
+	})
+
+	text := contentText(got)
+	if !strings.Contains(text, "analytics.example") {
+		t.Errorf("the unpinned origin is not named:\n%s", text)
+	}
+	if !strings.Contains(text, "pinned this way already") || !strings.Contains(text, "cdn.example") {
+		t.Errorf("the origin that is already pinned is not named, so the list of gaps has no "+
+			"denominator:\n%s", text)
+	}
+}
+
+// A site that pinned everything is told nothing.
+func TestASiteThatPinnedEverythingIsToldNothing(t *testing.T) {
+	got := GradeContent(ContentFacts{Read: true, Verified: []string{"cdn.example"}})
+
+	if len(got.Notes) != 0 || len(got.Findings) != 0 {
+		t.Errorf("a site that pinned every third-party script was told:\n%s", contentText(got))
+	}
+}
+
+// A form posting to another origin over TLS is named and never graded.
+//
+// Ordinary and often correct — a payment processor looks exactly like this. It
+// is named because a visitor sees this page's address while typing into
+// somebody else's form, and because the operator is the only person who can say
+// which are meant.
+func TestAFormPostingElsewhereOverTLSIsNamedAndNotGraded(t *testing.T) {
+	got := GradeContent(ContentFacts{Read: true, OffOrigin: []string{"payments.example"}})
+
+	if len(got.Findings) != 0 {
+		t.Errorf("graded %v. The connection is encrypted and no document calls this an error.",
+			findingIDs(got))
+	}
+	text := contentText(got)
+	if !strings.Contains(text, "payments.example") {
+		t.Errorf("the origin is not named:\n%s", text)
+	}
+	if !strings.Contains(text, "not the same thing as a form submitting in the clear") {
+		t.Errorf("the report does not distinguish this from the graded case, so a reader sees "+
+			"two form sentences and cannot tell which is the fault:\n%s", text)
+	}
+}
+
+// The graded plaintext form and the reported off-origin form stay apart.
+func TestThePlaintextFormAndTheOffOriginFormAreDifferentThings(t *testing.T) {
+	got := GradeContent(ContentFacts{
+		Read:      true,
+		Forms:     []string{"insecure.example"},
+		OffOrigin: []string{"payments.example"},
+	})
+
+	if !hasFinding(got, "content.form-posts-in-the-clear") {
+		t.Fatalf("the plaintext form was not graded: %v", findingIDs(got))
+	}
+	for _, f := range got.Findings {
+		if strings.Contains(f.Rationale, "payments.example") {
+			t.Errorf("%s grades a form that posts over TLS", f.RuleID)
+		}
+	}
+	if !strings.Contains(contentText(got), "payments.example") {
+		t.Errorf("the off-origin form was lost:\n%s", contentText(got))
+	}
+}
+
+// The sentences read as English at one and at many.
+func TestTheOriginCountReadsAsEnglish(t *testing.T) {
+	one := contentText(GradeContent(ContentFacts{Read: true, Unverified: []string{"a.example"}}))
+	if !strings.Contains(one, "another origin") {
+		t.Errorf("one origin is described as %q", one)
+	}
+
+	two := contentText(GradeContent(ContentFacts{
+		Read: true, Unverified: []string{"a.example", "b.example"},
+	}))
+	if !strings.Contains(two, "other origins") {
+		t.Errorf("two origins are described as %q", two)
+	}
+}

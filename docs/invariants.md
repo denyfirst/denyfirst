@@ -346,6 +346,13 @@ about what may be read. So:
   before it is kept, and userinfo is dropped before anything else, because
   `http://user:token@host/` in somebody's markup is a credential and a report
   carrying it would publish it to everyone the report is shown to.
+- **Only what a rule reads is kept at all.** A reference is recorded when it is
+  over plaintext, or when its host is not the page's own. A page loading its
+  own scripts from its own host produces nothing, because nothing asks about
+  that — and a field kept without a rule that reads it is a field to remove
+  rather than keep for later, which is the same rule the header allow list
+  above rests on. Origin means host: `static.example.com` is not
+  `www.example.com`, because subresource integrity and CORS are not either.
 - **Only the final HTML response.** Not a redirect's body, which no visitor
   sees. Not a response that did not say it was HTML: browsers sniff and this
   does not, so a site serving markup without declaring it gets no markup
@@ -473,6 +480,20 @@ nothing else to look for.
 `TestAClosingTagInCapitalsStillCloses`,
 `TestALongPageIsTruncatedAndSaysSo`,
 `TestTheZeroValueIsNotACleanPage`,
+`TestAPageLoadingItsOwnThingsRecordsNothing`,
+`TestAnotherOriginIsRecorded`,
+`TestASiblingSubdomainIsAnotherOrigin`,
+`TestThePagesOwnHostIsFolded`,
+`TestWithNoHostNothingIsThirdParty`,
+`TestIntegrityIsReadWhereABrowserReadsIt`,
+`TestAnEmptyIntegrityIsNotIntegrity`,
+`TestIntegrityIsNotRecordedWhereItDoesNothing`,
+`TestASchemeRelativeAddressIsReadAsThePagesOwnScheme`,
+`TestNothingOverTLSIsBlocked`,
+`TestAReferenceCanBeBothPlaintextAndAnotherOrigin`,
+`TestWhatThePagePullsInFromElsewhereReachesTheReport`,
+`TestAPageLoadingItsOwnThingsIsToldNothing`,
+`TestPlaintextIsAnsweredBeforeIntegrity`,
 `TestTheUserAgentIdentifiesTheToolAndWhereToReadAboutIt`,
 `TestAnEmptyUserAgentIsNotAvailable`, `TestABareHostnameIsRequired`,
 `TestTheDefaultDiallerRefusesPrivateAddresses`,
