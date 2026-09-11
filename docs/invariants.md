@@ -328,9 +328,58 @@ as a browser resolves them. **No path is constructed by this program.** There
 is no probing of `/admin`, no guessing under `/.well-known`, and no second
 guess of any kind: this reads what a server volunteers to every visitor.
 
-**The body is never read.** Headers are taken and the body is closed unread,
-so a large or slow response costs a header's worth of traffic. It is also the
-part the scanned server pays for.
+**The body is read only where a caller asks, and nothing of it is kept.**
+
+This said *the body is never read* until 2026-09-11, and the sentence that
+replaced it is narrower on purpose. What was given up and what was gained are
+both worth writing down, because the argument for never reading it was good.
+
+The argument was never bandwidth. It was that a body holds things a report must
+not carry — a key in a comment, a token in a script, a name in a template — and
+a report is a thing people paste into issue trackers. What changed is that the
+same argument, taken seriously, is a rule about *what may be kept* rather than
+about what may be read. So:
+
+- **Nothing is stored.** `markup.Facts` has nowhere to put markup, in the way
+  `webprobe.Cookie` has nowhere to put a value. What survives is a handful of
+  booleans and a bounded list of host names. A URL is reduced to its host
+  before it is kept, and userinfo is dropped before anything else, because
+  `http://user:token@host/` in somebody's markup is a credential and a report
+  carrying it would publish it to everyone the report is shown to.
+- **Only the final HTML response.** Not a redirect's body, which no visitor
+  sees. Not a response that did not say it was HTML: browsers sniff and this
+  does not, so a site serving markup without declaring it gets no markup
+  findings and the report says the page was not read — which is true, and is
+  the safe direction for it to be wrong in (R4).
+- **Bounded and streamed.** One megabyte. Truncated rather than refused, which
+  is the opposite of what the revocation and transparency checks do with an
+  oversized answer, and the difference is what an empty result would mean.
+  There, refusing is safe because a truncated list reads as a clean
+  certificate. Here the page is the evidence, so refusing a large page would
+  produce a clean report for exactly the sites most likely to have something.
+  Past the bound `Truncated` is set and the report says nothing below it was
+  seen.
+- **Still no path is constructed.** This reads the body of the address already
+  fetched. It does not follow a link, retrieve a script, or ask for anything
+  the response mentioned — so the paragraph above this one is untouched.
+- **Nothing is executed.** A scanner, not a browser and not a parser: there is
+  no HTML parser in the standard library and this project has no third-party
+  dependencies, so what exists is a tag scanner. It follows that it sees less
+  than a browser, and the limits say so rather than the report implying
+  otherwise. Markup a script assembles at run time is invisible here.
+- **Off unless asked, and refused outright in a demonstration build.**
+  `webprobe.Prober.ReadMarkup` is false in the zero value, so every caller
+  that has not been changed keeps the old behaviour. `demo.Enabled` is a
+  constant and is tested first, so the demonstration's branch is compiled out
+  and its promise is true by construction rather than by a field being left
+  unset. (The package is still linked; what is eliminated is the call.)
+
+**Which deployment reached a log reader is now part of the promise.** The user
+agent names `https://denyfirst.dev/web/method` from every installation, so that
+page describes both: the demonstration reads no body, and an installation
+somebody runs themselves may have read the page. A flat sentence there would
+have been true of one and false of the one in the reader's log, which is worse
+than no page — it is a scanning notice that misdescribes the scan.
 
 **Only headers this check reads are kept.** An allow list, not a deny list.
 A response carries whatever the server chose to send — internal host names,
@@ -392,7 +441,8 @@ reader: somebody who arrives from a log line did not choose to be here and
 wants one thing, which is what reached their server and the fact that there is
 nothing else to look for.
 
-*Enforced in:* `internal/webprobe`
+*Enforced in:* `internal/webprobe`, `internal/markup`,
+`internal/webprobe.Prober.pageFacts`, `internal/webscan.Scanner.Scan`
 *Guarded by:* `TestOnlyTheRootIsRequestedUnlessTheServerSaysOtherwise`,
 `TestARedirectChainIsRecordedInOrder`,
 `TestTheRedirectLimitStopsTheChainAndSaysSo`,
@@ -403,7 +453,26 @@ nothing else to look for.
 `TestOnlyTheGradedHeadersAreRecorded`, `TestACookieValueIsNeverRecorded`,
 `TestCookieAttributesAreRead`, `TestTheScopeAttributesAreRead`,
 `TestTheScopeAttributesDidNotAddSomewhereForAValue`,
-`TestTheRecommendedHeadersAreReportedAndNotGraded`, `TestTheBodyIsNotRead`,
+`TestTheRecommendedHeadersAreReportedAndNotGraded`,
+`TestTheBodyIsNotReadByDefault`,
+`TestTheBodyIsNotReadUnlessItIsAskedFor`,
+`TestThePageIsReadWhenItIsAskedFor`,
+`TestSomethingThatIsNotAPageIsNotRead`,
+`TestTheMediaTypeIsReadWithoutItsParameters`,
+`TestARedirectsBodyIsNotRead`,
+`TestAThreeHundredWithNowhereToGoIsAPage`,
+`TestALongPageIsBoundedAndSaysSo`,
+`TestTheDemonstrationReadsNoBodyEvenWhenAsked`,
+`TestTheDemonstrationIgnoresTheFieldOnAnOrdinaryPage`,
+`TestTheScannerDecidesWhetherThePageIsRead`,
+`TestNoMarkupReachesTheResult`,
+`TestNothingButTheHostSurvives`,
+`TestOnlyAnExplicitPlaintextAddressCounts`,
+`TestACommentedOutReferenceIsNotOne`,
+`TestWhatIsInsideAScriptIsNotMarkup`,
+`TestAClosingTagInCapitalsStillCloses`,
+`TestALongPageIsTruncatedAndSaysSo`,
+`TestTheZeroValueIsNotACleanPage`,
 `TestTheUserAgentIdentifiesTheToolAndWhereToReadAboutIt`,
 `TestAnEmptyUserAgentIsNotAvailable`, `TestABareHostnameIsRequired`,
 `TestTheDefaultDiallerRefusesPrivateAddresses`,

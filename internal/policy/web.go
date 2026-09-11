@@ -389,17 +389,38 @@ func WebStandingLimits() []StandingLimit {
 	return []StandingLimit{
 		{
 			ID:    "web-root-only",
-			Title: "Only the root was asked, and only its headers were read",
-			Text: "One request was made, to the root of the site, and only the response headers were " +
-				"read. Another page on this site may answer with different headers, and nothing here " +
-				"describes the content of any page.",
+			Title: "Only the root was asked",
+			Text: "One request was made, to the root of the site, and no other address on it was " +
+				"asked for. Another page may answer with different headers and load different " +
+				"things, and nothing here describes any page but this one.",
+
+			// This said "and only its headers were read" until 2026-09-11, and
+			// that half had to go rather than be reworded.
+			//
+			// A standing limit is the same sentence on every report and on the
+			// method page, and whether the body is read now differs by
+			// deployment: the demonstration reads none, the command line reads
+			// the page. One sentence covering both would have been false for
+			// one of them, and the false one would have been the reassuring
+			// one. So the claim that is always true stays here, and what this
+			// particular scan read is said by the report that read it —
+			// GradeHeaders names the consequence where there is one.
 		},
 		{
 			ID:    "web-no-browser",
 			Title: "No browser ran here",
-			Text: "This reads what the server declares. What a page actually loads, what a script on " +
-				"it does, and whether a declared policy is enforced in practice are visible only to a " +
-				"browser executing the page, and no browser executed anything here.",
+			Text: "Nothing was executed. Where the page was read, what it says it loads was read out " +
+				"of the markup — so anything a script fetches once it runs, and anything assembled " +
+				"after the page arrives, was not seen. Whether a declared policy is enforced in " +
+				"practice is visible only to a browser, and no browser ran here.",
+
+			// "What a page actually loads ... is visible only to a browser"
+			// until 2026-09-11, which stopped being true the day the markup
+			// was read: what a page *declares* it loads is now read, and what
+			// a script fetches at run time still is not. A limit that claims
+			// to see less than the check does is not the safe direction for
+			// it to be wrong in — it is a report disowning a finding it just
+			// made, and a reader who notices stops trusting the section.
 		},
 		{
 			ID:    "web-one-moment",

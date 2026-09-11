@@ -371,3 +371,33 @@ func TestReplacingTheWebScannerCannotDropTheTrustStore(t *testing.T) {
 		t.Error("a replacement that carried its own trust store had it overwritten")
 	}
 }
+
+// The service reads pages only where it required proof of control.
+//
+// The composition, not the component. Every guard in webscan can be correct
+// while this constructor hands it the wrong switch, and that exact shape was a
+// real hole here once: denyfirstd passed a verification scope to the TLS
+// scanner and never touched the web one, so the same service refused an
+// unproven host on one path and scanned it on another. A sabotage turning this
+// on unconditionally escaped every test in this package on 2026-09-11.
+func TestTheServiceReadsPagesOnlyWhereItRequiredProof(t *testing.T) {
+	scope := &verify.Scope{Secret: []byte("a deployment secret")}
+
+	withProof := New(&scan.Scanner{Verify: scope}, Limits{}, nil)
+	if !withProof.web.ReadMarkup {
+		t.Error("a service that requires proof of control does not read the page. The page " +
+			"belongs to whoever asked about it, and a meta Content-Security-Policy is invisible " +
+			"without reading it.")
+	}
+	if withProof.web.Verify != scope {
+		t.Error("the boundary did not reach the web check, which is the hole this constructor " +
+			"exists to close")
+	}
+
+	withoutProof := New(&scan.Scanner{}, Limits{}, nil)
+	if withoutProof.web.ReadMarkup {
+		t.Error("a service configured with no scope reads the pages of names nobody proved " +
+			"anything about. N9 says a service must not scan those at all; until somebody fixes " +
+			"that, it does not also read their pages.")
+	}
+}

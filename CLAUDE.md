@@ -200,7 +200,8 @@ in it is there because it has already gone wrong once.
 | | |
 |---|---|
 | `internal/tlsprobe`, `internal/certinfo` | the TLS measurement |
-| `internal/webprobe` | the HTTP measurement: one `GET` of `/`, headers only (N7) |
+| `internal/webprobe` | the HTTP measurement: one `GET` of `/`, and its page (N7) |
+| `internal/markup` | reads a page; keeps hosts and booleans, never markup (N7) |
 | `internal/policy` | every rule, versioned, each citing the document it rests on |
 | `internal/scan`, `internal/webscan`, `internal/mailscan` | a check: measure, then grade |
 | `internal/spf` | walks a sender policy and counts what evaluating it costs |

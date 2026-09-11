@@ -22,6 +22,7 @@ import (
 
 	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/exclusion"
+	"github.com/denyfirst/denyfirst/internal/markup"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/verify"
 	"github.com/denyfirst/denyfirst/internal/webprobe"
@@ -50,6 +51,24 @@ type Scanner struct {
 	// it, and so a service that resolved its own store can hand over the store
 	// it resolved.
 	Roots *x509.CertPool
+
+	// ReadMarkup asks for the page to be read, not only its headers.
+	//
+	// False by default, which is the behaviour this check had for its whole
+	// life and the safe thing for an unset field to mean. What a true here buys
+	// is the things a header cannot show: a Content-Security-Policy declared
+	// with <meta http-equiv>, which a browser applies and a header check
+	// reported as absent.
+	//
+	// Nothing of the page is kept. What comes back is internal/markup.Facts —
+	// hosts and booleans — and there is no field between here and a report that
+	// could hold markup. That is the condition reading a body was allowed on at
+	// all, and docs/scope.md has the argument.
+	//
+	// A demonstration build ignores this. The refusal is in webprobe, at the
+	// response, so it holds for every path rather than for the ones that
+	// remembered.
+	ReadMarkup bool
 
 	// Now supplies the current time, so a duration is reproducible in tests.
 	// Nil means time.Now.
@@ -160,6 +179,26 @@ func (s *Scanner) Scan(ctx context.Context, host string) (*Result, error) {
 	if p.Roots == nil {
 		p.Roots = s.Roots
 	}
+
+	// Whether the page itself is read, decided here with the three guards
+	// above rather than by whoever built the Prober.
+	//
+	// The same offer-by-deployment shape the log search uses, and the reasoning
+	// differs from it in one way worth writing down. The log search is a switch
+	// on the command line because the question names a domain that may be
+	// somebody else's, and asking it discloses to a third party that somebody
+	// is looking. Reading a page discloses nothing to anybody: it is one more
+	// GET of an address this scan has already fetched the headers of, and the
+	// server served the same bytes to every visitor it had today. So there is
+	// no switch to offer and none is offered.
+	//
+	// What decides it instead is what a report may carry. On the command line
+	// the report goes to the person who ran it, on their own machine. On a
+	// deployment that required proof of control the page belongs to whoever
+	// asked. A demonstration build reads no body at all, and that is enforced
+	// in webprobe rather than here, so the promise on /web/method holds for
+	// every path into the prober rather than for this one.
+	p.ReadMarkup = s.ReadMarkup
 	prober = &p
 
 	// And again, for every host a redirect names.
@@ -268,11 +307,12 @@ func Grade(observed *webprobe.Report) *Result {
 		answered(observed.Secure))
 	cookies := policy.GradeCookies(cookieFacts(observed))
 	headers := policy.GradeHeaders(headerFacts(observed.Secure))
+	content := policy.GradeContent(contentFacts(observed.Secure))
 
 	// Worst case across the checks, for the reason it is worst case within
 	// one: a site reached in the clear is reached in the clear however sound
 	// its policy declaration is.
-	for _, r := range []policy.WebResult{reach, hsts, cookies, headers} {
+	for _, r := range []policy.WebResult{reach, hsts, cookies, headers, content} {
 		out.Findings = append(out.Findings, r.Findings...)
 		out.Notes = append(out.Notes, r.Notes...)
 		out.Verdict = policy.Worst(out.Verdict, r.Verdict)
@@ -469,6 +509,16 @@ func headerFacts(c *webprobe.Chain) policy.HeaderFacts {
 		}
 		out.ACAO = first(h.Headers["Access-Control-Allow-Origin"])
 		out.ACAC = first(h.Headers["Access-Control-Allow-Credentials"])
+
+		// The markup of the same response, not of some other hop. A policy
+		// declared in a page applies to that page, so reading one response's
+		// headers beside another's markup would be assembling a site that does
+		// not exist out of two that do.
+		if h.Markup != nil {
+			out.MarkupRead = h.Markup.Read
+			out.MetaCSP = h.Markup.MetaCSP
+			out.MetaCSPReportOnly = h.Markup.MetaCSPReportOnly
+		}
 		return out
 	}
 
@@ -484,4 +534,50 @@ func first(values []string) string {
 		return ""
 	}
 	return values[0]
+}
+
+// contentFacts reduces the markup of the response a visitor lands on to what
+// the content rules read.
+//
+// The same hop headerFacts reads, and it has to be: a policy declared in a page
+// applies to that page, and what a page loads is a fact about that page.
+// Reading one response's headers beside another's markup would assemble a site
+// that does not exist out of two that do.
+//
+// The secure chain only. Mixed content is a question about a page served over
+// TLS — on a plaintext page everything is plaintext, and reporting it would be
+// telling somebody their http page loads things over http.
+func contentFacts(c *webprobe.Chain) policy.ContentFacts {
+	var out policy.ContentFacts
+	if c == nil {
+		return out
+	}
+
+	for i := len(c.Hops) - 1; i >= 0; i-- {
+		h := c.Hops[i]
+		if !h.TLS || h.Err != "" {
+			continue
+		}
+		if h.Markup == nil {
+			return out
+		}
+
+		out.Read = h.Markup.Read
+		out.Truncated = h.Markup.Truncated
+		out.MoreThanListed = h.Markup.MoreThanListed
+
+		for _, r := range h.Markup.Plaintext {
+			switch {
+			case r.Kind == markup.KindForm:
+				out.Forms = append(out.Forms, r.Host)
+			case r.Blocking:
+				out.Blocking = append(out.Blocking, r.Host)
+			default:
+				out.Passive = append(out.Passive, r.Host)
+			}
+		}
+		return out
+	}
+
+	return out
 }

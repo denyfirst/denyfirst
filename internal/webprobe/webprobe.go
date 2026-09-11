@@ -32,9 +32,22 @@
 //     probing of /admin, no guessing under /.well-known, and no second guess
 //     of any kind: this reads what the server volunteers to everybody.
 //
-//   - The body is never read. Headers are taken and the body is closed
-//     unread, so a large or slow response costs a header's worth of traffic
-//     and nothing more.
+//   - The body is read only where a caller asks for it, and nothing of it is
+//     kept. Until 2026-09-11 this said "the body is never read", and that
+//     sentence is what the change has to be measured against. What is read now
+//     is the final HTML response, to a bound, streamed, and only where
+//     ReadMarkup is set — never in a demonstration build, where the call is
+//     compiled out. What survives is internal/markup.Facts: hosts and
+//     booleans. There is no field anywhere on the way out that could hold
+//     markup, which is the same arrangement that keeps a cookie's value out of
+//     a report.
+//
+//     The reason for reading it is that mixed content, a form posting in the
+//     clear, and a policy declared in a meta tag are ordinary things an
+//     organisation has and cannot see from headers. The reason it was refused
+//     for so long is that a body holds keys, tokens and names, and a report is
+//     a thing people paste into issue trackers — so the rule that replaced the
+//     old one is about what may be kept rather than about what may be read.
 //
 //   - Only headers this check grades are kept. A header outside the list in
 //     recorded() is not merely ignored; it is never held, so it cannot reach
@@ -63,6 +76,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/denyfirst/internal/markup"
 	"github.com/denyfirst/denyfirst/internal/safedial"
 	"github.com/denyfirst/denyfirst/internal/truststore"
 )
@@ -144,6 +159,18 @@ type Prober struct {
 	// empty string, because a probe that hides is a probe an administrator
 	// cannot make a decision about.
 	UserAgent string
+
+	// ReadMarkup asks for the body of a final HTML response to be read, so
+	// that what the page loads can be reported alongside what the headers say.
+	//
+	// Off by default, and the default is the property rather than an oversight:
+	// every caller that has not been changed keeps the behaviour this package
+	// promised for its whole life, and a caller that wants the bytes has to say
+	// so. What comes back is internal/markup.Facts — hosts and booleans. No
+	// markup is stored at any point, here or there.
+	//
+	// A demonstration build ignores this field entirely. See pageFacts(), and N7.
+	ReadMarkup bool
 }
 
 // DefaultUserAgent is what this client says it is when nothing else is set.
@@ -292,6 +319,14 @@ type Hop struct {
 
 	// Cookies are the Set-Cookie headers of this response, without values.
 	Cookies []Cookie `json:"cookies,omitempty"`
+
+	// Markup is what reading the page established, where the page was read.
+	//
+	// Nil means no body was read — a deployment that does not read them, a
+	// redirect, or a response that was not HTML. Nil and "a page with nothing
+	// wrong in it" are different facts and a report must not render them alike
+	// (R4), which is why this is a pointer and Facts carries Read.
+	Markup *markup.Facts `json:"markup,omitempty"`
 
 	// Err is why this hop produced no response. Non-empty means Status and
 	// Headers are unset, which is different from a response with no headers.
@@ -516,16 +551,66 @@ func (p *Prober) fetch(ctx context.Context, client *http.Client, target string) 
 		return hop
 	}
 
-	// Closed without being read. A response body is the largest thing a
-	// server can make this program carry, it is the part that costs the
-	// server bandwidth, and nothing here grades it. Closing an unread body
-	// tells the transport to drop the connection rather than drain it.
+	// Closed either way. Where the body is not read it is closed unread, which
+	// tells the transport to drop the connection rather than drain it; where it
+	// is read, it is read to a bound and closed the same way.
 	defer resp.Body.Close()
 
 	hop.Status = resp.StatusCode
 	hop.Headers = recorded(resp.Header)
 	hop.Cookies = cookies(resp.Header.Values("Set-Cookie"))
+	hop.Markup = p.pageFacts(resp)
 	return hop
+}
+
+// pageFacts reads the page, where this deployment reads pages at all.
+//
+// Three conditions, and each is a separate refusal rather than one combined
+// test, because they are refusing different things:
+//
+// A demonstration build never reads a body. demo.Enabled is a constant, so this
+// returns before anything else is considered and the compiler removes the rest
+// of the branch — the promise on /web/method is true by construction for that
+// deployment rather than true because a field was left unset. (The package is
+// still linked; what is eliminated is the call.)
+//
+// A redirect's body is not the page. A browser does not render it and nothing
+// in it was served to a visitor, so reading it would cost the server bytes for
+// a document nobody sees.
+//
+// A response that is not HTML is not markup. Scanning a PDF or a tarball for
+// tag-shaped bytes would produce findings out of a file format, and the bytes
+// would have been carried to find them.
+func (p *Prober) pageFacts(resp *http.Response) *markup.Facts {
+	if demo.Enabled || !p.ReadMarkup {
+		return nil
+	}
+	if resp.StatusCode >= 300 && resp.StatusCode <= 399 && resp.Header.Get("Location") != "" {
+		return nil
+	}
+	if !isHTML(resp.Header.Get("Content-Type")) {
+		return nil
+	}
+
+	facts := markup.Read(resp.Body)
+	return &facts
+}
+
+// isHTML reads the media type out of a Content-Type, and nothing else.
+//
+// A missing Content-Type is not HTML here. Browsers sniff; this does not, and
+// the difference is deliberate: sniffing means deciding that bytes are markup
+// because they look like markup, which is how a scanner ends up reporting
+// findings about a file that is not a page. A site serving HTML without saying
+// so gets no markup findings and the report says the body was not read, which
+// is true and is the safe direction for it to be wrong in (R4).
+func isHTML(contentType string) bool {
+	mediaType, _, _ := strings.Cut(contentType, ";")
+	switch strings.ToLower(strings.TrimSpace(mediaType)) {
+	case "text/html", "application/xhtml+xml":
+		return true
+	}
+	return false
 }
 
 // nextURL decides where a chain goes after one hop.
