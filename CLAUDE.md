@@ -192,6 +192,7 @@ in it is there because it has already gone wrong once.
 | `internal/challenge` | fetches the file half of that proof, and nothing else |
 | `internal/exclusion` | names no deployment scans, whoever asks (N8) |
 | `internal/safedial` | refuses private, loopback and reserved destinations |
+| `internal/truststore` | which store decides the word "trusted", for both checks (R7) |
 | `internal/httpapi` | the service; the only package that sees untrusted input |
 | `internal/web` | the pages |
 | `docs/invariants.md` | why all of the above is the way it is |

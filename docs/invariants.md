@@ -1663,6 +1663,43 @@ returned in that case is empty rather than nil, because nil would send the
 verification back to the platform — and on the machine whose store could not
 be read, that path reports chains as trusted.
 
+**And the same hole was in the other check.** `internal/certinfo` was fixed on
+2026-09-10; `internal/webprobe` set no `TLSClientConfig` at all, so every web
+chain was verified with a nil `RootCAs` — which reaches `x509.Verify` as a nil
+`Roots` and hands the question to the platform. A service that read its own
+store, refused to start without one, and passed it to the TLS scanner was
+judging half its chains against something it had never looked at.
+
+Here it is worse than a wrong grade. A certificate the deciding store cannot
+verify is a handshake that **fails**, and a failed handshake on both ports reads
+as a site that is not served over HTTPS. The report would not say "trusted" when
+it should not; it would say the server does not offer HTTPS at all.
+
+Which is why the fix carries a second half. `truststore.Resolve` answers an
+unreadable store with an **empty** pool — safe, and unusable — so closing the
+first defect would have opened a worse one: every chain failing, with nothing
+saying why. `webprobe.Report.TrustStoreUnreadable` carries the fact,
+`webscan.Grade` turns it into an unsettled note, and the sentence is
+`policy.TrustStoreUnreadable()` because both checks say it and two copies of a
+claim about whose store decided the word "trusted" are two copies that drift
+(R16).
+
+**The rule itself is `internal/truststore`, and that is the point of the
+package.** It holds one decision — nil means the system store, loaded
+explicitly; a failure means an empty pool and never nil — and it exists because
+that decision was about to be written a second time. Each check keeps a
+`resolveRoots` variable pointing at it, so a test can make the failure happen on
+the machine no test runs on, and neither keeps a copy of the rule.
+
+**Setting a `tls.Config` moves responsibility for everything it does not say.**
+What is deliberately absent is asserted rather than assumed: no
+`InsecureSkipVerify`; no `ServerName`, which would be checked against the
+certificate of every host a redirect moved on to; no `ClientSessionCache`, which
+is shared across hosts and would resume somebody else's session; and no
+`MinVersion` or `MaxVersion`, because naming one would move a *measurement* — a
+host reachable only over an older protocol would begin to be reported as not
+reachable at all.
+
 **A check that cannot run on a platform is a check that does not run there, and
 this rule is about that too.** The CAA lookup said *not checked* on every
 Windows machine from the day it was written until 2026-09-11. Nothing was
@@ -1701,8 +1738,10 @@ and needs no cross toolchain.
 
 *Enforced in:* `internal/certinfo.chainComplete`,
 `internal/certinfo.resolveRoots`, `internal/scan.Scanner.Roots`,
-`cmd/denyfirstd`, `internal/dnsclient` (`resolver_unix.go`,
-`resolver_windows.go`, `Client.ask`), `.github/workflows/ci.yml`
+`cmd/denyfirstd`, `internal/truststore`, `internal/webprobe.Prober.Roots`,
+`internal/webscan.Scanner.Roots`, `internal/policy.TrustStoreUnreadable`,
+`internal/dnsclient` (`resolver_unix.go`, `resolver_windows.go`, `Client.ask`),
+`.github/workflows/ci.yml`
 *Guarded by:* `TestMissingIssuerIsAnIncompleteChain`,
 `TestPresentIssuerIsNotAnIncompleteChain`,
 `TestTheRootsPassedInAreTheOnesThatDecide`,
@@ -1728,7 +1767,20 @@ and needs no cross toolchain.
 `TestTheResolverListIsBounded`,
 `TestTheResolverFlagReachesTheScanner`,
 `TestNoResolverFlagLeavesTheMachinesOwnConfiguration`,
-`TestEveryReleasedPlatformIsVetted`
+`TestEveryReleasedPlatformIsVetted`,
+`TestAnUnreadableStoreResolvesToAnEmptyPoolRatherThanNil`,
+`TestTheRootsPassedInAreWhatVerifiesAWebChain`,
+`TestAStoreWithoutTheAuthorityRefusesTheChain`,
+`TestAnUnreadableStoreIsCarriedIntoTheReport`,
+`TestAReadableStoreIsNotReportedAsUnreadable`,
+`TestTheClientCarriesNoWeakeningTLSSetting`,
+`TestTheScannersTrustStoreDecidesTheHandshake`,
+`TestAProberWithItsOwnTrustStoreKeepsIt`,
+`TestAnUnreadableStoreIsSaidInWordsRatherThanAsAnUnreachableSite`,
+`TestAReadableStoreAddsNoNote`,
+`TestOneSentenceSaysTheStoreCouldNotBeRead`,
+`TestTheConstructorGivesEveryCheckTheSameTrustStore`,
+`TestReplacingTheWebScannerCannotDropTheTrustStore`
 
 ### R8 — Rules that change on a schedule are written as schedules
 

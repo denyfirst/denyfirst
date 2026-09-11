@@ -45,6 +45,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/denyfirst/internal/truststore"
 )
 
 // ErrNoChain is returned when there is nothing to describe.
@@ -516,9 +517,9 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time, roots *x
 		// that this machine could not read its own store (R4). The chain is
 		// still described — names, dates, key, algorithms are all readable
 		// without a root — and the trust question is left open in words.
-		report.unsettled("The trust store on this machine could not be read, so whether this chain " +
-			"reaches a trusted root was not established. That is a fact about the machine running " +
-			"this scan and not about the server it looked at.")
+		// The sentence is policy's, because the web check says the same thing
+		// about the same store and two copies of it are two that drift (R16).
+		report.Notes = append(report.Notes, policy.TrustStoreUnreadable())
 	}
 
 	// The name is checked separately below so that a wrong name and an
@@ -1239,36 +1240,10 @@ func (r *Report) standing(l policy.StandingLimit) { r.Notes = append(r.Notes, l.
 // resolveRoots turns a caller's store into one Verify will use on every
 // platform.
 //
-// A nil pool reaching x509.VerifyOptions is the defect this exists to close:
-// Verify reads it as "decide for yourself", and on Windows and macOS deciding
-// means calling the platform verifier, which consults neither the pool this
-// program checked at startup nor SSL_CERT_FILE. Loading the system pool here
-// and passing it explicitly keeps one store in play everywhere.
-//
-// An error is returned rather than swallowed, and the caller says so in words
-// rather than reporting the chain as untrusted: a store that could not be read
-// is a fact about this machine, not about the server (R4).
-// systemCertPool is a variable so that the failure branch below can be
-// reached by a test.
-//
-// It could not be. The branch matters most on a machine whose store cannot be
-// read, which is the machine no test runs on — and a test that skips itself
-// everywhere is the same silence A7 is about, arriving in a test file instead
-// of in a counter.
-var systemCertPool = x509.SystemCertPool
-
-func resolveRoots(roots *x509.CertPool) (*x509.CertPool, error) {
-	if roots != nil {
-		return roots, nil
-	}
-
-	pool, err := systemCertPool()
-	if err != nil {
-		// An empty pool rather than nil. Nil would send Verify back to the
-		// platform verifier, which is the behaviour being removed — and it
-		// would report a trusted chain on the two platforms where the store
-		// could not be read, which is the worst of the available answers.
-		return x509.NewCertPool(), err
-	}
-	return pool, nil
-}
+// The rule is internal/truststore's, because the web check asks the same
+// question of the same kind of nil and a rule about which store decides the
+// word "trusted" must not exist in two places. This is a variable so that a
+// test can make it fail: the note below matters most on a machine whose store
+// cannot be read, which is the machine no test runs on, and a test that skips
+// itself everywhere is the same silence A7 is about arriving in a test file.
+var resolveRoots = truststore.Resolve

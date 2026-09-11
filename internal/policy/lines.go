@@ -183,3 +183,26 @@ func DescribePostQuantum(f PostQuantumFacts) []Note {
 				"is what the decision is about.", f.Group, why))}
 	}
 }
+
+// TrustStoreUnreadable is what a report says when this machine's certificate
+// store could not be read.
+//
+// One sentence for both checks. It was written inline in internal/certinfo
+// until 2026-09-11, which was fine while one check verified a chain; the web
+// check verifies one too, and a claim about whose store decided the word
+// "trusted" existing in two places is two claims that drift (R16).
+//
+// Unsettled rather than a finding, and the distinction is the whole point. The
+// chain was not judged untrusted — nothing judged it at all, because the store
+// that would have done the judging could not be read. Saying "untrusted" here
+// would be a finding about somebody else's certificate produced by a local
+// failure, which is what R4 forbids.
+//
+// It names the machine running the scan explicitly, because a reader holding a
+// report has no other way to tell a fault on their server from a fault on the
+// one that looked at it.
+func TrustStoreUnreadable() Note {
+	return Unsettled("The trust store on this machine could not be read, so whether the " +
+		"certificates presented reach a trusted root was not established. That is a fact about " +
+		"the machine running this scan and not about the server it looked at.")
+}

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -323,5 +324,50 @@ func TestTheVerificationRefusalStatesTheRuleWithoutRepeatingTheTarget(t *testing
 	}
 	if strings.Contains(strings.ToLower(body), "could not be reached") {
 		t.Errorf("the refusal describes a network fault for a decision made here: %s", body)
+	}
+}
+
+// The trust store travels with the boundary, and for the same reason.
+//
+// A service that read its own store, checked it was not empty and refused to
+// start without one handed it to the TLS scanner; the web check was built
+// without it and judged its chains against whatever the platform picks (R7).
+// One kind of omission, a second field.
+func TestTheConstructorGivesEveryCheckTheSameTrustStore(t *testing.T) {
+	pool := x509.NewCertPool()
+
+	s := New(&scan.Scanner{Roots: pool}, Limits{}, nil)
+	if s.web.Roots != pool {
+		t.Error("the web check was built without the trust store the caller configured, so a " +
+			"service that resolved one judges half its chains against something else")
+	}
+
+	// And a caller that configured none gets none, so nil still means "load the
+	// system store explicitly" rather than a pool this constructor invented.
+	if plain := New(&scan.Scanner{}, Limits{}, nil); plain.web.Roots != nil {
+		t.Error("a caller that configured no trust store got one anyway")
+	}
+}
+
+// And the door tests use cannot take it away either.
+func TestReplacingTheWebScannerCannotDropTheTrustStore(t *testing.T) {
+	pool := x509.NewCertPool()
+	s := New(&scan.Scanner{Roots: pool}, Limits{}, nil)
+
+	// What every test that needs a reachable server hands in: a prober, and no
+	// store.
+	replacement := &webscan.Scanner{Prober: &webprobe.Prober{}}
+	s.UseWebScanner(replacement)
+
+	if replacement.Roots != pool {
+		t.Error("replacing the web scanner dropped the trust store the server was built with")
+	}
+
+	// A replacement that brought its own keeps it: the caller said something.
+	own := x509.NewCertPool()
+	carrying := &webscan.Scanner{Roots: own}
+	s.UseWebScanner(carrying)
+	if carrying.Roots != own {
+		t.Error("a replacement that carried its own trust store had it overwritten")
 	}
 }
