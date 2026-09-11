@@ -445,7 +445,7 @@ func TestTheReportPointsAtTheLimitsItDoesNotPrint(t *testing.T) {
 	for _, want := range []string{
 		"Limits of this method",
 		fmt.Sprintf("%d apply to every scan", len(standing)),
-		"denyfirst-scan -limits",
+		"porch-scan -limits",
 		tlsMethodPage,
 	} {
 		if !strings.Contains(text, want) {

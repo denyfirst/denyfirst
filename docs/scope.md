@@ -39,8 +39,8 @@ two is where a boundary would be lost.
 | | who runs it | who chooses the target | what stops it |
 |---|---|---|---|
 | **the demonstration** — denyfirst.dev | this project | a stranger | a list compiled into the binary (N6) |
-| **a self-hosted service** — `denyfirstd` | an organisation | anyone who can reach it | **nothing today** |
-| **the command line** — `denyfirst-scan` | one person | that person | nothing, by design |
+| **a self-hosted service** — `porchd` | an organisation | anyone who can reach it | **nothing today** |
+| **the command line** — `porch-scan` | one person | that person | nothing, by design |
 
 The command line needs nothing. Whoever runs it already has the machine, the
 scan leaves from their own address, and nobody else can reach it. A default
@@ -51,7 +51,7 @@ The demonstration is settled. The list is compiled in, the gate is the build
 tag rather than the length of the list, and a binary says which hosts it will
 connect to so that a deploy can read it rather than trust a filename.
 
-**The middle row is the open one.** A `denyfirstd` built without the tag has no
+**The middle row is the open one.** A `porchd` built without the tag has no
 restriction at all. It listens on loopback by default, which means an
 accidental start is not immediately public — but a default is a mitigation, not
 a boundary. An organisation that binds it to an interface has rebuilt, inside
@@ -70,8 +70,8 @@ SSRF into the scanner reaches for free.
 **A deployment scans only estates it has proven control of.**
 
 Proof is a challenge the operator satisfies once per domain: a DNS `TXT`
-record at `_denyfirst-challenge.<domain>`, or a file at
-`/.well-known/denyfirst-challenge` for teams without DNS access.
+record at `_porch-challenge.<domain>`, or a file at
+`/.well-known/porch-challenge` for teams without DNS access.
 
 Architecturally this is a sibling of `internal/demo`: the same boundary, asked
 in the same place, from a different source of authority — one compiled in, one
@@ -81,8 +81,8 @@ established at run time. Five properties decide whether it works.
 
 | | default | why |
 |---|---|---|
-| `denyfirst-scan`, in a terminal | off | whoever runs it already has the machine |
-| `denyfirstd`, a service | **on** | anything anyone can reach must not scan arbitrary hosts |
+| `porch-scan`, in a terminal | off | whoever runs it already has the machine |
+| `porchd`, a service | **on** | anything anyone can reach must not scan arbitrary hosts |
 
 A protection that must be switched on is one that is eventually forgotten,
 which is the same argument `AllowAnyPort` and `safedial` already make.
@@ -279,7 +279,7 @@ so only the looking is disclosed. That reason survives a change of provider. A
 reason about the provider being a security company would not, and is not the
 one relied on here (N12).
 
-**It is visible.** `_denyfirst-challenge.example.com` sits in public DNS and
+**It is visible.** `_porch-challenge.example.com` sits in public DNS and
 says the organisation uses this tool. That is the ordinary cost of every
 challenge-based scheme and it is not worth hiding; it is worth naming, here
 and on the privacy page, rather than leaving it to be found.
@@ -328,14 +328,14 @@ Each is either scheduled or has a defect entry. None is silent.
 
 **A self-hosted service has no boundary at all.** The subject of this
 document; roadmap item 2. Until it lands, `docs/self-host.md` says that
-loopback is the default, and should say plainly that binding `denyfirstd` to a
+loopback is the default, and should say plainly that binding `porchd` to a
 reachable interface makes it an open scanner.
 
 **A binary says which hosts it will connect to, and a verified deployment has
-no answer yet.** `denyfirstd -version` composes its reach line from the
+no answer yet.** `porchd -version` composes its reach line from the
 compiled-in list. A deployment whose scope is established at run time has to
 say so on that line too, or the property N6 relies on for deploys becomes
-false for the new mode. `denyfirst-scan -version` prints no reach line at all,
+false for the new mode. `porch-scan -version` prints no reach line at all,
 which is its own roadmap defect.
 
 **Reading a response body is listed above as never re-scopable, and a check

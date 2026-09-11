@@ -77,7 +77,7 @@ func privateChain(t *testing.T, leaves int) (root *x509.Certificate, served []*t
 // Scanner.Roots exists because it did not, and the absence was invisible: a
 // nil Roots reaching x509.Verify means "decide for yourself", and on Windows
 // and macOS deciding means the platform verifier — a different store from the
-// one denyfirstd checks when it starts. The service satisfied itself that its
+// one porchd checks when it starts. The service satisfied itself that its
 // trust store was not empty and then judged every chain against something
 // else, on the two platforms self-hosting is most likely to run on.
 //

@@ -361,14 +361,45 @@ func TestEveryWebFindingIsUsableOnItsOwn(t *testing.T) {
 	}
 }
 
-func TestTheWebRuleSetIsNamedForItsCheck(t *testing.T) {
-	// A number on its own stops meaning one thing the moment a second check
-	// exists, which is now.
-	if !strings.HasPrefix(WebVersion, "denyfirst-web-") {
-		t.Errorf("WebVersion is %q; it has to name the check it grades", WebVersion)
+// Every rule set names the tool and the check it grades.
+//
+// A number on its own stopped meaning one thing the moment a second check
+// existed. The tool's own name is in there too, and since 2026-09-12 it is
+// "porch" rather than "denyfirst": denyfirst is the brand these rules are
+// published under, and it is going to carry more than one product. A rule set
+// named for the brand would say which company graded a report and not which
+// instrument.
+//
+// The numbers did not reset. Nothing about any rule changed, so v7 stayed v7 —
+// resetting to v1 would have told a reader the rules were new when they were
+// the same rules under a different name.
+func TestEveryRuleSetNamesTheToolAndTheCheck(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		check string
+	}{
+		{TLSVersion, "tls"},
+		{WebVersion, "web"},
+		{MailVersion, "mail"},
+	} {
+		want := "porch-" + tc.check + "-v"
+		if !strings.HasPrefix(tc.name, want) {
+			t.Errorf("%q does not begin %q, so it names neither the tool nor the check it grades",
+				tc.name, want)
+		}
+		if strings.Contains(tc.name, "denyfirst") {
+			t.Errorf("%q still names the brand. denyfirst publishes this; porch is the thing "+
+				"that graded the report.", tc.name)
+		}
 	}
-	if WebVersion == TLSVersion {
-		t.Error("the two rule sets share a name")
+
+	// And no two share a name, which is the whole reason each carries a check.
+	seen := map[string]bool{}
+	for _, name := range []string{TLSVersion, WebVersion, MailVersion} {
+		if seen[name] {
+			t.Errorf("two rule sets share the name %q", name)
+		}
+		seen[name] = true
 	}
 }
 

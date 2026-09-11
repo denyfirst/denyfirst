@@ -252,7 +252,7 @@ type scanPage struct {
 // and they are declared in internal/policy where the rules are, so that a
 // report and the page that explains it cannot disagree about which tool graded
 // it.
-const ToolName = "denyfirst"
+const ToolName = "porch"
 
 // consoleCheck is one row of the console's check list.
 //

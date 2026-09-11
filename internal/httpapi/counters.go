@@ -130,7 +130,7 @@ type Snapshot struct {
 	// month. So nothing moves, and the second check arrives beside the first
 	// rather than inside it.
 	//
-	// It also survives a rollback. cmd/denyfirstd reads this file with a
+	// It also survives a rollback. cmd/porchd reads this file with a
 	// plain json.Unmarshal, so an older binary ignores this field and reads
 	// the figures above — which still describe the TLS check, and not a total
 	// with somebody else's scans folded into it.

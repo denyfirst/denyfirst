@@ -1,6 +1,14 @@
-# denyfirst
+# porch
 
-A TLS and certificate scanner that cites its sources and keeps no records.
+A scanner that reads what a server already shows to anyone who asks, cites its
+sources for every verdict, and keeps no records.
+
+The name is the scope. A porch is the part of a building you can walk up to
+without going inside, and that is the whole of what this reads: the handshake a
+server offers, the page it serves to every visitor, and the records its domain
+publishes. It guesses at nothing, sends nothing malformed, and changes nothing.
+
+Published by **denyfirst**.
 
 Point it at a server and it opens a real handshake at every TLS version, works
 out which cipher suites the server will actually accept, and reads the
@@ -43,15 +51,15 @@ published on the site precisely because it identifies nobody.
 ### The command line
 
 ```sh
-go build ./cmd/denyfirst-scan
-./denyfirst-scan example.com
+go build ./cmd/porch-scan
+./porch-scan example.com
 ```
 
 ```
-denyfirst-scan example.com
-denyfirst-scan example.com:8443 another.example.com
-denyfirst-scan -json example.com
-denyfirst-scan -allow-private 10.0.0.5
+porch-scan example.com
+porch-scan example.com:8443 another.example.com
+porch-scan -json example.com
+porch-scan -allow-private 10.0.0.5
 ```
 
 The exit status is the worst verdict found, so it can gate a pipeline: `0`
@@ -64,22 +72,22 @@ neither, and the reasons are in [`internal/scan/scan.go`](internal/scan/scan.go)
 ### The service
 
 ```sh
-go build ./cmd/denyfirstd
-./denyfirstd -listen 127.0.0.1:8080
+go build ./cmd/porchd
+./porchd -listen 127.0.0.1:8080
 ```
 
 Then open `http://127.0.0.1:8080`. It listens on loopback by default so that
 an accidental start is not immediately public.
 
 ```sh
-./denyfirstd \
+./porchd \
   -listen :443 \
-  -tls-cert /etc/ssl/denyfirst.pem \
-  -tls-key /etc/ssl/denyfirst.key \
-  -stats-file /var/lib/denyfirst/stats.json
+  -tls-cert /etc/ssl/porch.pem \
+  -tls-key /etc/ssl/porch.key \
+  -stats-file /var/lib/porch/stats.json
 ```
 
-`denyfirstd -h` lists every limit and its default.
+`porchd -h` lists every limit and its default.
 
 ---
 
@@ -110,7 +118,7 @@ than from the image.
 ```sh
 git clone https://github.com/denyfirst/denyfirst
 cd denyfirst
-go build ./cmd/denyfirstd
+go build ./cmd/porchd
 ```
 
 There are no third-party dependencies. `go.mod` has no `require` block, so
@@ -171,8 +179,8 @@ address it inspected rather than to the name.
 ## How it is put together
 
 ```
-cmd/denyfirst-scan     the command line tool
-cmd/denyfirstd         the service
+cmd/porch-scan     the command line tool
+cmd/porchd         the service
 
 internal/safedial      a dialler that refuses non-public addresses
 internal/tlsprobe      handshakes: versions, cipher suites, the chain

@@ -170,9 +170,9 @@ func TestTheDeployProcedureIsWrittenDown(t *testing.T) {
 			"the key comes from the repository; a key shipped beside the file it vouches for establishes nothing"},
 		{"install -o root -g root -m 0755",
 			"owner and mode are set as the file is written, so there is no interval with the wrong ownership on the live path"},
-		{"denyfirstd.rollback-",
-			"a rollback carries the version it holds; denyfirstd.bak from 2026-08-18 is what the alternative looks like"},
-		{"getcap /opt/denyfirst/denyfirstd",
+		{"porchd.rollback-",
+			"a rollback carries the version it holds; porchd.bak from 2026-08-18 is what the alternative looks like"},
+		{"getcap /opt/porch/porchd",
 			"the binary must carry no file capability — the unit grants the port to one process instead"},
 		{"AmbientCapabilities",
 			"where the capability actually comes from"},
@@ -195,9 +195,9 @@ func TestTheDeployProcedureIsWrittenDown(t *testing.T) {
 
 // The service is named by the path it is at.
 //
-// `denyfirstd` is not on PATH on the server, and on 2026-09-01 the one deploy
-// instruction this repository contained was `denyfirstd -version`. It answered
-// `denyfirstd: command not found` the first time anybody followed it.
+// `porchd` is not on PATH on the server, and on 2026-09-01 the one deploy
+// instruction this repository contained was `porchd -version`. It answered
+// `porchd: command not found` the first time anybody followed it.
 //
 // This is the same defect as the release script's own example failing on
 // Windows: a document naming a command nobody had run. Prose mentioning the
@@ -217,7 +217,7 @@ func TestTheServiceIsNamedByThePathItIsAt(t *testing.T) {
 		for n, line := range strings.Split(string(body), "\n") {
 			command := strings.TrimSpace(line)
 			command = strings.TrimPrefix(command, "sudo ")
-			rest, bare := strings.CutPrefix(command, "denyfirstd")
+			rest, bare := strings.CutPrefix(command, "porchd")
 			if !bare || !strings.HasPrefix(rest, " -") {
 				continue
 			}

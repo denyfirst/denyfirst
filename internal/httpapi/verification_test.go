@@ -31,7 +31,7 @@ import (
 // the addresses a stranger can reach.
 //
 // So nothing here reaches inside a scanner. It configures a boundary the way
-// cmd/denyfirstd does, posts to the paths the mux actually registers, and asks
+// cmd/porchd does, posts to the paths the mux actually registers, and asks
 // whether anything opened a connection.
 
 // verificationSecret is a deployment secret of the length the service
@@ -83,7 +83,7 @@ func recordingDial(reached *atomic.Bool) func(context.Context, string, string) (
 	}
 }
 
-// verifyingService builds the server the way cmd/denyfirstd builds it: the
+// verifyingService builds the server the way cmd/porchd builds it: the
 // scope goes on the scanner handed to New, and nothing else is configured with
 // it.
 //
@@ -377,7 +377,7 @@ func TestReplacingTheWebScannerCannotDropTheTrustStore(t *testing.T) {
 //
 // The composition, not the component. Every guard in webscan can be correct
 // while this constructor hands it the wrong switch, and that exact shape was a
-// real hole here once: denyfirstd passed a verification scope to the TLS
+// real hole here once: porchd passed a verification scope to the TLS
 // scanner and never touched the web one, so the same service refused an
 // unproven host on one path and scanned it on another. A sabotage turning this
 // on unconditionally escaped every test in this package on 2026-09-11.

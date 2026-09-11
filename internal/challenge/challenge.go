@@ -99,7 +99,7 @@ func (f *Fetcher) FetchChallenge(ctx context.Context, host string) (string, erro
 	if err != nil {
 		return "", errors.New("challenge: the address could not be built")
 	}
-	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("User-Agent", UserAgent)
 
 	resp, err := f.client().Do(req)
 	if err != nil {
@@ -129,10 +129,10 @@ func (f *Fetcher) FetchChallenge(ctx context.Context, host string) (string, erro
 	return strings.TrimSpace(string(body)), nil
 }
 
-// userAgent identifies the request the way every other one this project makes
+// UserAgent identifies the request the way every other one this project makes
 // is identified. An operator finding it in their own access log should be able
 // to tell it from a scan.
-const userAgent = "denyfirst/1 (+https://denyfirst.dev/web/method; verification)"
+const UserAgent = "porch/1 (+https://denyfirst.dev/web/method; verification)"
 
 // dialFunc is the connection this fetcher opens with.
 //

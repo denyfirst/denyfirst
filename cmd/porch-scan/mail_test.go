@@ -71,7 +71,7 @@ func TestTheMailReportNamesTheMailRuleSet(t *testing.T) {
 // pointing at somebody else's.
 //
 // The defect this was written for shipped and was caught by hand: the mail
-// report ended with "denyfirst-scan -limits, or https://denyfirst.dev/tls/method",
+// report ended with "porch-scan -limits, or https://denyfirst.dev/tls/method",
 // which is a page about cipher suites and certificates under a report that
 // looked at neither. A URL for a page nobody has written is worse than no URL,
 // because a reader follows it.
@@ -84,7 +84,7 @@ func TestTheMailReportPointsAtNoPageItDoesNotHave(t *testing.T) {
 				"check:\n%s", wrong, text)
 		}
 	}
-	if strings.Contains(text, "denyfirst-scan -limits, or") {
+	if strings.Contains(text, "porch-scan -limits, or") {
 		t.Errorf("the report offers a page after \"or\" and there is none:\n%s", text)
 	}
 

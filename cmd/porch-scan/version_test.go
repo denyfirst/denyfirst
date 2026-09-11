@@ -34,7 +34,7 @@ func TestTheBuildScriptStampsTheVersionSymbolThisProgramDefines(t *testing.T) {
 	// Both commands are package main and both are built by that script, so
 	// both have to define the symbol it sets. Setting one that does not exist
 	// is accepted silently by the linker.
-	for _, path := range []string{"main.go", "../denyfirstd/main.go"} {
+	for _, path := range []string{"main.go", "../porchd/main.go"} {
 		body, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("reading %s: %v", path, err)

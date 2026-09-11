@@ -12,7 +12,7 @@ import (
 
 // Every path this service answers is mounted by the binary that serves it.
 //
-// cmd/denyfirstd routes the API and the pages separately, because they need
+// cmd/porchd routes the API and the pages separately, because they need
 // different security headers and one policy for both would mean the API
 // inherits permission it never needed. That separation means the mount has to
 // name each API path — and a second hand-written list is a list that falls
@@ -47,12 +47,12 @@ func TestEveryPathThisServiceAnswersIsMounted(t *testing.T) {
 		}
 	}
 
-	body, err := os.ReadFile("../../cmd/denyfirstd/main.go")
+	body, err := os.ReadFile("../../cmd/porchd/main.go")
 	if err != nil {
 		t.Fatalf("reading the binary that mounts this: %v", err)
 	}
 	if !strings.Contains(string(body), "api.Paths()") {
-		t.Error("cmd/denyfirstd no longer mounts the API from Paths(). Whatever it lists instead " +
+		t.Error("cmd/porchd no longer mounts the API from Paths(). Whatever it lists instead " +
 			"is a second list, and the last one fell behind by an entire endpoint.")
 	}
 }
@@ -125,7 +125,7 @@ func TestTheMailCheckAnswersOnItsOwnAddress(t *testing.T) {
 // because every fixture here supplies a resolver.
 //
 // So this one deliberately does not. New(&scan.Scanner{}, ...) is what
-// denyfirstd does when nobody passed -resolver, which is the ordinary case.
+// porchd does when nobody passed -resolver, which is the ordinary case.
 func TestAServiceWithNoResolverDoesNotCrashOnAMailScan(t *testing.T) {
 	s := New(&scan.Scanner{}, Limits{Burst: 1000}, nil)
 

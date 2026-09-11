@@ -64,7 +64,7 @@ import (
 // moved — but a certificate whose revocation was previously unknowable can now
 // come back insecure, and that is a verdict change on an unchanged server,
 // which is a version change.
-const TLSVersion = "denyfirst-tls-v7"
+const TLSVersion = "porch-tls-v7"
 
 // ReviewBy is when these rules should next be read against their sources.
 //

@@ -204,7 +204,7 @@ git log --oneline -1              # the commit this will release
 # here is a stop while the rule set is the one being released.
 Select-String -Path docs\policy-changes.md -Pattern 'Unreleased'
 
-git tag -s v0.2.0 -m "denyfirst v0.2.0"
+git tag -s v0.2.0 -m "porch v0.2.0"
 
 # The tag has to be new, and it has to be on the commit just read.
 #
@@ -327,7 +327,7 @@ that those exact bytes are what now answers on port 443, and nothing above
 establishes it.
 
 Until 2026-09-01 this page said *then deploy* and gave one command,
-`denyfirstd -version`. It is not on `PATH` on the machine it was written for,
+`porchd -version`. It is not on `PATH` on the machine it was written for,
 so the only instruction that existed failed on the evening it was first
 followed.
 
@@ -364,7 +364,7 @@ set -euo pipefail
 V=v0.4.0
 base=https://github.com/denyfirst/denyfirst/releases/download/${V}
 
-# The demonstration build, and not denyfirstd.
+# The demonstration build, and not porchd.
 #
 # This server connects only to hosts this project owns (N6). That property is
 # compiled in, so it is a property of the file rather than of anything on this
@@ -372,7 +372,7 @@ base=https://github.com/denyfirst/denyfirst/releases/download/${V}
 # becomes a scanner for the whole internet again, with nothing in the unit
 # file, the flags or the logs to say so. The name is long for that reason.
 mkdir -p ~/deploy && cd ~/deploy
-curl -fsSLO "${base}/denyfirstd-demonstration_${V}_linux_amd64"
+curl -fsSLO "${base}/porchd-demonstration_${V}_linux_amd64"
 curl -fsSLO "${base}/SHA256SUMS"
 curl -fsSLO "${base}/SHA256SUMS.sig"
 curl -fsSLO https://raw.githubusercontent.com/denyfirst/denyfirst/main/.allowed_signers
@@ -404,19 +404,19 @@ where it lands.
 ### Install
 
 ```sh
-/opt/denyfirst/denyfirstd -version
+/opt/porch/porchd -version
 
 sudo install -o root -g root -m 0755 \
-  ~/deploy/denyfirstd-demonstration_${V}_linux_amd64 /opt/denyfirst/denyfirstd.new
-sudo cp -a /opt/denyfirst/denyfirstd /opt/denyfirst/denyfirstd.rollback-v0.3.2
-sudo mv /opt/denyfirst/denyfirstd.new /opt/denyfirst/denyfirstd
-sudo systemctl restart denyfirstd
+  ~/deploy/porchd-demonstration_${V}_linux_amd64 /opt/porch/porchd.new
+sudo cp -a /opt/porch/porchd /opt/porch/porchd.rollback-v0.3.2
+sudo mv /opt/porch/porchd.new /opt/porch/porchd
+sudo systemctl restart porchd
 )
 ```
 
 The first line is read, not run for form's sake: the rollback below is named
 for the version it printed. Better still, name it from the binary itself —
-`prev="$(/opt/denyfirst/denyfirstd -version | head -1 | awk '{print $2}')"` —
+`prev="$(/opt/porch/porchd -version | head -1 | awk '{print $2}')"` —
 because a version typed by hand is a version that can be typed wrongly.
 
 `install` sets owner and mode as it writes. `cp` followed by `chmod` leaves a
@@ -427,11 +427,11 @@ is on the live path.
 Copying onto the live path does, and the moment it is half-written is a moment
 the service might restart.
 
-The file is `root:root`; the service runs as `denyfirst`. The account the
+The file is `root:root`; the service runs as `porch`. The account the
 service runs as cannot rewrite the file it executes, which is the entire
 reason the two are different.
 
-The rollback carries the version in its name. A file called `denyfirstd.bak`
+The rollback carries the version in its name. A file called `porchd.bak`
 is one nobody can reason about a week later — there was one on this server
 from 2026-08-18, and nothing recorded what it held. Keep one, named.
 
@@ -448,7 +448,7 @@ capability would grant it to anybody on the machine who runs the file, which
 is a much larger claim than the one that needs making.
 
 ```sh
-getcap /opt/denyfirst/denyfirstd
+getcap /opt/porch/porchd
 ```
 
 must print nothing. `install` does not carry capabilities across, so this
@@ -458,10 +458,10 @@ rather than assumed.
 ### Confirm the service, not the file
 
 ```sh
-/opt/denyfirst/denyfirstd -version | grep -q '^demonstration: ' \
+/opt/porch/porchd -version | grep -q '^demonstration: ' \
   || echo 'STOP: this is not the demonstration build'
-/opt/denyfirst/denyfirstd -version
-sudo readlink /proc/$(systemctl show -p MainPID --value denyfirstd)/exe
+/opt/porch/porchd -version
+sudo readlink /proc/$(systemctl show -p MainPID --value porchd)/exe
 curl -s https://denyfirst.dev/healthz
 ```
 
@@ -476,12 +476,12 @@ The first runs the file on disk and says what was installed. It does not say
 what is serving: a restart that failed leaves the previous process alive on
 the previous inode, still answering, while the new file sits in place looking
 correct. The second line is what separates them — it must print
-`/opt/denyfirst/denyfirstd`, and must not end in `(deleted)`.
+`/opt/porch/porchd`, and must not end in `(deleted)`.
 
 The third is the running process answering over the network, and it is the
 only one of the three that is evidence about what people actually reach.
 
-Every command here names the service by its path. `denyfirstd` alone is not on
+Every command here names the service by its path. `porchd` alone is not on
 `PATH`.
 
 ### Afterwards

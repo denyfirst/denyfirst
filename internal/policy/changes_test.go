@@ -144,8 +144,17 @@ func TestEveryRuleSetThatShippedNamesItsRelease(t *testing.T) {
 	// 2026-09-04. A section it cannot see is a section nothing checks, and
 	// the whole reason this test exists is that such a section had gone stale
 	// for five releases.
-	heading := regexp.MustCompile("(?m)^## `denyfirst-(?:[a-z]+-)?v[0-9]+` → `(denyfirst-(?:[a-z]+-)?v[0-9]+)`|" +
-		"(?m)^## `(denyfirst-(?:[a-z]+-)?v[0-9]+)` — ")
+	// The tool's name is a group rather than a literal since 2026-09-12.
+	//
+	// It was "denyfirst" on both sides of the arrow, which stopped matching the
+	// day the tool was renamed to porch — and a heading this cannot read is a
+	// section nothing checks, which is the exact failure this test was written
+	// for. The sections that shipped keep the names they shipped under, so both
+	// spellings appear on this page and will for as long as those releases are
+	// worth comparing against.
+	const name = "[a-z]+(?:-[a-z]+)?-v[0-9]+"
+	heading := regexp.MustCompile("(?m)^## `" + name + "` → `(" + name + ")`|" +
+		"(?m)^## `(" + name + ")` — ")
 	found := heading.FindAllStringSubmatchIndex(page, -1)
 
 	// The name each section introduces, and the prose under it. Keyed by the

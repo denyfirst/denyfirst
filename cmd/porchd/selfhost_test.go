@@ -196,7 +196,7 @@ func TestAnEmptyTrustStoreStopsTheServiceStarting(t *testing.T) {
 	// nothing: removing the call from run() left every assertion above green.
 	// Read from the source because run() parses flags and binds a port, and a
 	// test that did both would be testing the harness.
-	source := repoFile(t, "cmd/denyfirstd/main.go")
+	source := repoFile(t, "cmd/porchd/main.go")
 
 	call := strings.Index(source, "trustStoreUsable(")
 	if call < 0 {
@@ -300,7 +300,7 @@ func TestAVersionSaysWhichHostsTheBinaryWillReach(t *testing.T) {
 // because -version calls os.Exit's neighbour and a test that drove it would
 // be testing the harness.
 func TestTheVersionOutputCarriesTheReachLine(t *testing.T) {
-	source := repoFile(t, "cmd/denyfirstd/main.go")
+	source := repoFile(t, "cmd/porchd/main.go")
 
 	block := source[strings.Index(source, "if *showVersion {"):]
 	block = block[:strings.Index(block, "return 0")]
@@ -323,16 +323,16 @@ func TestTheDemonstrationBuildIsReleasedAndDeployed(t *testing.T) {
 	if !strings.Contains(build, "-tags demo") {
 		t.Fatal("the release does not build the demonstration binary, so there is nothing signed to deploy")
 	}
-	if !strings.Contains(build, "denyfirstd-demonstration_${tag}_linux_amd64") {
+	if !strings.Contains(build, "porchd-demonstration_${tag}_linux_amd64") {
 		t.Error("the demonstration artifact is not named as the deploy procedure expects")
 	}
 
 	releasing := repoFile(t, "docs/releasing.md")
 
-	if !strings.Contains(releasing, "denyfirstd-demonstration_${V}_linux_amd64") {
+	if !strings.Contains(releasing, "porchd-demonstration_${V}_linux_amd64") {
 		t.Error("the deploy procedure does not install the demonstration binary")
 	}
-	if strings.Contains(releasing, "~/deploy/denyfirstd_${V}_linux_amd64") {
+	if strings.Contains(releasing, "~/deploy/porchd_${V}_linux_amd64") {
 		t.Error("the deploy procedure still installs the unrestricted binary")
 	}
 

@@ -260,7 +260,10 @@ func TestTheReportSerialisesWithoutItsSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(blob), "denyfirst-web-") {
+	// Against the constant rather than a literal. A hardcoded name is a test
+	// that passes on the old spelling for as long as nobody reads it, and this
+	// one outlived the rename by exactly one commit.
+	if !strings.Contains(string(blob), policy.WebVersion) {
 		t.Error("the serialised result does not name its rule set")
 	}
 	if strings.Contains(string(blob), "\"value\"") {

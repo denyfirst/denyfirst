@@ -99,15 +99,15 @@ deployment's restrictions belong to the deployment rather than to the check.
 Read it before changing any of this. What follows is the summary.
 
 A deployment should be able to require that a domain has been verified before
-it will scan it — DNS TXT at `_denyfirst-challenge.<domain>`, or a file at
-`/.well-known/denyfirst-challenge` for teams without DNS access.
+it will scan it — DNS TXT at `_porch-challenge.<domain>`, or a file at
+`/.well-known/porch-challenge` for teams without DNS access.
 
 This is a property of the tool, not a service anybody runs for anybody else.
 It costs this project nothing in records, because this project is not in the
 path.
 
 What it buys is the thing that currently stops an organisation from putting a
-self-hosted `denyfirstd` on its own network: without it, an internal
+self-hosted `porchd` on its own network: without it, an internal
 deployment where anyone can type a hostname is the arrangement this project
 dismantled, rebuilt inside somebody's intranet. With it, an installation can
 only reach estates it has proven control of — which also survives a careless
@@ -118,8 +118,8 @@ right:
 
 | | default | why |
 |---|---|---|
-| `denyfirst-scan`, in a terminal | off | whoever runs it already has the machine; nobody else can reach it |
-| `denyfirstd`, a service | **on** | anything anyone can reach must not scan arbitrary hosts |
+| `porch-scan`, in a terminal | off | whoever runs it already has the machine; nobody else can reach it |
+| `porchd`, a service | **on** | anything anyone can reach must not scan arbitrary hosts |
 
 Architecturally it is a sibling of `internal/demo`: the same boundary, asked
 in the same place, from a different source of authority — one compiled in, one
@@ -168,13 +168,13 @@ SSLv3, export and NULL suites and per-suite TLS 1.3 enumeration.
 
 ## Known defects
 
-**`denyfirst-scan -version` prints both rule sets but no reach line**, while
-`denyfirstd` prints one. Every binary should say what it will connect to. A
+**`porch-scan -version` prints both rule sets but no reach line**, while
+`porchd` prints one. Every binary should say what it will connect to. A
 deployment whose scope is established at run time rather than compiled in has
 to appear on that line as well, or the property the deploy procedure reads
 becomes false for the new mode.
 
-**A self-hosted `denyfirstd` requires no proof by default.** The boundary
+**A self-hosted `porchd` requires no proof by default.** The boundary
 exists and is opt-in; the default is the remaining half of item 2 above. Until
 it changes, `docs/self-host.md` notes that loopback is the default and does
 not say plainly that binding to a reachable interface without

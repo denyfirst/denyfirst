@@ -63,7 +63,7 @@ they liked, and the signature would confirm only that the attacker had access.
 ## Check the binary against the list
 
 ```sh
-curl -fsSLO https://github.com/denyfirst/denyfirst/releases/download/v0.1.0/denyfirst-scan_v0.1.0_linux_amd64
+curl -fsSLO https://github.com/denyfirst/denyfirst/releases/download/v0.1.0/porch-scan_v0.1.0_linux_amd64
 
 sha256sum --ignore-missing -c SHA256SUMS
 ```
@@ -73,7 +73,7 @@ On macOS, `shasum -a 256 --ignore-missing -c SHA256SUMS`.
 On Windows:
 
 ```powershell
-(Get-FileHash -Algorithm SHA256 .\denyfirst-scan_v0.1.0_windows_amd64.exe).Hash.ToLower()
+(Get-FileHash -Algorithm SHA256 .\porch-scan_v0.1.0_windows_amd64.exe).Hash.ToLower()
 ```
 
 and compare that line against `SHA256SUMS` by eye.
@@ -138,7 +138,7 @@ sha256sum scripts/build.sh      # must match the buildscript line
 # Builds every artifact in the release, which is what the workflow does.
 bash scripts/build.sh v0.1.0 dist
 
-sha256sum dist/denyfirst-scan_v0.1.0_linux_amd64
+sha256sum dist/porch-scan_v0.1.0_linux_amd64
 ```
 
 The hash should match the line in `SHA256SUMS`. If it does not, and both the
@@ -184,7 +184,7 @@ go version
 git fetch origin main
 git checkout origin/main -- scripts/build.sh
 bash scripts/build.sh v0.1.0 dist
-sha256sum dist/denyfirst-scan_v0.1.0_linux_amd64
+sha256sum dist/porch-scan_v0.1.0_linux_amd64
 ```
 
 A match means the source and today's procedure produce that binary, which is
@@ -212,11 +212,11 @@ or not anyone runs it by hand.
 ## Ask a binary what it is
 
 ```sh
-./denyfirst-scan -version
+./porch-scan -version
 ```
 
 ```
-denyfirst-scan v0.2.0
+porch-scan v0.2.0
 policy denyfirst-v2
 ```
 
@@ -229,7 +229,7 @@ A binary that prints `(unknown: not built by scripts/build.sh)` was built some
 other way — most likely by `go build` from a checkout, which is a perfectly
 good thing to be, and is not a release.
 
-`denyfirstd -version` answers the same way.
+`porchd -version` answers the same way.
 
 The version is linked into the binary rather than read from the filename, so
 it is covered by the hash in `SHA256SUMS`. Renaming the file does not change
@@ -244,7 +244,7 @@ The most direct option, and the one that needs the least trust.
 ```sh
 git clone https://github.com/denyfirst/denyfirst
 cd denyfirst
-go build ./cmd/denyfirst-scan
+go build ./cmd/porch-scan
 ```
 
 There are no third-party dependencies. `go.mod` has no `require` block, so

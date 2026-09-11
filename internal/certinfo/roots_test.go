@@ -13,7 +13,7 @@ import (
 // Roots does not mean "the system pool": it means "decide for yourself", and
 // on Windows and macOS deciding means calling the platform verifier, which
 // consults a different store and reads neither SSL_CERT_FILE nor anything this
-// program checked when it started. denyfirstd satisfied itself at startup that
+// program checked when it started. porchd satisfied itself at startup that
 // its trust store was not empty and then judged every chain against something
 // else, on the two platforms self-hosting is most likely to run on.
 //
