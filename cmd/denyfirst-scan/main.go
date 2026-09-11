@@ -38,6 +38,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/scan"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
@@ -70,6 +71,50 @@ func main() {
 	os.Exit(run())
 }
 
+// tlsScanner builds the scanner the flags ask for.
+//
+// A function rather than a literal inside run(), so that what each switch
+// actually reaches can be asserted. run() takes flags, prints a report and
+// returns an exit code; nothing in it can be examined, and a flag parsed into a
+// variable nobody reads compiles, runs, and silently does nothing. One was
+// added and did exactly that: -resolver was declared, documented in the usage
+// text, and never assigned, so the sabotage that removed the assignment changed
+// no test.
+func tlsScanner(timeout time.Duration, allowPrivate bool, resolver string) *scan.Scanner {
+	scanner := &scan.Scanner{
+		Prober: &tlsprobe.Prober{TotalTimeout: timeout},
+
+		// A local operator scanning their own network is not the abuse the
+		// port list guards against, so the command line lifts it. The HTTP
+		// service has no equivalent switch.
+		AllowAnyPort: true,
+
+		// An operator checking their own server before its name resolves is
+		// exactly the case the service refuses and this one should not. This
+		// runs on their machine, from their address, so whatever they do is
+		// theirs rather than laundered through somebody else's service.
+		AllowIPTargets: true,
+	}
+
+	if resolver != "" {
+		// Named rather than discovered. The machine's own configuration is
+		// read when this is empty, and on Windows that reading is assembled
+		// from the registry with nothing to say which adapter is live — so an
+		// operator who knows their network has to be able to say so (R7).
+		scanner.Resolver = &dnsclient.Client{Server: resolver}
+	}
+
+	if allowPrivate {
+		// Deliberate opt-out of the SSRF guard. Reasonable for a local
+		// operator scanning their own network; never reachable from the HTTP
+		// service, which has no equivalent switch.
+		d := &net.Dialer{Timeout: timeout}
+		scanner.Prober.Dial = d.DialContext
+	}
+
+	return scanner
+}
+
 // result pairs a scan with the error that prevented it, so one failed target
 // does not stop the rest.
 type result struct {
@@ -94,6 +139,24 @@ func run() int {
 		check = flag.String("check", checkTLS,
 			"which check to run: `tls` for the transport and its certificates,\n"+
 				"\tor web for how the site is reached over HTTP")
+
+		// Which resolver the CAA lookup asks. Empty reads this machine's own.
+		//
+		// It exists because the machine's own answer is assembled rather than
+		// read on at least one platform. On unix it comes from resolv.conf,
+		// which is the answer; on Windows it is built from the registry, and
+		// nothing there says which adapter is the live one. Every configured
+		// resolver is tried in order, so a wrong guess costs a timeout rather
+		// than the check — but an operator who knows their network should not
+		// have to pay even that, and on a machine whose configuration this
+		// cannot read there would otherwise be no way to run the check (R7).
+		//
+		// The operator's choice rather than a default: falling back to a public
+		// resolver would quietly move who learns what is being scanned, which
+		// is not a decision to make on somebody's behalf.
+		resolver = flag.String("resolver", "",
+			"`address` of the resolver to ask for CAA records, host:port; empty reads\n"+
+				"\tthis machine's own configuration")
 	)
 
 	showVersion := flag.Bool("version", false, "print the release and policy versions, then exit")
@@ -147,27 +210,7 @@ func run() int {
 		return runWeb(ctx, targets, *timeout, *allowPrivate, *asJSON)
 	}
 
-	scanner := &scan.Scanner{
-		Prober: &tlsprobe.Prober{TotalTimeout: *timeout},
-
-		// A local operator scanning their own network is not the abuse the
-		// port list guards against, so the command line lifts it. The HTTP
-		// service has no equivalent switch.
-		AllowAnyPort: true,
-
-		// An operator checking their own server before its name resolves is
-		// exactly the case the service refuses and this one should not. This
-		// runs on their machine, from their address, so whatever they do is
-		// theirs rather than laundered through somebody else's service.
-		AllowIPTargets: true,
-	}
-	if *allowPrivate {
-		// Deliberate opt-out of the SSRF guard. Reasonable for a local
-		// operator scanning their own network; never reachable from the HTTP
-		// service, which has no equivalent switch.
-		d := &net.Dialer{Timeout: *timeout}
-		scanner.Prober.Dial = d.DialContext
-	}
+	scanner := tlsScanner(*timeout, *allowPrivate, *resolver)
 
 	results := make([]result, 0, len(targets))
 

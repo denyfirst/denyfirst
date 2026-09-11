@@ -34,7 +34,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"strings"
 	"time"
 )
@@ -58,6 +57,12 @@ const (
 	// maxMessage bounds a reply read over TCP. A CAA answer is a few hundred
 	// bytes; anything approaching this is not one.
 	maxMessage = 4096
+
+	// maxResolvers bounds how many of a machine's configured resolvers one
+	// lookup will try. resolv.conf's own limit is three; Windows can hold more
+	// across several adapters. A bound rather than a rule: a machine with more
+	// than this is one to read the beginning of, not a reason to read none.
+	maxResolvers = 6
 
 	maxName     = 255
 	maxLabel    = 63
@@ -182,11 +187,105 @@ func (c *Client) maxQueries() int {
 	return c.MaxQueries
 }
 
-func (c *Client) server() (string, error) {
+func (c *Client) servers() ([]string, error) {
 	if c.Server != "" {
-		return c.Server, nil
+		return []string{c.Server}, nil
 	}
-	return systemResolver()
+	return systemResolvers()
+}
+
+// resolverList turns the addresses a platform found into the list a lookup will
+// ask, in the order they were found.
+//
+// Here rather than in each platform's file, which is where it was first
+// written. Two copies of "skip what cannot be dialled, drop a repeat, stop at
+// the bound" are two copies that drift, and only one of them can be tested on
+// any given machine: a sabotage that stopped suppressing duplicates passed
+// every test, because the machine running them happens to have none. One
+// implementation, tested on every platform.
+//
+// What each rule is for:
+//
+//   - An address that will not parse, or names no host, is a timeout spent to
+//     learn nothing. 0.0.0.0 appears in a Windows registry as a placeholder and
+//     is the commonest of them.
+//   - A repeat is the same timeout paid twice. One router's address under both
+//     a wired and a wireless adapter is the ordinary way to get one.
+//   - The bound is a bound. A machine with more configured resolvers than this
+//     is one to read the beginning of, not a reason to read none of it — but a
+//     lookup that tried every entry of a long list would outlast the scan that
+//     asked for it.
+func resolverList(addrs []string) []string {
+	var out []string
+	seen := map[string]bool{}
+
+	for _, raw := range addrs {
+		if len(out) >= maxResolvers {
+			break
+		}
+
+		ip := net.ParseIP(strings.TrimSpace(raw))
+		if ip == nil || ip.IsUnspecified() {
+			continue
+		}
+
+		at := net.JoinHostPort(ip.String(), "53")
+		if seen[at] {
+			continue
+		}
+		seen[at] = true
+		out = append(out, at)
+	}
+	return out
+}
+
+// resolverSet is the resolvers one lookup may ask, and which of them last
+// answered.
+//
+// A machine configures more than one on purpose, and the second is there
+// because the first is allowed to be unreachable. Asking only the first is how
+// a check that works everywhere reports "not checked" on a laptop whose primary
+// resolver belongs to a virtual adapter — which is what every scan on this
+// project's own development machine did until this existed.
+//
+// Remembering the one that answered is what keeps the cost bounded. A CAA walk
+// makes up to six queries, and paying a dead resolver's timeout on each of them
+// would spend more of the scan budget than the whole check is worth. It is paid
+// once.
+type resolverSet struct {
+	servers []string
+	chosen  int
+}
+
+// ask sends one query, moving to the next resolver until one answers.
+//
+// An answer includes "that name does not exist": exchange reports that as a
+// reply rather than as an error, so a walk is never restarted over a name that
+// simply is not there. What moves to the next resolver is a resolver that could
+// not be reached, refused the query, or failed it — the three a stub resolver
+// treats the same way, because none of them is an answer about the name.
+//
+// The first error is the one returned when every resolver is exhausted, so a
+// caller that distinguishes ErrRefused from ErrServerFail still can.
+func (c *Client) ask(ctx context.Context, set *resolverSet, name string, qtype uint16) (reply, error) {
+	if len(set.servers) == 0 {
+		return reply{}, ErrNoResolver
+	}
+
+	var first error
+	for i := range set.servers {
+		at := (set.chosen + i) % len(set.servers)
+
+		r, err := c.exchange(ctx, set.servers[at], name, qtype)
+		if err == nil {
+			set.chosen = at
+			return r, nil
+		}
+		if first == nil {
+			first = err
+		}
+	}
+	return reply{}, first
 }
 
 // LookupCAA walks from name towards the root until it finds a CAA record set
@@ -197,10 +296,11 @@ func (c *Client) server() (string, error) {
 // carries one of its own. A lookup that stopped at the name asked about would
 // report no policy for most of the names that have one.
 func (c *Client) LookupCAA(ctx context.Context, name string) (Answer, error) {
-	server, err := c.server()
+	servers, err := c.servers()
 	if err != nil {
 		return Answer{}, err
 	}
+	set := &resolverSet{servers: servers}
 
 	labels := strings.Split(strings.TrimSuffix(name, "."), ".")
 	out := Answer{Existed: true}
@@ -213,7 +313,7 @@ func (c *Client) LookupCAA(ctx context.Context, name string) (Answer, error) {
 	for i := 0; i < len(labels) && out.Queries < c.maxQueries(); i++ {
 		at := strings.Join(labels[i:], ".")
 
-		reply, err := c.exchange(ctx, server, at, TypeCAA)
+		reply, err := c.ask(ctx, set, at, TypeCAA)
 		out.Queries++
 		if err != nil {
 			return out, err
@@ -504,33 +604,23 @@ func randomUint16() (uint16, error) {
 	return binary.BigEndian.Uint16(b[:]), nil
 }
 
-// systemResolver reads the first nameserver from resolv.conf.
+// systemResolver returns the resolver this machine is configured to ask, as
+// host:port.
 //
-// Go's resolver reads this file and does not expose what it found, so it is
-// read again here. On a system without one — Windows, most notably, where the
-// command line tool also runs — this fails and the caller reports that CAA
-// could not be checked, which is the honest outcome and not a crash.
-func systemResolver() (string, error) {
-	raw, err := os.ReadFile("/etc/resolv.conf")
-	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrNoResolver, err)
-	}
-
-	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 || fields[0] != "nameserver" {
-			continue
-		}
-		if ip := net.ParseIP(fields[1]); ip != nil {
-			return net.JoinHostPort(fields[1], "53"), nil
-		}
-	}
-	return "", fmt.Errorf("%w: no nameserver line in /etc/resolv.conf", ErrNoResolver)
-}
+// It is per platform, in resolver_unix.go and resolver_windows.go, because the
+// answer lives in a different place on each and there is no portable way to
+// ask. Go's own resolver knows, and does not expose what it found.
+//
+// Reading the machine's own configuration is the point rather than an
+// implementation detail. A CAA lookup goes to the resolver this machine
+// already asks about every target, so the scan tells nobody anything they were
+// not already going to be told. Falling back to a public resolver when the
+// local one cannot be found would quietly move that, which is a change to who
+// learns what is being scanned — so instead the lookup fails, and the report
+// says the check did not happen (R4).
+//
+// Client.Server overrides it, and an operator whose machine this guesses wrong
+// about should set it rather than work around it.
 
 // TXTAnswer is what a TXT lookup found.
 type TXTAnswer struct {
@@ -561,12 +651,12 @@ type TXTAnswer struct {
 // docs/scope.md is written about, arriving through the lookup instead of
 // through the rule.
 func (c *Client) LookupTXT(ctx context.Context, name string) (TXTAnswer, error) {
-	server, err := c.server()
+	servers, err := c.servers()
 	if err != nil {
 		return TXTAnswer{}, err
 	}
 
-	reply, err := c.exchange(ctx, server, name, TypeTXT)
+	reply, err := c.ask(ctx, &resolverSet{servers: servers}, name, TypeTXT)
 	if err != nil {
 		return TXTAnswer{Existed: reply.existed, Validated: reply.validated}, err
 	}

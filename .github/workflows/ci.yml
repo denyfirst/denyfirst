@@ -68,6 +68,25 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # Every platform the release ships, not only the one CI runs on.
+      #
+      # `go vet ./...` on Linux does not read a file behind `//go:build
+      # windows`. It is not merely unvetted, it is never compiled: a syntax
+      # error in it passes every gate here and fails on a release evening, in
+      # scripts/build.sh, at the point where the procedure says the build
+      # should already be known to work.
+      #
+      # That became a real risk the day the resolver was split per platform to
+      # make the CAA check run on Windows, and a gate is cheaper than
+      # remembering. vet type-checks rather than links, so this costs seconds
+      # and needs no cross toolchain.
+      - name: Vet every released platform
+        run: |
+          for os in linux darwin windows; do
+            echo "vet GOOS=$os"
+            GOOS="$os" go vet ./... || exit 1
+          done
+
       - name: Check formatting
         run: |
           unformatted=$(gofmt -l .)
