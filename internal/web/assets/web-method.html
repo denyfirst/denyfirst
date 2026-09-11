@@ -50,35 +50,61 @@
       tool connects to is asked again about the address a
       <code>Location</code> header names, before anything is dialled — because
       that address was chosen by a server rather than by the person running
-      the scan. On this deployment that means the hosts this project owns, so
-      a redirect away from them ends the chain and the report says so.
+      the scan.
+      {{if .Demo}}On this deployment that means the hosts this project owns,
+      so a redirect away from them ends the chain and the report says
+      so.{{else}}On this installation that means the domains it has been
+      shown control of, so a redirect out of that estate ends the chain and
+      the report says so.{{end}}
     </p>
 
     <p>
-      <strong>The body: it depends which deployment reached you, and this
-      says both.</strong> The address in the user agent is this one whoever
-      ran the scan, so a flat sentence here would be true of one installation
-      and false of the one in your log.
+      <strong>Whether the body was read depends on which installation reached
+      you, so this says both.</strong> The user agent names this address from
+      every installation of the tool, so one flat sentence here would be true
+      of one of them and false of the one in your log.
+    </p>
+
+    {{if .Demo}}
+    <p>
+      <strong>This deployment never reads a body.</strong> Headers were taken
+      and the body was closed unread, so the traffic cost you a header's
+      worth. The restriction is compiled in rather than configured: this
+      build refuses to read a body at all, whatever it is asked, and there is
+      no setting that changes it.
     </p>
 
     <p>
-      <strong>From this deployment, the body was never read.</strong> Headers
-      were taken and the body was closed unread, so the traffic cost you a
-      header's worth. That restriction is compiled in, not configured: this
-      build refuses to read a body at all, whatever it is asked.
+      <strong>An installation somebody runs themselves may read the
+      page</strong> — once, to a bound of one megabyte, streamed, and only
+      the page at the address whose headers it already fetched.
+    </p>
+    {{else}}
+    <p>
+      <strong>This installation reads the page of a domain it has been shown
+      control of, and no other.</strong> Once, to a bound of one megabyte,
+      streamed, and only the page at the address whose headers it already
+      fetched. Where no proof of control was required, no body is read at
+      all.
     </p>
 
     <p>
-      <strong>From an installation somebody runs themselves, the page may
-      have been read</strong> — once, to a bound of one megabyte, streamed,
-      and only the page at the address already fetched. No link was followed,
-      no script retrieved, and nothing else on your server was asked for.
-      Nothing of the page is kept: what survives the read is a short list of
-      facts — whether a Content-Security-Policy was declared in the markup,
-      and the host names of anything the page loads over plaintext. There is
-      no field anywhere in the report that can hold markup, in the same way
-      there is no field that can hold a cookie's value. The reason for
-      reading it is that mixed content and a policy declared with
+      <strong>The public deployment at denyfirst.dev never reads a
+      body</strong>, whatever it is asked. That restriction is compiled into
+      that build.
+    </p>
+    {{end}}
+
+    <p>
+      <strong>Where a page is read, nothing of it is kept.</strong> No link
+      is followed, no script retrieved, and nothing else on your server is
+      asked for. What survives the read is a short list of facts — whether a
+      <code>Content-Security-Policy</code> was declared in the markup, and
+      the host names of anything the page loads over plaintext. There is no
+      field anywhere in a report that can hold markup, in the same way there
+      is no field that can hold a cookie's value. A host is kept without its
+      path, its query or any credentials in it. The reason for reading the
+      page at all is that mixed content and a policy declared with
       <code>&lt;meta http-equiv&gt;</code> are ordinary things a site has and
       nobody can see from headers; the reason nothing is kept is that a page
       holds keys, tokens and names, and a report is a thing people paste into

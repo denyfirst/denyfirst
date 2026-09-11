@@ -192,7 +192,7 @@ var pages = map[string]*page{
 		Title:       "What this can see, and what it cannot — denyfirst",
 		Description: "How to read a report, and the limits of the method: what every scan here cannot establish, whatever server it looks at.",
 		Fragment:    "assets/method.html",
-		Data:        methodPage{Limits: policy.StandingLimits()},
+		Data:        methodPage{Limits: policy.StandingLimits(), Demo: demo.Enabled},
 	},
 
 	// The web check, beside the TLS one rather than under it.
@@ -231,7 +231,7 @@ var pages = map[string]*page{
 		Description: "Exactly what a web check sends to a server, how to read the report it produces, and the limits of the method.",
 		Fragment:    "assets/web-method.html",
 		Method:      "/web/method",
-		Data:        methodPage{Limits: policy.WebStandingLimits()},
+		Data:        methodPage{Limits: policy.WebStandingLimits(), Demo: demo.Enabled},
 	},
 }
 
@@ -247,6 +247,19 @@ type scanPage struct {
 // methodPage is what assets/method.html ranges over.
 type methodPage struct {
 	Limits []policy.StandingLimit
+
+	// Demo is true in the build that runs on denyfirst.dev.
+	//
+	// The web method page needs it because one of its paragraphs stopped being
+	// true of every installation on 2026-09-11: the demonstration reads no
+	// response body and an installation somebody runs themselves may read the
+	// page. The user agent names one address from every installation, so a log
+	// reader arrives here whichever one reached them — and a page that said
+	// "this deployment reads no body" from a build that does would be a
+	// scanning notice misdescribing the scan.
+	//
+	// It says both either way, and this decides which one it says first.
+	Demo bool
 }
 
 // moved are paths that used to be pages of their own, or that a reader is
