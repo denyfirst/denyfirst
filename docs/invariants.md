@@ -935,6 +935,110 @@ Silence there would let a clean answer read as a clean estate.
 `TestTheReportSaysSubdomainsWereNotSearched`,
 `TestATruncatedListSaysSoAndKeepsItsCount`
 
+### N13 — A question about a zone is authorised by the zone, and asks nobody else
+
+The mail check reads three names — the domain, `_dmarc.` under it, and
+`_smtp._tls.` under it — and whatever the domain's own sender policy points at.
+It opens no connection to anything else. No mail server is contacted, no message
+is composed, nothing is sent, and nothing that would change state at the other
+end is attempted.
+
+That is not restraint applied to the check. It is what these records are: a
+domain publishes them so that strangers will read them, and reading one is the
+use they were put there for. The target learns nothing at all, because the
+queries go to the resolver this machine already asks about every other target.
+It is the strongest privacy position any check here holds, and it holds by
+construction rather than by promise.
+
+**The proof required is the zone proof, not the file proof.** A deployment that
+scans only estates it has been shown control of (N9) accepts two proofs: a TXT
+record in the zone, and a file under `/.well-known` for teams without access to
+their own DNS. Every record this check reads lives in the zone. A file served
+under a name proves control of one host's web surface and nothing about the zone
+behind it, so accepting it here would let somebody who can publish a page read
+the mail policy of a zone somebody else runs. `verify.AnyPort`, deliberately,
+and the difference is the whole of it.
+
+**The names asked about are derived from the target, never constructed from an
+answer.** The one exception is a name the domain's own sender policy names, and
+that is not an exception: an `include` is the domain instructing every receiver
+on earth to resolve that name, so resolving it is reading the policy rather than
+wandering off it. The walk is bounded — ten lookups, ten levels, and a set of
+names already seen, because a policy that includes itself is a policy that would
+otherwise be followed forever.
+
+**A record read out of somebody else's zone is untrusted input.** Its values are
+chosen by whoever is being measured, so each is bounded before it travels, the
+record itself is bounded before it is parsed, and a domain that publishes a
+forty-kilobyte `p=` tag gets a bounded one in the report rather than a report
+that carries it whole.
+
+**Nothing read is the reassuring answer, so a failure to read must not look like
+one.** A resolver that will not answer produces *not read, and here is why*,
+never *this domain publishes no policy*. The two send an operator to opposite
+places: one to their DNS provider, one to their mail configuration. The reason
+names no resolver and no address (I6).
+
+**What it grades is only what a document calls an error.** RFC 7208 makes more
+than one SPF record, more than ten resolving terms, and more than two void
+lookups permanent errors — a receiver hitting one behaves as though the domain
+published nothing, while the domain believes it has a policy. RFC 7489 says a
+receiver finding two DMARC records applies neither. `+all` authorises every
+sender on the internet. Everything else is described: `~all` is the staging
+position, `p=none` is the monitoring position, a `pct=` below 100 is a rollout,
+and a scanner marking any of them down would be reporting a correct decision as
+a fault (R6, R21).
+
+**The lookup count is reported before it is a fault.** Nine of ten is not an
+error and is the sentence this check was built for: the cost is mostly inside
+the providers a policy includes, so a domain one provider away from switching
+its own policy off has no way to see that from its own zone. The included
+domains are named with the count, because a number alone says there is a problem
+and not where it is.
+
+**And every report says it read only DNS.** Whether the domain's mail servers
+accept encrypted connections, and what certificates they present, was not
+measured. DKIM was not checked at all — a key lives under a selector, selectors
+cannot be listed from DNS, and trying likely ones is guessing rather than
+measuring, so a report calling DKIM missing would claim something the scan never
+established (R4).
+
+*Enforced in:* `internal/mailscan`, `internal/spf`, `internal/policy.GradeMail`,
+`internal/policy.MailStandingLimits`, `cmd/denyfirst-scan.runMail`
+*Guarded by:* `TestTheScanAsksOnlyAboutTheDomainItWasGiven`,
+`TestOnlyTheZoneProofAuthorisesAMailScan`,
+`TestScanRefusesBeforeItAsksAnything`,
+`TestExclusionSurvivesTheSpelling`,
+`TestScanTakesADomainAndNothingElse`,
+`TestScanReadsWhatTheZonePublishes`,
+`TestAFailedLookupIsNotADomainWithNoPolicy`,
+`TestTLSReportingIsOnlyTrueWhenTheRecordSaysSo`,
+`TestOnlyARecordThatAnnouncesItselfIsDMARC`,
+`TestTheDefaultPercentIsTheOneRFC7489Specifies`,
+`TestAnEnormousTagDoesNotTravel`,
+`TestEveryReportSaysItOnlyReadDNS`,
+`TestTheDurationIsMeasuredRatherThanAssumed`,
+`TestAPolicyThatIncludesItselfStops`,
+`TestTheCountFollowsEveryInclude`,
+`TestMoreThanTenLookupsIsOverTheLimit`,
+`TestTenLookupsIsNotOverTheLimit`,
+`TestOnlyResolvingTermsAreCounted`,
+`TestIncludesThatResolveToNothingAreCountedAsVoid`,
+`TestARedirectIsCountedOnlyWhereItWouldBeFollowed`,
+`TestTheIncludedDomainsAreListed`,
+`TestAnOverlongRecordIsBounded`,
+`TestAResolverThatWillNotAnswerIsNotAMissingPolicy`,
+`TestADomainThatDoesNotExistSaysSo`,
+`TestNoReasonDescribesTheMachine`,
+`TestMailGradesWhatASpecificationCallsAnError`,
+`TestMailDoesNotGradeADeliberatePosition`,
+`TestTheLookupCountIsReportedBeforeItIsAFault`,
+`TestOverTheLimitTheCountIsNotAlsoReportedAsFine`,
+`TestNotReadIsDistinguishableFromNotPublished`,
+`TestEveryMailReportSaysItOnlyReadDNS`,
+`TestTheMailLimitIsTheDeclaredOne`,
+`TestMailFindingsNameTheMailRuleSet`
+
 ## Input
 
 

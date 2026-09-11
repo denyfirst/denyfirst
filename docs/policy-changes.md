@@ -14,6 +14,89 @@ free to improve without breaking that.
 
 ---
 
+## `denyfirst-mail-v1` — a new rule set
+
+Unreleased.
+
+A third rule set, for a third check: what a domain's DNS says about its mail.
+**No TLS verdict changed and no web verdict changed.** `denyfirst-tls-v7`
+grades a handshake, `denyfirst-web-v3` grades an HTTP response, and this one
+grades records that are served by neither. A report carries the rule set that
+graded it, and these three are never the same one.
+
+The check connects to nothing. Every fact in a mail report came out of a DNS
+lookup the resolver this machine already uses would answer — no mail server is
+contacted, no message is composed, nothing is sent, and nothing that would
+change state at the other end is attempted. That is a property of what these
+records are rather than a restraint applied to the check, and it makes this the
+only check here whose target learns nothing at all.
+
+The finding it was built around is invisible in the record. RFC 7208 allows a
+sender policy at most ten DNS-resolving terms across everything it pulls in;
+past that the evaluation is a permanent error and a receiver behaves as though
+the domain had published no policy. A domain can hold three `include` terms and
+be over the limit because one of its providers has eight of its own, and
+nothing an operator can read in their own zone shows it. The tooling that
+usually reports this is a web form somebody types their domain into.
+
+### What it grades
+
+| rule | verdict | when |
+|---|---|---|
+| `mail.spf-duplicate` | insecure | more than one SPF record, which RFC 7208 makes a permanent error |
+| `mail.spf-lookup-limit` | insecure | evaluating the policy takes more than the ten lookups RFC 7208 allows |
+| `mail.spf-allows-everybody` | insecure | the policy ends in `+all`, authorising every sender on the internet |
+| `mail.spf-void-lookups` | weak | more than the two lookups RFC 7208 allows return nothing |
+| `mail.dmarc-duplicate` | weak | more than one DMARC record, so RFC 7489 says a receiver applies none |
+| `mail.dmarc-no-policy` | weak | a DMARC record with no `p=`, which RFC 7489 requires |
+
+Every one of those is a specification calling something an error, or a
+configuration authorising everybody. There is no third kind.
+
+### What it deliberately does not grade
+
+**A domain with no SPF record.** Whether that matters depends on whether the
+domain sends mail, and this check does not establish that. A domain that sends
+none is correctly configured without one.
+
+**`~all`, `?all`, or a record with no `all` at all.** A domain sitting at `~all`
+while it finds the last department still sending through a forgotten relay is
+doing the right thing in the right order. Moving to `-all` before the list is
+complete rejects real mail, so a scanner marking it down would be reporting a
+correct decision as a fault (R6, R21). The qualifier is described instead, with
+what a receiver does about it.
+
+**The lookup count, until it is over.** Nine of ten is reported on every report
+that has a policy to count — a domain one provider away from switching its own
+policy off has no other way to find that out — but nine is not a fault, because
+RFC 7208 says ten.
+
+**`p=none`, and `pct=` below 100.** The monitoring position and the rollout.
+Both protect less than a stricter setting and both are the documented way to
+reach one. Described, with what they mean for mail that fails.
+
+**No `rua=`, and no TLS-RPT record.** Reports are how an operator finds out
+what their policy is doing; a domain without them is flying blind rather than
+misconfigured. Nothing is wrong without either. They are named because they are
+the only way to find out that something is.
+
+**`ptr`.** RFC 7208 says SHOULD NOT, and several large receivers ignore it.
+That is a description with a document behind it, not an error the document
+declares.
+
+### What it cannot see
+
+One standing limit, on every mail report: everything came from DNS. Whether the
+domain's mail servers actually accept encrypted connections, and what
+certificates they present, was not measured — that needs a connection on the
+mail path. And DKIM was not checked at all: a key lives under a selector,
+selectors cannot be listed from DNS, and trying likely ones is guessing. A
+report saying DKIM was missing would be claiming something the scan did not
+establish, which is the thing R4 exists to prevent.
+
+---
+
+
 ## `denyfirst-tls-v6` → `denyfirst-tls-v7`
 
 Unreleased.

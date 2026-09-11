@@ -146,7 +146,8 @@ func run() int {
 		// the same argument as versioning the rules, one level up.
 		check = flag.String("check", checkTLS,
 			"which check to run: `tls` for the transport and its certificates,\n"+
-				"\tor web for how the site is reached over HTTP")
+				"\tweb for how the site is reached over HTTP, or mail for what the\n"+
+				"\tdomain's DNS says about its mail policy")
 
 		// Which resolver the CAA lookup asks. Empty reads this machine's own.
 		//
@@ -233,8 +234,11 @@ func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if *check == checkWeb {
+	switch *check {
+	case checkWeb:
 		return runWeb(ctx, targets, *timeout, *allowPrivate, *asJSON)
+	case checkMail:
+		return runMail(ctx, targets, *timeout, *resolver, *asJSON)
 	}
 
 	scanner := tlsScanner(*timeout, *allowPrivate, *resolver, *searchLogs)
@@ -299,8 +303,8 @@ func outcomes(results []result) []outcome {
 // what a binary says it is happens to be the one thing an operator holding it
 // has to be able to check.
 func versionLine() string {
-	return fmt.Sprintf("denyfirst-scan %s\npolicy %s\npolicy %s\n",
-		version, policy.TLSVersion, policy.WebVersion)
+	return fmt.Sprintf("denyfirst-scan %s\npolicy %s\npolicy %s\npolicy %s\n",
+		version, policy.TLSVersion, policy.WebVersion, policy.MailVersion)
 }
 
 func exitCode(outcomes []outcome) int {
@@ -582,6 +586,13 @@ var noteSections = []struct {
 const (
 	tlsMethodPage = "https://denyfirst.dev/tls/method"
 	webMethodPage = "https://denyfirst.dev/web/method"
+
+	// The mail check has no page yet, and empty is the whole instruction: the
+	// report prints its limits in full instead of pointing at one. A named
+	// constant rather than a bare "" at the call site, so the day somebody
+	// writes the page there is one line to change and no second copy of the
+	// URL to find.
+	mailMethodPage = ""
 )
 
 func printNotes(w io.Writer, notes []policy.Note, page string) {
@@ -601,6 +612,18 @@ func printNotes(w io.Writer, notes []policy.Note, page string) {
 	// would be hiding them rather than moving them.
 	if standing := policy.NotesOfKind(notes, policy.KindStanding); len(standing) > 0 {
 		fmt.Fprintf(w, "\n  Limits of this method\n")
+
+		// A check with no page of its own prints its limits rather than
+		// pointing at one. A URL for a page nobody has written is worse than
+		// no URL: a reader follows it, and finds out this report was careless
+		// about the one section that admits what it could not see.
+		if page == "" {
+			for _, n := range standing {
+				fmt.Fprintf(w, "    · %s\n", wrap(n.Text, 70, "      "))
+			}
+			return
+		}
+
 		fmt.Fprintf(w, "    · %s\n", limitsLine(len(standing)))
 		fmt.Fprintf(w, "      denyfirst-scan -limits, or %s\n", page)
 	}
@@ -624,7 +647,13 @@ func printLimits(w io.Writer, limits []policy.StandingLimit, page string) {
 	fmt.Fprintf(w, "\nLimits of this method\n")
 	fmt.Fprintf(w, "=====================\n\n")
 	fmt.Fprintf(w, "  True of every scan this program runs, whatever server it looks at.\n")
-	fmt.Fprintf(w, "  Read alongside %s\n", page)
+
+	// A check whose method has no page yet says nothing rather than sending a
+	// reader to a page describing a different check. The limits below are the
+	// whole of what there is to read, which is what -limits prints anyway.
+	if page != "" {
+		fmt.Fprintf(w, "  Read alongside %s\n", page)
+	}
 
 	for _, limit := range limits {
 		fmt.Fprintf(w, "\n  %s\n", limit.Title)
