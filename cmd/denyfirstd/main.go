@@ -274,6 +274,10 @@ func run() int {
 	for _, path := range api.Paths() {
 		root.Handle(path, api)
 	}
+	// The pages are told what this installation is before any of them is
+	// served. The console says whether a boundary was configured, and an
+	// operator reading a report needs that to be true rather than plausible.
+	web.Configure(scope != nil)
 	root.Handle("/", web.Handler())
 
 	srv := &http.Server{

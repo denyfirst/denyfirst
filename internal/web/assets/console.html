@@ -1,0 +1,118 @@
+<section class="console">
+
+  <!--
+    No lede, and no headline making an argument.
+
+    The pages at /tls and /web are written for somebody who arrived from a log
+    line and wants to know whether to worry. This one is written for the person
+    who installed it, who already decided. What they want on the first screen
+    is a field, and under it the facts about this installation that change how
+    a report should be read.
+  -->
+  <div class="console-head">
+    <h1 class="console-name">{{.Tool}}</h1>
+    <p class="console-where">running on this machine</p>
+  </div>
+
+  <form class="console-form" id="console-form" autocomplete="off">
+    <label class="field-label" for="console-target">Hostname</label>
+
+    <div class="field-row">
+      <input
+        class="field"
+        type="text"
+        id="console-target"
+        name="target"
+        placeholder="example.com"
+        spellcheck="false"
+        autocapitalize="off"
+        autocorrect="off"
+        enterkeyhint="go"
+        autofocus
+        aria-describedby="console-help">
+      <button class="submit" type="submit" id="console-submit">Check</button>
+    </div>
+
+    <!--
+      Every check on by default, and each one named for what it reads rather
+      than for how hard it pushes. docs/scope.md refuses the words full, deep
+      and active, because each of them quietly authorises something this
+      project has already declined to do.
+    -->
+    <fieldset class="checks">
+      <legend class="field-label">Checks</legend>
+      {{range .Checks}}
+      <label class="check">
+        <input type="checkbox" name="check" value="{{.ID}}" checked>
+        <span class="check-name">{{.Label}}</span>
+        <span class="check-says">{{.Says}}</span>
+        <span class="check-policy">{{.Policy}}</span>
+      </label>
+      {{end}}
+    </fieldset>
+
+    <p class="field-help" id="console-help">
+      A bare hostname. Everything here reads what a server already serves to
+      anyone who asks: one <code>GET</code> of <code>/</code>, the handshakes a
+      client offers, and three DNS records. No path is constructed, nothing is
+      sent that a browser would not send, and nothing is written to.
+    </p>
+  </form>
+
+  <div class="console-results" id="console-results" hidden></div>
+
+  <!--
+    The state of this installation, on the page rather than in a manual.
+
+    An operator reading a report needs to know which of these were true when it
+    was produced. A report that says nothing about mail because the check was
+    off reads exactly like one that says nothing because the domain publishes
+    nothing, and only one of those is a fact about the domain.
+  -->
+  <section class="console-state">
+    <h2 class="section-title">This installation</h2>
+
+    <dl class="state-grid">
+      <dt>Scope</dt>
+      <dd>
+        {{if .Verified}}Only domains this installation has been shown control
+        of. A name nobody proved anything about is refused before anything is
+        dialled.{{else}}<strong>No proof of control is required.</strong> This
+        installation will scan any public name it is given. That is the right
+        setting for a machine only you can reach, and the wrong one for
+        anything a stranger can. See <a href="/privacy#scans">what a scan does</a>.{{end}}
+      </dd>
+
+      <dt>Pages</dt>
+      <dd>
+        {{if .ReadsPages}}Read, where control was proven — once, to a bound of
+        one megabyte, and nothing of the page is kept beyond a short list of
+        facts.{{else}}Not read. Without a proof of control this installation
+        takes headers only, so mixed content and a policy declared in the
+        markup are not established either way.{{end}}
+      </dd>
+
+      <dt>Results</dt>
+      <dd>
+        Not kept. Nothing about a scan is written to disk: not the name, not
+        the verdict, not the time. Close this page and the report is gone —
+        save the JSON from the report itself if you want to keep it.
+      </dd>
+
+      <dt>Rule sets</dt>
+      <dd>
+        {{range .Checks}}<span class="state-policy">{{.Policy}}</span>{{end}}
+        Each check has its own, and they move independently. A report carries
+        the one that graded it, because a verdict from one means nothing under
+        another.
+      </dd>
+    </dl>
+
+    <p class="console-links">
+      <a href="/tls/method">What the transport check sends</a>
+      <a href="/web/method">What the reach check sends</a>
+      <a href="/privacy">Privacy, and what a scan does</a>
+    </p>
+  </section>
+
+</section>

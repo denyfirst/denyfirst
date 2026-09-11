@@ -53,62 +53,62 @@ type MailFacts struct {
 
 	// SPFRecords is how many TXT records at the domain announce themselves as
 	// SPF. More than one is a permanent error.
-	SPFRecords int
+	SPFRecords int `json:"spfRecords"`
 
 	// SPFAll is the qualifier on the all mechanism: "-", "~", "?", "+", or
 	// empty when the record has none.
-	SPFAll string
+	SPFAll string `json:"spfAll"`
 
 	// SPFLookups is how many DNS-resolving terms a receiver would evaluate,
 	// counted through every include and redirect.
-	SPFLookups int
+	SPFLookups int `json:"spfLookups"`
 
 	// SPFLookupLimit and SPFVoidLimit are true when RFC 7208's limits were
 	// exceeded, which makes the policy a permanent error.
-	SPFLookupLimit bool
-	SPFVoidLimit   bool
+	SPFLookupLimit bool `json:"spfLookupLimit"`
+	SPFVoidLimit   bool `json:"spfVoidLimit"`
 
 	// SPFVoidLookups is how many lookups found nothing.
-	SPFVoidLookups int
+	SPFVoidLookups int `json:"spfVoidLookups"`
 
 	// SPFUsesPTR is true when any record in the chain uses ptr.
-	SPFUsesPTR bool
+	SPFUsesPTR bool `json:"spfUsesPTR"`
 
 	// SPFIncludes names the domains the policy pulls in, which is what an
 	// operator works from when the count is too high.
-	SPFIncludes []string
+	SPFIncludes []string `json:"spfIncludes,omitempty"`
 
 	// SPFReason says why the policy could not be read at all. A failure to
 	// read is not a domain without a policy, and the two lead a reader to
 	// opposite places.
-	SPFReason string
+	SPFReason string `json:"spfReason,omitempty"`
 
 	// DMARC
 
 	// DMARCRecords is how many TXT records at _dmarc announce themselves as
 	// DMARC. More than one and the domain has no policy: RFC 7489 says a
 	// receiver applies none.
-	DMARCRecords int
+	DMARCRecords int `json:"dmarcRecords"`
 
 	// DMARCPolicy is what p= says: "none", "quarantine", "reject", or empty
 	// when the record carries no p= at all — which makes it invalid.
-	DMARCPolicy string
+	DMARCPolicy string `json:"dmarcPolicy"`
 
 	// DMARCPercent is what pct= says, defaulting to 100. A policy applied to
 	// some of the mail is a policy in a rollout.
-	DMARCPercent int
+	DMARCPercent int `json:"dmarcPercent"`
 
 	// DMARCReporting is true when the record names somewhere to send aggregate
 	// reports. Without one an operator cannot see what their policy is doing,
 	// which is what makes moving off p=none unsafe.
-	DMARCReporting bool
+	DMARCReporting bool `json:"dmarcReporting"`
 
 	// DMARCReason says why the policy could not be read.
-	DMARCReason string
+	DMARCReason string `json:"dmarcReason,omitempty"`
 
 	// TLSReporting is true when the domain publishes a TLS-RPT record saying
 	// where to send reports about failed transport security.
-	TLSReporting bool
+	TLSReporting bool `json:"tlsReporting"`
 }
 
 // MailFinding is the graded result.
