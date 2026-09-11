@@ -99,16 +99,26 @@
       <strong>Where a page is read, nothing of it is kept.</strong> No link
       is followed, no script retrieved, and nothing else on your server is
       asked for. What survives the read is a short list of facts — whether a
-      <code>Content-Security-Policy</code> was declared in the markup, and
-      the host names of anything the page loads over plaintext. There is no
-      field anywhere in a report that can hold markup, in the same way there
-      is no field that can hold a cookie's value. A host is kept without its
-      path, its query or any credentials in it. The reason for reading the
-      page at all is that mixed content and a policy declared with
-      <code>&lt;meta http-equiv&gt;</code> are ordinary things a site has and
-      nobody can see from headers; the reason nothing is kept is that a page
-      holds keys, tokens and names, and a report is a thing people paste into
-      issue trackers.
+      <code>Content-Security-Policy</code> was declared in the markup, and the
+      host names of what the page pulls in from somewhere other than itself:
+      anything loaded over plaintext, and anything loaded from another origin.
+      A page that loads only its own things from its own host produces an
+      empty list, because nothing asks about that.
+    </p>
+
+    <p>
+      <strong>A host, and never an address.</strong> The path is dropped, the
+      query is dropped, and any credentials in it are dropped before anything
+      else — <code>http://user:token@host/</code> in somebody's markup is a
+      credential, and a report carrying it would publish it to everyone the
+      report is shown to. There is no field anywhere in a report that can hold
+      markup, in the same way there is no field that can hold a cookie's
+      value. The reason for reading the page at all is that mixed content, a
+      script from elsewhere with nothing pinning it, and a policy declared
+      with <code>&lt;meta http-equiv&gt;</code> are ordinary things a site has
+      and nobody can see from headers; the reason nothing else is kept is that
+      a page holds keys, tokens and names, and a report is a thing people
+      paste into issue trackers.
     </p>
 
     <p>
