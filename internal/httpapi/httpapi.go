@@ -57,6 +57,7 @@ import (
 
 	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/exclusion"
+	"github.com/denyfirst/denyfirst/internal/mailscan"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/scan"
 	"github.com/denyfirst/denyfirst/internal/verify"
@@ -150,6 +151,7 @@ type Server struct {
 	// web runs the web check. Set by New, replaceable before serving so a
 	// test can hand it a prober that reaches a server it started.
 	web    *webscan.Scanner
+	mail   *mailscan.Scanner
 	limits Limits
 	rate   *limiter
 
@@ -158,6 +160,7 @@ type Server struct {
 	// the reverse.
 	reads *limiter
 
+	routes  []route
 	sem     semaphore
 	counts  *counters
 	targets *targetLimiter
@@ -208,6 +211,13 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 			Roots:      scanner.Roots,
 			ReadMarkup: scanner.Verify != nil,
 		},
+
+		// The mail check carries the boundary and nothing else it does not
+		// need. No trust store, because it verifies no certificate; no
+		// ReadMarkup, because it fetches no page.
+		//
+		// The resolver is set below rather than here, and that is not tidiness.
+		mail:    &mailscan.Scanner{Verify: scanner.Verify},
 		limits:  limits,
 		rate:    newLimiter(limits.Burst, limits.Refill, limits.MaxTrackedIPs, now),
 		reads:   newLimiter(readBurst, readRefill, limits.MaxTrackedIPs, now),
@@ -228,17 +238,79 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 	//
 	// So the old path keeps working, identically, until something says
 	// otherwise in writing.
-	tls, web := s.tlsCheck(), s.webCheck()
-	s.mux.HandleFunc("POST /api/v1/tls/scan", s.scanHandler(tls))
-	s.mux.HandleFunc("POST /api/v1/scan", s.scanHandler(tls))
+	// The resolver travels only when there is one.
+	//
+	// mailscan.Scanner.Resolver is an interface and scan.Scanner.Resolver is a
+	// *dnsclient.Client. Assigning a nil pointer to an interface field produces
+	// an interface that is *not* nil — it is a non-nil interface holding a nil
+	// pointer — so mailscan's "nil means build a default one" never fires and
+	// the first lookup dereferences nothing. That is not a hypothetical: it
+	// panicked on the first real request to /api/v1/mail/scan, while every test
+	// in this package passed, because the fixtures all supply a resolver.
+	//
+	// So the assignment is guarded here, and mailscan refuses a nil client of
+	// its own accord as well. Two places, because the trap is in the language
+	// rather than in either of them, and the next field of this shape will be
+	// written by somebody who has not read this comment.
+	if scanner.Resolver != nil {
+		s.mail.Resolver = scanner.Resolver
+	}
 
-	// The web check's address. Every guard the TLS endpoint has applies to it,
-	// because there is one chain and both endpoints walk it — see checks.go.
-	s.mux.HandleFunc("POST /api/v1/web/scan", s.scanHandler(web))
-	s.mux.HandleFunc("GET /healthz", s.readLimited(s.handleHealth))
-	s.mux.HandleFunc("GET /api/v1/stats", s.readLimited(s.handleStats))
+	tls, web := s.tlsCheck(), s.webCheck()
+	s.routes = []route{
+		{http.MethodPost, "/api/v1/tls/scan", s.scanHandler(tls)},
+		{http.MethodPost, "/api/v1/scan", s.scanHandler(tls)},
+
+		// The web check's address. Every guard the TLS endpoint has applies to
+		// it, because there is one chain and both endpoints walk it — see
+		// checks.go.
+		{http.MethodPost, "/api/v1/web/scan", s.scanHandler(web)},
+
+		// The mail check's address. It opens no connection, and it walks the
+		// same chain of guards anyway: a lookup a stranger caused this service
+		// to make is still a lookup this service made.
+		{http.MethodPost, "/api/v1/mail/scan", s.scanHandler(s.mailCheck())},
+
+		{http.MethodGet, "/healthz", s.readLimited(s.handleHealth)},
+		{http.MethodGet, "/api/v1/stats", s.readLimited(s.handleStats)},
+	}
+	for _, rt := range s.routes {
+		s.mux.HandleFunc(rt.method+" "+rt.path, rt.handler)
+	}
 
 	return s
+}
+
+// route is one address this service answers.
+type route struct {
+	method  string
+	path    string
+	handler http.HandlerFunc
+}
+
+// Paths are the addresses this service answers, for whatever mounts it.
+//
+// Exported because cmd/denyfirstd routes the API and the pages separately —
+// they need different security headers, and one policy for both would mean the
+// API inherits permission it never needed. That separation requires the mount
+// to name each API path, and a second hand-written list is a list that falls
+// behind: /api/v1/mail/scan was registered here and unreachable in the binary
+// for exactly as long as it took to try it, because main.go did not know about
+// it and nothing compared the two.
+//
+// One list, two readers. TestEveryPathThisServiceAnswersIsMounted holds them
+// together.
+func (s *Server) Paths() []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(s.routes))
+	for _, rt := range s.routes {
+		if seen[rt.path] {
+			continue
+		}
+		seen[rt.path] = true
+		out = append(out, rt.path)
+	}
+	return out
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

@@ -112,7 +112,7 @@ func (s *Scanner) Scan(ctx context.Context, domain string) (*Result, error) {
 	started := s.now()
 
 	domain = fold(domain)
-	if err := checkDomain(domain); err != nil {
+	if err := CheckDomain(domain); err != nil {
 		return nil, err
 	}
 
@@ -138,7 +138,7 @@ func (s *Scanner) Scan(ctx context.Context, domain string) (*Result, error) {
 	}
 
 	resolver := s.Resolver
-	if resolver == nil {
+	if resolver == nil || isNilClient(resolver) {
 		resolver = &dnsclient.Client{}
 	}
 
@@ -277,13 +277,18 @@ func isDMARC(value string) bool {
 		strings.EqualFold(strings.TrimSpace(tag), "DMARC1")
 }
 
-// checkDomain refuses anything that is not a bare domain name.
+// CheckDomain refuses anything that is not a bare domain name.
 //
-// Deliberately narrow, and exported nowhere: this check asks about a zone, so a
-// scheme, a path or a port is a caller asking for a different measurement. An
-// address is refused because there is no zone under an address to hold any of
-// these records.
-func checkDomain(domain string) error {
+// Deliberately narrow: this check asks about a zone, so a scheme, a path or a
+// port is a caller asking for a different measurement. An address is refused
+// because there is no zone under an address to hold any of these records.
+//
+// Exported for the reason webprobe.CheckHostname is. A service that parses a
+// target has to be able to ask the scanner what a target is, rather than
+// keeping a second definition that agrees until somebody loosens one of them —
+// and a target the parser accepts and the scanner refuses reaches a caller as a
+// failed scan instead of as the rule they broke.
+func CheckDomain(domain string) error {
 	switch {
 	case domain == "":
 		return errNotADomain
@@ -336,3 +341,24 @@ func (s *Scanner) now() time.Time {
 // a caller sent that came back in a response is a reflection, and this check
 // takes its input from the same places every other one does.
 var errNotADomain = errors.New("mailscan: the target must be a domain name, such as example.com")
+
+// isNilClient reports whether an interface holds a nil *dnsclient.Client.
+//
+// The one shape of nil that `resolver == nil` does not catch. An interface
+// carrying a typed nil pointer is not nil, so a caller writing
+//
+//	Resolver: someScanner.Resolver   // a *dnsclient.Client that happens to be nil
+//
+// hands this package something that passes every nil test and dereferences
+// nothing on first use. It panicked on the first real request to the mail
+// endpoint on 2026-09-11, while every test passed, because every fixture
+// supplies a resolver.
+//
+// The caller was fixed too. This is here because the trap is in the language
+// rather than in that caller, and the next one will be written by somebody who
+// has not read their comment either — and the cost of being wrong is a service
+// that crashes on a request a stranger sends.
+func isNilClient(r Resolver) bool {
+	c, ok := r.(*dnsclient.Client)
+	return ok && c == nil
+}

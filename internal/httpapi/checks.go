@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/denyfirst/denyfirst/internal/mailscan"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/scan"
 	"github.com/denyfirst/denyfirst/internal/webprobe"
@@ -232,3 +233,78 @@ func refuseAnAddress(host string) *refusal {
 			"service prefers to appear. The command line tool accepts addresses " +
 			"and runs from your own machine."}
 }
+
+// mailCheck reads what a domain's DNS says about its mail.
+//
+// The one check here that opens no connection at all. It still walks the whole
+// chain above, and that is deliberate rather than ceremony: the exclusion list
+// covers names no deployment asks about whoever is asking and whichever check
+// they ask for (N8), the deployment list is the same question (N6), and a
+// lookup a stranger caused this service to make is still a lookup this service
+// made. What it does not spend is the per-target budget's meaning — see
+// target.scope below.
+func (s *Server) mailCheck() check {
+	return check{
+		name:  checkMail,
+		parse: parseMailTarget,
+		run: func(ctx context.Context, t target) (outcome, error) {
+			result, err := s.mail.Scan(ctx, t.host)
+			if err != nil {
+				return outcome{}, err
+			}
+			return outcome{
+				verdict: result.Verdict,
+
+				// Never blocked. safedial refuses destinations and this check
+				// has none: the resolver is the one this machine already uses
+				// for every other target, and the domain being examined is
+				// never connected to.
+				body: result,
+			}, nil
+		},
+	}
+}
+
+func parseMailTarget(raw string) (target, *refusal) {
+	host, _, explicit, err := scan.SplitTargetPort(raw)
+	if err != nil {
+		return target{}, &refusal{http.StatusBadRequest, "invalid_target", mailTargetRule}
+	}
+
+	// A port is refused rather than dropped, for the reason the web check
+	// refuses one: discarding part of what somebody typed without saying so
+	// leaves a report that names the right domain while the person is still
+	// surprised. There is no port in a DNS record.
+	if explicit {
+		return target{}, &refusal{http.StatusBadRequest, "port_not_accepted",
+			"The mail check takes a bare domain. Everything it reads is in DNS — the sender " +
+				"policy, the DMARC record and the TLS reporting record — and none of it has a port."}
+	}
+
+	if refused := refuseAnAddress(host); refused != nil {
+		return target{}, refused
+	}
+
+	// The scanner defines what a target is, so the scanner is what is asked,
+	// exactly as the web check asks the probe. Two definitions agreeing rather
+	// than one definition: loosen the parser and this is what keeps the
+	// scanner from being handed something it will refuse, which would reach a
+	// caller as scan_failed and a 502 instead of as the rule they broke.
+	if err := mailscan.CheckDomain(host); err != nil {
+		return target{}, &refusal{http.StatusBadRequest, "invalid_target", mailTargetRule}
+	}
+
+	// The HTTPS budget, like the web check, and for a reason worth stating
+	// because this check connects to nothing.
+	//
+	// The budget exists to stop this service being pointed at one host in
+	// bulk. A mail check makes DNS lookups rather than connections, so it
+	// costs the domain nothing — but it costs a resolver something, and a
+	// separate budget would hand a prober a third independent question about
+	// one name. Sharing is the stricter reading and the simpler one.
+	return target{host: host, scope: scan.DefaultPort}, nil
+}
+
+// mailTargetRule is spelled once because both branches above state it.
+const mailTargetRule = "The target must be a domain name, such as example.com. No scheme, no port, no path, " +
+	"and no spaces or control characters."

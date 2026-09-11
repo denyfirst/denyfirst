@@ -266,9 +266,37 @@ would be this project deciding something a standards body deliberately left
 open (R21), and it would land on a site whose behaviour depends on which
 browser the visitor uses.
 
-**Subresource integrity and forms posting to another origin are not here.**
-Both are read-only questions about third parties rather than about plaintext,
-and neither is an error any document declares.
+**Two more things the page shows, both reported and never graded.**
+
+`content` has no rule for either, because neither is an error any document
+declares. What they have instead is a sentence naming the origins, which is the
+part an operator cannot get any other way.
+
+**Code from another origin with no `integrity` attribute.** A browser executes
+whatever that origin sends, with the page's own authority, and checks nothing
+about it. Subresource integrity makes the browser refuse anything that is not
+the exact file expected. No specification requires one, and pinning has a real
+cost — a provider shipping a fix breaks every page pinned to the version before
+it — so this is named rather than graded (R21). Where a site has pinned some
+already, the report says so beside the gaps: a list of gaps with no denominator
+reads as a site that has never heard of the attribute.
+
+Scheme-relative addresses are read here, not skipped. `//cdn.example/jquery.js`
+inherits the page's scheme, so it is never mixed content — and it is how a
+great many older pages load their scripts, which are exactly the pages least
+likely to carry a hash.
+
+**A form posting to another origin over TLS.** Ordinary and often correct: a
+payment processor or a search provider looks exactly like this. It is named
+because a visitor sees this page's address while typing into somebody else's
+form, and because whoever runs the site is the only person who can say which are
+meant. Kept apart from `content.form-posts-in-the-clear`, which is graded and is
+a different fact.
+
+**Origin means host, not registrable domain.** `static.example.com` is a
+different origin from `www.example.com`, and subresource integrity and CORS both
+work on origins. Folding siblings together would report a site as loading
+nothing from elsewhere while a browser treats it as exactly that.
 
 ### What can move a verdict
 

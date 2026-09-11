@@ -7,14 +7,18 @@ import (
 	"testing"
 )
 
+// pageHost is the origin the fixtures below are served from, so a reference to
+// any other name is somebody else's.
+const pageHost = "site.example"
+
 func read(t *testing.T, page string) Facts {
 	t.Helper()
-	return Read(strings.NewReader(page))
+	return Read(strings.NewReader(page), pageHost)
 }
 
 func hosts(f Facts, kind Kind) []string {
 	var out []string
-	for _, r := range f.Plaintext {
+	for _, r := range f.References {
 		if r.Kind == kind {
 			out = append(out, r.Host)
 		}
@@ -24,7 +28,7 @@ func hosts(f Facts, kind Kind) []string {
 
 // hasHost asks whether a host was reported at all, whatever it was reported as.
 func hasHost(f Facts, host string) bool {
-	for _, r := range f.Plaintext {
+	for _, r := range f.References {
 		if r.Host == host {
 			return true
 		}
@@ -33,7 +37,7 @@ func hasHost(f Facts, host string) bool {
 }
 
 func has(f Facts, kind Kind, host string) bool {
-	for _, r := range f.Plaintext {
+	for _, r := range f.References {
 		if r.Kind == kind && r.Host == host {
 			return true
 		}
@@ -64,7 +68,7 @@ func TestWhatABrowserBlocksIsSeparatedFromWhatItDoesNot(t *testing.T) {
 		{KindMedia, "media.example", false},
 	} {
 		found := false
-		for _, r := range f.Plaintext {
+		for _, r := range f.References {
 			if r.Kind != want.kind || r.Host != want.host {
 				continue
 			}
@@ -77,7 +81,7 @@ func TestWhatABrowserBlocksIsSeparatedFromWhatItDoesNot(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("%s at %s was not seen: %+v", want.kind, want.host, f.Plaintext)
+			t.Errorf("%s at %s was not seen: %+v", want.kind, want.host, f.References)
 		}
 	}
 }
@@ -100,11 +104,75 @@ func TestOnlyAnExplicitPlaintextAddressCounts(t *testing.T) {
 		<a href="http://example.com/">a link is not a subresource</a>
 	`)
 
-	if len(f.Plaintext) != 0 {
-		t.Errorf("a page loading nothing over plaintext was reported as loading %+v", f.Plaintext)
+	// Nothing here is plaintext. The two https scripts are recorded, because
+	// they are another origin and a rule reads that — but neither is mixed
+	// content, and a scanner that confused the two would mark a correctly
+	// built site down.
+	for _, r := range f.References {
+		if r.Plaintext {
+			t.Errorf("%+v was reported as plaintext", r)
+		}
 	}
-	if f.PlaintextTotal != 0 {
-		t.Errorf("PlaintextTotal = %d, want 0", f.PlaintextTotal)
+
+	// The scheme-relative one is recorded, and as another origin rather than
+	// as plaintext. It inherits the page's scheme, which is TLS here, and
+	// "//cdn.example/jquery.js" is how a great many older pages load their
+	// scripts — the pages least likely to carry an integrity attribute, and so
+	// the ones that rule is most for.
+	if !hasHost(f, "cdn.example") {
+		t.Errorf("no reference to cdn.example survived: %+v", f.References)
+	}
+	for _, r := range f.References {
+		if r.Host == "" {
+			t.Errorf("a reference with no host was recorded: %+v", r)
+		}
+	}
+}
+
+// A scheme-relative address is another origin, and never mixed content.
+func TestASchemeRelativeAddressIsReadAsThePagesOwnScheme(t *testing.T) {
+	f := read(t, `
+		<script src="//cdn.example/jquery.js"></script>
+		<script src="//`+pageHost+`/own.js"></script>
+	`)
+
+	if len(f.References) != 1 {
+		t.Fatalf("got %+v", f.References)
+	}
+	r := f.References[0]
+	if r.Host != "cdn.example" {
+		t.Errorf("host = %q, want cdn.example", r.Host)
+	}
+	if r.Plaintext {
+		t.Error("a scheme-relative address on a page reached over TLS was called plaintext")
+	}
+	if !r.ThirdParty {
+		t.Error("a scheme-relative address to another host was not called another origin")
+	}
+}
+
+// A relative address is nobody else's origin and is never recorded.
+//
+// The false alarm that would matter most. A page loading its own scripts from
+// its own host is the ordinary case, and recording it would put every correctly
+// built site in a list of things to look at.
+func TestAPageLoadingItsOwnThingsRecordsNothing(t *testing.T) {
+	f := read(t, `
+		<script src="/local.js"></script>
+		<script src="app.js"></script>
+		<script src="https://`+pageHost+`/own.js"></script>
+		<link rel="stylesheet" href="https://`+pageHost+`/own.css">
+		<img src="/logo.png">
+		<form action="/search"></form>
+		<img src="data:image/png;base64,AAAA">
+		<iframe src="about:blank"></iframe>
+	`)
+
+	if len(f.References) != 0 {
+		t.Errorf("a page loading only its own things was reported as loading %+v", f.References)
+	}
+	if f.ReferencesTotal != 0 {
+		t.Errorf("ReferencesTotal = %d, want 0", f.ReferencesTotal)
 	}
 }
 
@@ -113,7 +181,7 @@ func TestOnlyAnExplicitPlaintextAddressCounts(t *testing.T) {
 func TestTheSchemeIsMatchedWhateverItsCase(t *testing.T) {
 	f := read(t, `<script src="HTTP://cdn.example/a.js"></script>`)
 	if !has(f, KindScript, "cdn.example") {
-		t.Errorf("HTTP:// was not read as plaintext: %+v", f.Plaintext)
+		t.Errorf("HTTP:// was not read as plaintext: %+v", f.References)
 	}
 }
 
@@ -129,10 +197,10 @@ func TestNothingButTheHostSurvives(t *testing.T) {
 		<iframe src="http://frames.example:8080/x"></iframe>
 	`)
 
-	if len(f.Plaintext) != 3 {
-		t.Fatalf("got %+v", f.Plaintext)
+	if len(f.References) != 3 {
+		t.Fatalf("got %+v", f.References)
 	}
-	for _, r := range f.Plaintext {
+	for _, r := range f.References {
 		for _, forbidden := range []string{"/", "?", "#", "@", ":", "token", "s3cr3t", "hunter2", "secret"} {
 			if strings.Contains(r.Host, forbidden) {
 				t.Errorf("%q survived into the report inside %q", forbidden, r.Host)
@@ -141,13 +209,13 @@ func TestNothingButTheHostSurvives(t *testing.T) {
 	}
 	for _, want := range []string{"cdn.example", "images.example", "frames.example"} {
 		found := false
-		for _, r := range f.Plaintext {
+		for _, r := range f.References {
 			if r.Host == want {
 				found = true
 			}
 		}
 		if !found {
-			t.Errorf("%q is not among %+v, so the host was lost along with the rest", want, f.Plaintext)
+			t.Errorf("%q is not among %+v, so the host was lost along with the rest", want, f.References)
 		}
 	}
 }
@@ -156,9 +224,9 @@ func TestNothingButTheHostSurvives(t *testing.T) {
 func TestAFormPostingInTheClearIsSeen(t *testing.T) {
 	f := read(t, `<form action="http://forms.example/login" method="post"></form>`)
 	if !has(f, KindForm, "forms.example") {
-		t.Errorf("the form was not seen: %+v", f.Plaintext)
+		t.Errorf("the form was not seen: %+v", f.References)
 	}
-	for _, r := range f.Plaintext {
+	for _, r := range f.References {
 		if r.Kind == KindForm && r.Blocking {
 			t.Error("the form is marked as blocked, and a browser submits it — with whatever was " +
 				"typed into it, in the clear")
@@ -180,10 +248,10 @@ func TestACommentedOutReferenceIsNotOne(t *testing.T) {
 	`)
 
 	if has(f, KindScript, "old.example") || has(f, KindImage, "old.example") {
-		t.Errorf("a commented-out reference was reported: %+v", f.Plaintext)
+		t.Errorf("a commented-out reference was reported: %+v", f.References)
 	}
 	if !has(f, KindScript, "live.example") {
-		t.Errorf("the live reference after the comment was lost: %+v", f.Plaintext)
+		t.Errorf("the live reference after the comment was lost: %+v", f.References)
 	}
 
 	// A comment carrying a ">" of its own, which is what tells a comment apart
@@ -203,10 +271,10 @@ func TestACommentedOutReferenceIsNotOne(t *testing.T) {
 	`)
 
 	if has(f, KindScript, "old.example") {
-		t.Errorf("a reference inside a comment holding a \"> \" was reported as live: %+v", f.Plaintext)
+		t.Errorf("a reference inside a comment holding a \"> \" was reported as live: %+v", f.References)
 	}
 	if !has(f, KindImage, "live.example") {
-		t.Errorf("the live reference after that comment was lost: %+v", f.Plaintext)
+		t.Errorf("the live reference after that comment was lost: %+v", f.References)
 	}
 }
 
@@ -214,8 +282,8 @@ func TestACommentedOutReferenceIsNotOne(t *testing.T) {
 // browser does with one.
 func TestAnUnterminatedCommentEndsThePage(t *testing.T) {
 	f := read(t, `<!-- <script src="http://old.example/a.js"></script>`)
-	if len(f.Plaintext) != 0 {
-		t.Errorf("markup inside an unterminated comment was read: %+v", f.Plaintext)
+	if len(f.References) != 0 {
+		t.Errorf("markup inside an unterminated comment was read: %+v", f.References)
 	}
 }
 
@@ -234,10 +302,10 @@ func TestWhatIsInsideAScriptIsNotMarkup(t *testing.T) {
 	`)
 
 	if has(f, KindImage, "phantom.example") {
-		t.Errorf("an address inside a script's text was reported as a subresource: %+v", f.Plaintext)
+		t.Errorf("an address inside a script's text was reported as a subresource: %+v", f.References)
 	}
 	if !has(f, KindImage, "real.example") {
-		t.Errorf("the real reference after the script was lost: %+v", f.Plaintext)
+		t.Errorf("the real reference after the script was lost: %+v", f.References)
 	}
 }
 
@@ -250,7 +318,7 @@ func TestAClosingTagInCapitalsStillCloses(t *testing.T) {
 	f := read(t, `<script>var x = 1;</SCRIPT><img src="http://real.example/a.png">`)
 	if !has(f, KindImage, "real.example") {
 		t.Errorf("a closing tag in capitals was not recognised, so the rest of the page was "+
-			"read as program text: %+v", f.Plaintext)
+			"read as program text: %+v", f.References)
 	}
 }
 
@@ -258,10 +326,10 @@ func TestAClosingTagInCapitalsStillCloses(t *testing.T) {
 func TestAnEndTagMustEndAtTheName(t *testing.T) {
 	f := read(t, `<script>"</scriptx>"<img src="http://phantom.example/a.png"></script><img src="http://real.example/b.png">`)
 	if has(f, KindImage, "phantom.example") {
-		t.Errorf("a near-miss end tag closed the script: %+v", f.Plaintext)
+		t.Errorf("a near-miss end tag closed the script: %+v", f.References)
 	}
 	if !has(f, KindImage, "real.example") {
-		t.Errorf("the reference after the real end tag was lost: %+v", f.Plaintext)
+		t.Errorf("the reference after the real end tag was lost: %+v", f.References)
 	}
 }
 
@@ -269,10 +337,10 @@ func TestAnEndTagMustEndAtTheName(t *testing.T) {
 func TestWhatIsInsideStyleIsNotMarkup(t *testing.T) {
 	f := read(t, `<style>/* <img src="http://phantom.example/a.png"> */</style><img src="http://real.example/b.png">`)
 	if has(f, KindImage, "phantom.example") {
-		t.Errorf("markup inside a style element was read: %+v", f.Plaintext)
+		t.Errorf("markup inside a style element was read: %+v", f.References)
 	}
 	if !has(f, KindImage, "real.example") {
-		t.Errorf("the reference after the style element was lost: %+v", f.Plaintext)
+		t.Errorf("the reference after the style element was lost: %+v", f.References)
 	}
 }
 
@@ -280,7 +348,7 @@ func TestWhatIsInsideStyleIsNotMarkup(t *testing.T) {
 func TestASelfClosingScriptDoesNotSwallowThePage(t *testing.T) {
 	f := read(t, `<script src="https://cdn.example/a.js"/><img src="http://real.example/b.png">`)
 	if !has(f, KindImage, "real.example") {
-		t.Errorf("a self-closing script swallowed the rest of the page: %+v", f.Plaintext)
+		t.Errorf("a self-closing script swallowed the rest of the page: %+v", f.References)
 	}
 }
 
@@ -332,7 +400,7 @@ func TestAttributesAreReadHoweverTheyAreSpelled(t *testing.T) {
 		`<script defer src="http://cdn.example/a.js"></script>`,
 	} {
 		if f := read(t, page); !has(f, KindScript, "cdn.example") {
-			t.Errorf("%s was not read: %+v", page, f.Plaintext)
+			t.Errorf("%s was not read: %+v", page, f.References)
 		}
 	}
 }
@@ -341,7 +409,7 @@ func TestAttributesAreReadHoweverTheyAreSpelled(t *testing.T) {
 func TestARepeatedAttributeIsReadLikeABrowserReadsIt(t *testing.T) {
 	f := read(t, `<script src="https://safe.example/a.js" src="http://ignored.example/b.js"></script>`)
 	if has(f, KindScript, "ignored.example") {
-		t.Errorf("the second src was read, and no browser reads it: %+v", f.Plaintext)
+		t.Errorf("the second src was read, and no browser reads it: %+v", f.References)
 	}
 }
 
@@ -364,11 +432,11 @@ func TestOnlyTheRelationsThatFetchSomethingCount(t *testing.T) {
 	for _, host := range []string{"hint.example", "alt.example"} {
 		if hasHost(f, host) {
 			t.Errorf("%q fetches nothing this page depends on and was reported as a "+
-				"subresource: %+v", host, f.Plaintext)
+				"subresource: %+v", host, f.References)
 		}
 	}
 	if !has(f, KindStyle, "cdn.example") {
-		t.Errorf("the stylesheet was not seen: %+v", f.Plaintext)
+		t.Errorf("the stylesheet was not seen: %+v", f.References)
 	}
 }
 
@@ -383,8 +451,8 @@ func TestOneHostManyTimesIsOneEntry(t *testing.T) {
 	if got := hosts(f, KindImage); len(got) != 1 {
 		t.Errorf("got %d entries, want 1: %v", len(got), got)
 	}
-	if f.PlaintextTotal != 40 {
-		t.Errorf("PlaintextTotal = %d, want 40", f.PlaintextTotal)
+	if f.ReferencesTotal != 40 {
+		t.Errorf("PlaintextTotal = %d, want 40", f.ReferencesTotal)
 	}
 	if f.MoreThanListed {
 		t.Error("one host was reported as more than the list can hold")
@@ -402,8 +470,8 @@ func TestAPageFullOfHostsIsBoundedAndSaysSo(t *testing.T) {
 	}
 	f := read(t, b.String())
 
-	if len(f.Plaintext) > maxReferences {
-		t.Errorf("%d entries reached the report, and the bound is %d", len(f.Plaintext), maxReferences)
+	if len(f.References) > maxReferences {
+		t.Errorf("%d entries reached the report, and the bound is %d", len(f.References), maxReferences)
 	}
 	if !f.MoreThanListed {
 		t.Error("the list is a sample and does not say so, so a reader would read it as the set")
@@ -436,7 +504,7 @@ func TestAPageThatFitsIsNotCalledTruncated(t *testing.T) {
 		t.Error("a page of exactly the permitted length was called truncated")
 	}
 	if !has(f, KindScript, "fits.example") {
-		t.Errorf("the last reference on a page that fits was lost: %+v", f.Plaintext)
+		t.Errorf("the last reference on a page that fits was lost: %+v", f.References)
 	}
 }
 
@@ -445,13 +513,13 @@ func TestAReadThatFailsPartWayIsWhatWasSeen(t *testing.T) {
 	f := Read(io.MultiReader(
 		strings.NewReader(`<script src="http://cdn.example/a.js"></script>`),
 		errorReader{},
-	))
+	), pageHost)
 
 	if !f.Read {
 		t.Error("a body that was read and then failed reads as one that was never read")
 	}
 	if !has(f, KindScript, "cdn.example") {
-		t.Errorf("what was read before the failure was discarded: %+v", f.Plaintext)
+		t.Errorf("what was read before the failure was discarded: %+v", f.References)
 	}
 }
 
@@ -476,8 +544,8 @@ func TestSomethingThatIsNotAPageIsNotAFinding(t *testing.T) {
 		"\x00\x01\x02",
 	} {
 		f := read(t, body)
-		if len(f.Plaintext) != 0 {
-			t.Errorf("%q produced %+v", body, f.Plaintext)
+		if len(f.References) != 0 {
+			t.Errorf("%q produced %+v", body, f.References)
 		}
 	}
 }
@@ -485,7 +553,7 @@ func TestSomethingThatIsNotAPageIsNotAFinding(t *testing.T) {
 // A host is stripped before it travels (I5).
 func TestAHostIsStrippedBeforeItTravels(t *testing.T) {
 	f := read(t, "<img src=\"http://evil\r\n.example/a.png\">")
-	for _, r := range f.Plaintext {
+	for _, r := range f.References {
 		if strings.ContainsAny(r.Host, "\r\n") {
 			t.Errorf("a newline survived into %q, which forges a line in a terminal report", r.Host)
 		}
@@ -495,7 +563,7 @@ func TestAHostIsStrippedBeforeItTravels(t *testing.T) {
 // An enormous host is bounded.
 func TestAnEnormousHostIsBounded(t *testing.T) {
 	f := read(t, `<img src="http://`+strings.Repeat("a", 5000)+`.example/x.png">`)
-	for _, r := range f.Plaintext {
+	for _, r := range f.References {
 		if len(r.Host) > maxHostLength {
 			t.Errorf("a %d-byte host reached the report", len(r.Host))
 		}
@@ -537,7 +605,7 @@ func (c *countingReader) Read(p []byte) (int, error) {
 func TestTheBoundBoundsTheReadRatherThanTheResult(t *testing.T) {
 	source := &countingReader{src: infinite{}}
 
-	facts := Read(source)
+	facts := Read(source, pageHost)
 	if !facts.Truncated {
 		t.Fatal("an endless page did not come back truncated")
 	}
@@ -557,4 +625,183 @@ func (infinite) Read(p []byte) (int, error) {
 		p[i] = ' '
 	}
 	return len(p), nil
+}
+
+// Another origin is recorded, whether or not the address is plaintext.
+func TestAnotherOriginIsRecorded(t *testing.T) {
+	f := read(t, `
+		<script src="https://cdn.example/a.js"></script>
+		<link rel="stylesheet" href="https://cdn.example/a.css">
+		<form action="https://payments.example/checkout"></form>
+	`)
+
+	for _, want := range []struct {
+		kind Kind
+		host string
+	}{
+		{KindScript, "cdn.example"},
+		{KindStyle, "cdn.example"},
+		{KindForm, "payments.example"},
+	} {
+		found := false
+		for _, r := range f.References {
+			if r.Kind != want.kind || r.Host != want.host {
+				continue
+			}
+			found = true
+			if !r.ThirdParty {
+				t.Errorf("%s at %s is not marked as another origin", want.kind, want.host)
+			}
+			if r.Plaintext {
+				t.Errorf("%s at %s is marked plaintext and the address was https", want.kind, want.host)
+			}
+		}
+		if !found {
+			t.Errorf("%s at %s was not seen: %+v", want.kind, want.host, f.References)
+		}
+	}
+}
+
+// An origin is a host, not a registrable domain.
+//
+// Subresource integrity and CORS both work on origins, so a sibling subdomain
+// is somebody else as far as a browser is concerned. Folding them together
+// would report a site as loading nothing from elsewhere while a browser treats
+// it as exactly that.
+func TestASiblingSubdomainIsAnotherOrigin(t *testing.T) {
+	f := read(t, `<script src="https://static.`+pageHost+`/a.js"></script>`)
+
+	if len(f.References) != 1 {
+		t.Fatalf("got %+v", f.References)
+	}
+	if !f.References[0].ThirdParty {
+		t.Error("a sibling subdomain was folded into the page's own origin")
+	}
+}
+
+// The page's own host is compared the way every other name in this project is.
+func TestThePagesOwnHostIsFolded(t *testing.T) {
+	for _, host := range []string{pageHost, strings.ToUpper(pageHost), pageHost + ".", " " + pageHost + " "} {
+		f := Read(strings.NewReader(`<script src="https://`+pageHost+`/own.js"></script>`), host)
+		if len(f.References) != 0 {
+			t.Errorf("served from %q, the page's own script was recorded as somebody else's: %+v",
+				host, f.References)
+		}
+	}
+}
+
+// With no host to compare against, nothing is anybody else's.
+//
+// Silence rather than a guess. A caller that could not say where the page came
+// from has not established whose the references are, and marking them all third
+// party would invent a finding out of a missing field (R4).
+func TestWithNoHostNothingIsThirdParty(t *testing.T) {
+	f := Read(strings.NewReader(`
+		<script src="https://cdn.example/a.js"></script>
+		<script src="http://cdn.example/b.js"></script>
+	`), "")
+
+	for _, r := range f.References {
+		if r.ThirdParty {
+			t.Errorf("%+v was called another origin by a read that did not know the page's own", r)
+		}
+	}
+
+	// The plaintext one is still plaintext: that question needs no host.
+	if len(f.References) != 1 || !f.References[0].Plaintext {
+		t.Errorf("the plaintext reference was lost with the host: %+v", f.References)
+	}
+}
+
+// An integrity attribute is read, and an empty one is not an attribute.
+func TestIntegrityIsReadWhereABrowserReadsIt(t *testing.T) {
+	f := read(t, `
+		<script src="https://cdn.example/a.js" integrity="sha384-abc"></script>
+		<script src="https://cdn.example/b.js"></script>
+		<script src="https://cdn.example/c.js" integrity=""></script>
+		<script src="https://cdn.example/d.js" integrity="   "></script>
+		<link rel="stylesheet" href="https://cdn.example/a.css" INTEGRITY="sha512-def">
+	`)
+
+	var pinned, loose int
+	for _, r := range f.References {
+		if r.Integrity {
+			pinned++
+		} else {
+			loose++
+		}
+	}
+
+	// One script and one stylesheet carry a usable attribute; three scripts do
+	// not, and they dedupe to one entry because kind, host and every flag
+	// match.
+	if pinned != 2 {
+		t.Errorf("%d references carry integrity, want 2: %+v", pinned, f.References)
+	}
+	if loose != 1 {
+		t.Errorf("%d references carry none, want 1: %+v", loose, f.References)
+	}
+}
+
+// An empty integrity attribute is not a guarantee.
+//
+// A browser given integrity="" checks nothing, so crediting it would tell a
+// site it has a protection its visitors do not get — the reassuring direction,
+// which is the one that matters.
+func TestAnEmptyIntegrityIsNotIntegrity(t *testing.T) {
+	f := read(t, `<script src="https://cdn.example/a.js" integrity=""></script>`)
+	if len(f.References) != 1 {
+		t.Fatalf("got %+v", f.References)
+	}
+	if f.References[0].Integrity {
+		t.Error("integrity=\"\" was credited as a guarantee a browser does not make")
+	}
+}
+
+// Integrity is recorded only where it means something.
+//
+// Subresource integrity covers script and link. An integrity attribute on an
+// image is markup nobody acts on, and recording it would invite a rule about a
+// guarantee no browser makes.
+func TestIntegrityIsNotRecordedWhereItDoesNothing(t *testing.T) {
+	f := read(t, `
+		<img src="https://images.example/a.png" integrity="sha384-abc">
+		<iframe src="https://frames.example/x" integrity="sha384-abc"></iframe>
+	`)
+
+	for _, r := range f.References {
+		if r.Integrity {
+			t.Errorf("%s carries integrity, and no browser checks one there", r.Kind)
+		}
+	}
+}
+
+// A plaintext reference to another origin is both, and the flags say so.
+func TestAReferenceCanBeBothPlaintextAndAnotherOrigin(t *testing.T) {
+	f := read(t, `<script src="http://cdn.example/a.js"></script>`)
+
+	if len(f.References) != 1 {
+		t.Fatalf("got %+v", f.References)
+	}
+	r := f.References[0]
+	if !r.Plaintext || !r.ThirdParty || !r.Blocking {
+		t.Errorf("a blocked plaintext script from elsewhere is recorded as %+v", r)
+	}
+}
+
+// Blocking is about plaintext, not about the element.
+//
+// A script from another origin over TLS is loaded, not blocked. Marking it
+// blocked would be reporting a page as broken when it works.
+func TestNothingOverTLSIsBlocked(t *testing.T) {
+	f := read(t, `
+		<script src="https://cdn.example/a.js"></script>
+		<iframe src="https://frames.example/x"></iframe>
+	`)
+
+	for _, r := range f.References {
+		if r.Blocking {
+			t.Errorf("%+v is marked as refused by a browser, and a browser loads it", r)
+		}
+	}
 }

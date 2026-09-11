@@ -566,14 +566,34 @@ func contentFacts(c *webprobe.Chain) policy.ContentFacts {
 		out.Truncated = h.Markup.Truncated
 		out.MoreThanListed = h.Markup.MoreThanListed
 
-		for _, r := range h.Markup.Plaintext {
+		for _, r := range h.Markup.References {
+			// Plaintext first, in every case. A form posting to another origin
+			// over plaintext is the plaintext finding, not the off-origin
+			// sentence, and a script from elsewhere over plaintext is one a
+			// browser refuses outright — so integrity is beside the point.
+			// Sorting the other way would answer the smaller question and
+			// leave the larger one unsaid.
 			switch {
-			case r.Kind == markup.KindForm:
+			case r.Kind == markup.KindForm && r.Plaintext:
 				out.Forms = append(out.Forms, r.Host)
-			case r.Blocking:
+			case r.Kind == markup.KindForm:
+				out.OffOrigin = append(out.OffOrigin, r.Host)
+
+			case r.Plaintext && r.Blocking:
 				out.Blocking = append(out.Blocking, r.Host)
-			default:
+			case r.Plaintext:
 				out.Passive = append(out.Passive, r.Host)
+
+			// What is left is over TLS, from another origin. Only the two
+			// elements subresource integrity covers are asked about: a frame
+			// or an image from elsewhere is not code this page executes, and
+			// there is no attribute for a browser to check.
+			case r.Kind == markup.KindScript || r.Kind == markup.KindStyle:
+				if r.Integrity {
+					out.Verified = append(out.Verified, r.Host)
+				} else {
+					out.Unverified = append(out.Unverified, r.Host)
+				}
 			}
 		}
 		return out

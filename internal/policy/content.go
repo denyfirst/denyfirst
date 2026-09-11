@@ -51,6 +51,22 @@ type ContentFacts struct {
 	Passive  []string
 	Forms    []string
 
+	// Unverified are the origins this page executes code from without asking a
+	// browser to check what arrives: a script or a stylesheet from another
+	// origin, carrying no integrity attribute.
+	Unverified []string
+
+	// Verified are the other origins whose scripts and stylesheets do carry
+	// one. Kept so a report can say a site has done this rather than only
+	// where it has not — a list of gaps with no denominator reads as a site
+	// that has never heard of the attribute.
+	Verified []string
+
+	// OffOrigin are the origins a form on this page posts to, over TLS.
+	// Plaintext ones are in Forms and are graded; these are neither graded nor
+	// a fault, and an operator is the only person who knows which are meant.
+	OffOrigin []string
+
 	// MoreThanListed is true when the page held more distinct references than
 	// the bound allows, so the lists are a sample rather than the set.
 	MoreThanListed bool
@@ -123,6 +139,48 @@ func GradeContent(f ContentFacts) WebResult {
 			"browser rather than on this server.")
 	}
 
+	// Code from somebody else's origin, unchecked.
+	//
+	// Reported and never graded, and the reason is that no document requires
+	// subresource integrity. It is good practice with a real cost: a hash pins
+	// a file, so a provider that ships a fix silently breaks every page that
+	// pinned the version before it. Whether that trade is right depends on the
+	// provider and on what the script does, which a scan cannot see — so a
+	// verdict here would be a threshold this project invented (R21), landing
+	// on a deliberate decision.
+	//
+	// What it is worth saying is what a browser does: the origin decides what
+	// arrives, every time, and the page executes it with the page's own
+	// authority. An operator who knows that and accepts it has made a choice.
+	// One who has not thought about it usually cannot name the origins, which
+	// is the whole reason for printing them.
+	if len(f.Unverified) > 0 {
+		out.observe("This page loads " + count(len(f.Unverified), "script or stylesheet") +
+			" from " + another(len(f.Unverified)) + " without a subresource integrity attribute: " +
+			namedHosts(f.Unverified) + ". A browser executes whatever those origins send, with " +
+			"this page's own authority, and checks nothing about it. An integrity attribute makes " +
+			"the browser refuse anything that is not the exact file expected. No specification " +
+			"requires one and pinning a file has a real cost — a provider shipping a fix breaks " +
+			"every page pinned to the version before it — so this is named rather than graded. " +
+			"Whether the trade is worth making depends on the provider and on what the code does, " +
+			"which this scan did not read." + alreadyVerified(f.Verified))
+	}
+
+	// A form posting to another origin over TLS.
+	//
+	// Ordinary and often correct: a payment processor, a search provider, a
+	// mailing list. It is named because it is invisible to a visitor, who sees
+	// this page's address while typing into somebody else's form, and because
+	// the operator is the only person who can say which of these are meant.
+	if len(f.OffOrigin) > 0 {
+		out.observe("A form on this page posts to " + another(len(f.OffOrigin)) + ": " +
+			namedHosts(f.OffOrigin) + ". The connection is encrypted, so this is not the same " +
+			"thing as a form submitting in the clear, and it is ordinary — a payment processor " +
+			"or a search provider looks exactly like this. It is named because a visitor sees " +
+			"this page's address while typing, and because whoever runs this site is the only " +
+			"person who can say which of these are meant to be there.")
+	}
+
 	// A sample that does not say it is one is a list a reader treats as the
 	// set, and then fixes four things believing they were four.
 	if f.MoreThanListed {
@@ -175,4 +233,35 @@ func namedHosts(hosts []string) string {
 		return named[0]
 	}
 	return strings.Join(named[:len(named)-1], ", ") + " and " + named[len(named)-1]
+}
+
+// another writes "another origin" or "other origins", so a sentence reads as
+// English at one and at many.
+func another(n int) string {
+	if n == 1 {
+		return "another origin"
+	}
+	return "other origins"
+}
+
+// alreadyVerified names what the site has already done, where it has done any.
+//
+// A list of gaps with no denominator reads as a site that has never heard of
+// the attribute, and a report that only ever says what is missing is one an
+// operator learns to skim. Where every third-party script is already pinned,
+// nothing above fires and this is never reached.
+func alreadyVerified(verified []string) string {
+	if len(verified) == 0 {
+		return ""
+	}
+	return " " + strings.ToUpper(another(len(verified))[:1]) + another(len(verified))[1:] +
+		" on this page " + isAre(len(verified)) + " pinned this way already: " +
+		namedHosts(verified) + "."
+}
+
+func isAre(n int) string {
+	if n == 1 {
+		return "is"
+	}
+	return "are"
 }

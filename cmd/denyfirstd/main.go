@@ -266,12 +266,14 @@ func run() int {
 	// everything; a page needs its own stylesheet and script. Serving both
 	// through one policy would mean the API inherits permission it never
 	// needed, which is the usual way a strict header becomes a loose one.
+	// The paths come from the API rather than being listed again here. A
+	// second hand-written list is a list that falls behind, and one did: the
+	// mail endpoint was registered inside the API and unreachable through this
+	// binary, because this mux had never heard of it.
 	root := http.NewServeMux()
-	root.Handle("/api/v1/tls/scan", api)
-	root.Handle("/api/v1/scan", api)
-	root.Handle("/api/v1/web/scan", api)
-	root.Handle("/api/v1/stats", api)
-	root.Handle("/healthz", api)
+	for _, path := range api.Paths() {
+		root.Handle(path, api)
+	}
 	root.Handle("/", web.Handler())
 
 	srv := &http.Server{
