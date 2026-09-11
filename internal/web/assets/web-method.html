@@ -55,10 +55,34 @@
     </p>
 
     <p>
-      <strong>The response body was never read.</strong> Headers were taken
-      and the body was closed unread, so the traffic this cost you is a
-      header's worth. That is also the part you pay for, which is why it is
-      the part that was skipped.
+      <strong>The body: it depends which deployment reached you, and this
+      says both.</strong> The address in the user agent is this one whoever
+      ran the scan, so a flat sentence here would be true of one installation
+      and false of the one in your log.
+    </p>
+
+    <p>
+      <strong>From this deployment, the body was never read.</strong> Headers
+      were taken and the body was closed unread, so the traffic cost you a
+      header's worth. That restriction is compiled in, not configured: this
+      build refuses to read a body at all, whatever it is asked.
+    </p>
+
+    <p>
+      <strong>From an installation somebody runs themselves, the page may
+      have been read</strong> — once, to a bound of one megabyte, streamed,
+      and only the page at the address already fetched. No link was followed,
+      no script retrieved, and nothing else on your server was asked for.
+      Nothing of the page is kept: what survives the read is a short list of
+      facts — whether a Content-Security-Policy was declared in the markup,
+      and the host names of anything the page loads over plaintext. There is
+      no field anywhere in the report that can hold markup, in the same way
+      there is no field that can hold a cookie's value. The reason for
+      reading it is that mixed content and a policy declared with
+      <code>&lt;meta http-equiv&gt;</code> are ordinary things a site has and
+      nobody can see from headers; the reason nothing is kept is that a page
+      holds keys, tokens and names, and a report is a thing people paste into
+      issue trackers.
     </p>
 
     <p>

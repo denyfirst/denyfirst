@@ -305,7 +305,10 @@ func TestCookieAttributesAreRead(t *testing.T) {
 	}
 }
 
-func TestTheBodyIsNotRead(t *testing.T) {
+func TestTheBodyIsNotReadByDefault(t *testing.T) {
+	// Renamed from TestTheBodyIsNotRead on 2026-09-11. The absolute stopped
+	// being true that day, and a test whose name claims more than it checks is
+	// a test somebody cites for a promise it does not keep.
 	// The handler sends its headers and then holds the body open. A probe
 	// that read the body would wait here; one that closes it unread does not.
 	release := make(chan struct{})

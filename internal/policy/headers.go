@@ -58,6 +58,31 @@ type HeaderFacts struct {
 	// they say that decides it.
 	ACAO string
 	ACAC string
+
+	// MetaCSP and MetaCSPReportOnly record a Content-Security-Policy declared
+	// in the page's markup rather than in a header.
+	//
+	// A browser applies both, and reading only the header was a defect that
+	// shipped: a site using <meta http-equiv> was told it had no policy, and
+	// then told a second time that it was missing framing protection, because
+	// the rule that lets a policy supersede X-Frame-Options could not see the
+	// policy either. One omission, two sentences, both wrong, and both about
+	// something the operator had already done.
+	//
+	// Separate from Present because they are not the same fact. A deployment
+	// that reads no body leaves these false, and false here means "not seen"
+	// rather than "not there" — so the absence of a header is reported as it
+	// always was, and nothing claims the markup was checked when it was not.
+	MetaCSP           bool
+	MetaCSPReportOnly bool
+
+	// MarkupRead records that the page was read at all.
+	//
+	// The field that keeps the two above honest. Without it, a deployment that
+	// reads no bodies is indistinguishable from one that read the page and
+	// found no policy in it, and the rules would be reporting a silence as a
+	// measurement (R4).
+	MarkupRead bool
 }
 
 // recommended are the headers listed when a response does not carry them, and
@@ -112,13 +137,35 @@ func GradeHeaders(f HeaderFacts) WebResult {
 	// each of these is a header a correctly configured site can legitimately
 	// not send.
 
+	// What the markup declared, believed only where the markup was read.
+	//
+	// MetaCSP without MarkupRead is a caller that has wired these fields
+	// inconsistently, and the safe reading of an inconsistent state is the one
+	// that claims less. The unsafe reading credits a policy to a page nobody
+	// opened — a measurement the report never made, in the reassuring
+	// direction, which is the shape of every silent failure this project has
+	// had. A sabotage that wired MetaCSP on by default escaped here on
+	// 2026-09-11 and this is what closed it.
+	metaCSP := f.MarkupRead && f.MetaCSP
+	metaReportOnly := f.MarkupRead && f.MetaCSPReportOnly
+
+	// A policy a browser applies, wherever the site declared it.
+	//
+	// hasCSP rather than f.Present, everywhere below, because a browser makes
+	// no distinction between a header and a meta http-equiv and neither may a
+	// report about what a browser does.
+	hasCSP := f.Present["Content-Security-Policy"] || metaCSP
+
 	var missing []string
 	for _, h := range recommended {
+		if h.Name == "Content-Security-Policy" && hasCSP {
+			continue
+		}
 		if !f.Present[h.Name] {
 			// Content-Security-Policy: frame-ancestors supersedes
 			// X-Frame-Options, so a site with a policy is not missing framing
 			// protection and must not be told it is (R6).
-			if h.Name == "X-Frame-Options" && f.Present["Content-Security-Policy"] {
+			if h.Name == "X-Frame-Options" && hasCSP {
 				continue
 			}
 			missing = append(missing, h.Name+" — "+h.Does)
@@ -161,10 +208,27 @@ func GradeHeaders(f HeaderFacts) WebResult {
 	// A policy that is present but reported-only tells a browser nothing.
 	// Stated rather than graded: a site midway through writing a policy
 	// legitimately runs it in report-only mode, which is what the mode is for.
-	if f.Present["Content-Security-Policy-Report-Only"] && !f.Present["Content-Security-Policy"] {
+	if (f.Present["Content-Security-Policy-Report-Only"] || metaReportOnly) && !hasCSP {
 		out.observe("A Content-Security-Policy is sent in report-only mode and not in enforcing mode. " +
 			"A browser reports violations and blocks nothing, which is what the mode is for during a " +
 			"rollout and is not protection yet.")
+	}
+
+	// What a check that read no body could not see.
+	//
+	// Only where it could have changed what was said. A response carrying a
+	// policy header has been measured and a meta tag could add nothing to the
+	// reading; telling that site about a limit on a question already answered
+	// is the paragraph R6 is about, and a reader who gets one after doing
+	// everything right learns to skip the section that matters.
+	//
+	// Where there is no policy header the limit is the whole difference
+	// between "this site has no policy" and "no policy was seen", and only the
+	// second was established (R4).
+	if !f.MarkupRead && !hasCSP {
+		out.unsettled("The page itself was not read, so a Content-Security-Policy declared in the " +
+			"markup with <meta http-equiv> would not have been seen. A browser applies one either " +
+			"way. Anything above about a policy is about the headers alone.")
 	}
 
 	return out

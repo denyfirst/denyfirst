@@ -62,10 +62,23 @@ type webResult struct {
 	Error string `json:"error,omitempty"`
 }
 
-// runWeb measures how each target is reached over HTTP.
-func runWeb(ctx context.Context, targets []string, timeout time.Duration, allowPrivate, asJSON bool) int {
+// webScanner builds the check this command runs.
+//
+// A function rather than a literal inside runWeb, for the reason tlsScanner is
+// one: a field set inside a function that also opens connections and prints
+// reports cannot be asserted on, and this project has twice shipped a field
+// that was set, documented, and handed to nothing. A sabotage turning the page
+// reading off here escaped every test in this package on 2026-09-11, because
+// there was nothing that could see it.
+func webScanner(timeout time.Duration, allowPrivate bool) *webscan.Scanner {
 	scanner := &webscan.Scanner{
 		Prober: &webprobe.Prober{TotalTimeout: timeout},
+
+		// The command line reads the page. It runs on the operator's own
+		// machine, from their own address, and the report goes to whoever ran
+		// it — the same argument -allow-private rests on. A demonstration
+		// build refuses at the response whatever is set here.
+		ReadMarkup: true,
 	}
 	if allowPrivate {
 		// The same deliberate opt-out the TLS check offers, and for the same
@@ -75,6 +88,12 @@ func runWeb(ctx context.Context, targets []string, timeout time.Duration, allowP
 		d := &net.Dialer{Timeout: timeout}
 		scanner.Prober.Dial = d.DialContext
 	}
+	return scanner
+}
+
+// runWeb measures how each target is reached over HTTP.
+func runWeb(ctx context.Context, targets []string, timeout time.Duration, allowPrivate, asJSON bool) int {
+	scanner := webScanner(timeout, allowPrivate)
 
 	results := make([]webResult, 0, len(targets))
 	for _, target := range targets {

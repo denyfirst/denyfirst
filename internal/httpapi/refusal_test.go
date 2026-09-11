@@ -113,8 +113,23 @@ func TestEveryRefusalCodeCanBeProduced(t *testing.T) {
 	}
 
 	// ── many clients spending one host's allowance ──
+	//
+	// On a stopped clock, and it has to be. A host's allowance is eight to ten
+	// scans and one slot returns every thirty seconds, against wall time — so
+	// this block spends nine to eleven of them and needs all of them inside
+	// half a minute. Alone that is easy. In a full run of this package, where
+	// each of those scans waits on a real resolver, it is not: the budget
+	// refills as fast as the test spends it and the allowance never runs out.
+	//
+	// That failed on 2026-09-11 in a full-suite run, after passing alone and
+	// on main, and it is a defect in the test rather than in the limiter. A
+	// test whose subject is a budget must not be racing the clock that refills
+	// it, or the thing it fails to prove is the one A7 exists for: every
+	// refusal this service counts can actually be produced.
 	{
-		s := New(offlineScanner(), Limits{Burst: 1000, Refill: time.Nanosecond}, nil)
+		frozen := time.Now()
+		s := New(offlineScanner(), Limits{Burst: 1000, Refill: time.Nanosecond},
+			func() time.Time { return frozen })
 		exhaustTarget(t, s, `{"target":"busy.test"}`, "203.0.113.")
 		note(postFrom(t, s, `{"target":"busy.test"}`, "203.0.113.150:5000"), "target_busy")
 	}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/webprobe"
@@ -193,5 +194,37 @@ func TestWebOutcomesCarryTheVerdictAndTheFailure(t *testing.T) {
 	}
 	if exitCode(got) != exitError {
 		t.Error("a failed scan did not decide the status")
+	}
+}
+
+// The command line reads the page.
+//
+// Asserted because the alternative is a field that is set, documented and
+// handed to nothing — which has happened twice in this repository, and which a
+// sabotage found again here on 2026-09-11 by turning this off and watching
+// every test pass.
+func TestTheCommandLineReadsThePage(t *testing.T) {
+	s := webScanner(5*time.Second, false)
+	if !s.ReadMarkup {
+		t.Error("the command line does not read the page. It runs on the operator's own machine, " +
+			"from their own address, and the report goes to whoever ran it — there is nobody " +
+			"else for the restriction to protect.")
+	}
+
+	// And -allow-private does not quietly change it. The two switches answer
+	// different questions and neither is the other's default.
+	if !webScanner(5*time.Second, true).ReadMarkup {
+		t.Error("-allow-private turned off reading the page")
+	}
+}
+
+// -allow-private reaches the dialler, and nothing else does.
+func TestPrivateAddressesReachTheWebProberOnlyWhenAsked(t *testing.T) {
+	if webScanner(5*time.Second, false).Prober.Dial != nil {
+		t.Error("a dialler was installed without -allow-private, which is how the refusal of " +
+			"private addresses stops being the default")
+	}
+	if webScanner(5*time.Second, true).Prober.Dial == nil {
+		t.Error("-allow-private was asked for and no dialler was installed, so the flag does nothing")
 	}
 }

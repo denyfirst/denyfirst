@@ -350,24 +350,42 @@ The reason that survives is not bandwidth. It is that a body holds things a
 report must never carry: a leaked key in a comment, a token in a script, a name
 in a template. A report is a thing people paste into issue trackers.
 
-So the shape this would have to take, if it is ever built, and it is written
-down now because deciding it later under pressure is how it goes wrong:
+The shape it had to take was written down here before it was built, because
+deciding it later under pressure is how it goes wrong. **It was built on
+2026-09-11 to that shape, and the list below is now a description rather than a
+plan.** N7 has the detail; what follows is why each line is the line.
 
-- **Only where control has been proven.** The demonstration verifies nothing —
-  it reaches a compiled-in list — so it would keep reading no body at all, and
-  the promise on `/web/method` stays literally true for the reader who found
-  that address in a log. Two deployments would then be telling two different
-  true things, and the page has to say which one it is rather than shipping one
-  sentence for both.
-- **Nothing kept but derived facts.** The struct that reaches a report has
-  nowhere to put a body, in the way `webprobe.Cookie` has nowhere to put a
-  value. What survives is "a subresource was loaded over plaintext", not the
-  markup that said so.
-- **Capped and streamed**, so a large page costs a bounded read.
-- **Still no path is constructed.** This reads the body of `/` and of what a
-  `Location` header named. It does not follow a link, fetch a script, or ask
-  for anything the response mentioned.
+- **Only where control has been proven, and never on the demonstration.** That
+  build reaches a compiled-in list and verifies nothing, so it reads no body at
+  all — the refusal is a constant tested before anything else, which compiles
+  the branch out. The command line reads the page: it runs on the operator's
+  own machine, from their own address, and the report goes to whoever ran it,
+  which is the same argument `-allow-private` rests on. A service reads the
+  page where it required proof of control and not otherwise.
+- **The page a log reader is sent to had to say both.** The user agent names
+  `https://denyfirst.dev/web/method` from every installation, so one flat
+  sentence there would be true of the demonstration and false of the scan in
+  the reader's log. It describes both deployments now. This was foreseen in the
+  paragraph this one replaced, and it is the part that would have been quietly
+  skipped if the shape had not been written down first.
+- **Nothing kept but derived facts.** `markup.Facts` has nowhere to put a body,
+  in the way `webprobe.Cookie` has nowhere to put a value. A reference is
+  reduced to its host before it is kept — no path, no query, and userinfo
+  dropped before anything else, because `http://user:token@host/` in somebody's
+  markup is a credential.
+- **Capped and streamed.** One megabyte, truncated rather than refused, and the
+  report says nothing below the bound was seen.
+- **Still no path is constructed.** It reads the body of the address already
+  fetched. It does not follow a link, fetch a script, or ask for anything the
+  response mentioned, so the entry in the list above this section is untouched
+  in the part that matters.
+- **Nothing is executed**, so it sees less than a browser and the limits say
+  so rather than the report implying otherwise.
 
-**Not decided, and not started.** It changes a published promise, so it is a
-release note and a deliberate decision, not a side effect of adding a check.
+What it buys, so far: a `Content-Security-Policy` declared with `<meta
+http-equiv>`. A browser applies one and a header check could not see it, so a
+site that had done the work was told twice that it had not — once for the
+policy, and again for the framing protection the policy supersedes. Mixed
+content and forms posting in the clear are read the same way and are graded
+separately.
 

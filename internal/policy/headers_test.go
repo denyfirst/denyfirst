@@ -197,3 +197,97 @@ func TestTheReportedListIsStable(t *testing.T) {
 		}
 	}
 }
+
+// A policy declared in the markup is a policy.
+//
+// The defect this closes had shipped. CSP was read from headers alone, so a
+// site using <meta http-equiv="Content-Security-Policy"> was told it had no
+// policy — and then told a second time that it was missing framing protection,
+// because the rule that lets a policy supersede X-Frame-Options could not see
+// the policy either. One omission, two wrong sentences, both about something
+// the operator had already done.
+func TestAPolicyInTheMarkupCountsAsAPolicy(t *testing.T) {
+	f := present("X-Content-Type-Options", "Referrer-Policy", "Permissions-Policy",
+		"Cross-Origin-Opener-Policy", "Cross-Origin-Resource-Policy")
+	f.MarkupRead = true
+	f.MetaCSP = true
+
+	got := GradeHeaders(f)
+	text := noteText(got)
+
+	if strings.Contains(text, "Content-Security-Policy —") {
+		t.Errorf("a site declaring a policy in its markup was told it sends none:\n%s", text)
+	}
+	if strings.Contains(text, "X-Frame-Options") {
+		t.Errorf("a site with a policy was told it is missing framing protection, which the "+
+			"policy's frame-ancestors supersedes:\n%s", text)
+	}
+	if len(got.Notes) != 0 {
+		t.Errorf("a fully configured site with a meta policy was told %d things:\n%s",
+			len(got.Notes), text)
+	}
+}
+
+// A report-only policy in the markup is not an enforcing one.
+func TestAReportOnlyPolicyInTheMarkupIsNotProtectionYet(t *testing.T) {
+	f := present()
+	f.MarkupRead = true
+	f.MetaCSPReportOnly = true
+
+	text := noteText(GradeHeaders(f))
+	if !strings.Contains(text, "report-only mode") {
+		t.Errorf("a report-only meta policy was not described as one:\n%s", text)
+	}
+	if !strings.Contains(text, "Content-Security-Policy —") {
+		t.Errorf("a site with only a report-only policy was not told it sends no enforcing "+
+			"policy, which is the thing it does not have:\n%s", text)
+	}
+}
+
+// A check that read no body says so, where it could have changed the answer.
+//
+// The distinction R4 exists for: without this sentence a deployment that reads
+// no markup produces the same report as one that read the page and found no
+// policy in it, and only the second of those established anything.
+func TestAReportThatReadNoPageSaysWhatItCouldNotSee(t *testing.T) {
+	text := noteText(GradeHeaders(present()))
+	if !strings.Contains(text, "<meta http-equiv>") {
+		t.Errorf("a report built from headers alone does not say a meta policy would not have "+
+			"been seen:\n%s", text)
+	}
+
+	// And says it only where it matters. A response carrying the header has
+	// been measured; telling that site about a limit on a question already
+	// answered is the paragraph R6 is about.
+	withHeader := present("Content-Security-Policy")
+	if strings.Contains(noteText(GradeHeaders(withHeader)), "<meta http-equiv>") {
+		t.Errorf("a site sending the policy header was told about a limit that could not have "+
+			"changed its report:\n%s", noteText(GradeHeaders(withHeader)))
+	}
+
+	// And not at all once the page has been read.
+	read := present()
+	read.MarkupRead = true
+	if strings.Contains(noteText(GradeHeaders(read)), "<meta http-equiv>") {
+		t.Errorf("a report that did read the page still says it did not:\n%s", noteText(GradeHeaders(read)))
+	}
+}
+
+// A meta policy is not invented out of a deployment that reads no bodies.
+//
+// The sabotage this is written against is the easy one: wiring MetaCSP true by
+// default, or forgetting MarkupRead, credits every site with a policy nobody
+// looked for — and the report then claims a measurement it never made, in the
+// reassuring direction.
+func TestAPolicyIsNotCreditedToAPageNobodyRead(t *testing.T) {
+	f := present()
+	f.MetaCSP = true // set without MarkupRead, which is the inconsistent state
+
+	if f.MarkupRead {
+		t.Fatal("the fixture is not the state being tested")
+	}
+	text := noteText(GradeHeaders(f))
+	if !strings.Contains(text, "<meta http-equiv>") {
+		t.Errorf("a report that read no page did not say so:\n%s", text)
+	}
+}

@@ -202,10 +202,92 @@ because its consequence follows from the scan alone.
 A site sending a `Content-Security-Policy` is not told it lacks
 `X-Frame-Options`, which `frame-ancestors` replaced.
 
+### The page itself is read, where the deployment reads pages
+
+**This is a change to a published promise and it is the most consequential
+thing in this version.** Until now the check read response headers and closed
+the body unread, and said so on `/web/method` and in `docs/invariants.md`. It
+now reads the final HTML response — once, to a bound of one megabyte, streamed
+— and keeps nothing of it.
+
+The reason for reading it: a `Content-Security-Policy` declared with `<meta
+http-equiv>` is one a browser applies and a header check cannot see, so a site
+that had done the work was told it had no policy, and then told a second time
+that it was missing framing protection the policy supersedes. One omission, two
+wrong sentences, both about something already done. That is fixed here.
+
+The reason nothing is kept: a body holds a key in a comment, a token in a
+script, a name in a template, and a report is a thing people paste into issue
+trackers. So what survives a read is a handful of booleans and a bounded list
+of **host names** — a reference is reduced to its host before it is kept, with
+no path, no query, and userinfo dropped first, because `http://user:token@host/`
+in somebody's markup is a credential.
+
+Which deployment read your page is now part of the promise. The user agent
+names one address from every installation, so `/web/method` describes both: the
+demonstration reads no body at all, and an installation somebody runs
+themselves may have read the page. A flat sentence there would have been true
+of one and false of the one in a log reader's records.
+
+Two standing limits are reworded, and both were wrong in the direction that
+matters.
+
+`web-root-only` said **"Only the root was asked, and only its headers were
+read"** and now says **"Only the root was asked"**. The second half stopped
+being true of every deployment, and a standing limit is one sentence on every
+report — so the half that is always true stays, and what a particular scan read
+is said by the report that read it.
+
+`web-no-browser` said what a page actually loads **"is visible only to a
+browser executing the page"**. What a page *declares* it loads is read now, so
+that sentence disowned a finding the same report had just made. It says what is
+still true instead: nothing was executed, so anything a script fetches once it
+runs was not seen.
+
+### Two rules that rest on the page
+
+| rule | verdict | when |
+|---|---|---|
+| `content.form-posts-in-the-clear` | insecure | a form on a secure page has an `http://` action |
+| `content.mixed-blocked` | weak | a secure page loads a script, stylesheet, frame or plugin resource over `http://` |
+
+Both rest on the W3C Mixed Content specification, which does not advise: it
+divides plaintext subresources on a secure page into *blockable* and
+*optionally-blockable* and says what a user agent does with each. Blockable
+content is refused by every current browser, so the resource does not arrive
+and the page runs without it — a page broken in a way its author may not have
+seen, because a blocked subresource fails quietly. A form is neither: a browser
+submits it, so whatever a visitor types travels in the clear, which is the one
+rule here about the visitor rather than the page.
+
+**Optionally-blockable content — images and media — is reported and not
+graded.** Browsers upgrade some, block others, and do not all agree. A verdict
+would be this project deciding something a standards body deliberately left
+open (R21), and it would land on a site whose behaviour depends on which
+browser the visitor uses.
+
+**Subresource integrity and forms posting to another origin are not here.**
+Both are read-only questions about third parties rather than about plaintext,
+and neither is an error any document declares.
+
+### What can move a verdict
+
+A site can now be graded `weak` by `content.mixed-blocked` or `insecure` by
+`content.form-posts-in-the-clear` where it was not graded before. **Nothing
+about such a site changed**: what changed is that the page is read, so what was
+already in it became visible. Both are only reachable on a deployment that
+reads bodies, so a report from the public demonstration cannot carry either.
+
+A verdict can also move the other way, and this one is a correction: a site
+declaring its policy in markup is no longer listed as sending no
+`Content-Security-Policy` and no longer told it lacks `X-Frame-Options`. Those
+were notes rather than findings, so no verdict changes from that alone.
+
 ### Nothing else moved
 
-No reach or HSTS rule was added, removed, or made stricter. A site with no
-cookies and every header in place is graded exactly as it was under v2.
+No reach, HSTS or cookie rule was added, removed, or made stricter. A site with
+no cookies, every header in place and nothing loaded over plaintext is graded
+exactly as it was under v2.
 
 ---
 

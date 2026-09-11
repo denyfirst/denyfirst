@@ -196,7 +196,18 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 		// to start without one handed it to the TLS scanner; the web check was
 		// built without it and judged its chains against whatever the platform
 		// picks (R7). One kind of omission, two fields.
-		web:     &webscan.Scanner{Verify: scanner.Verify, Roots: scanner.Roots},
+		// ReadMarkup follows the proof rather than the deployment's name. A
+		// service that requires proof of control is reading a page belonging to
+		// whoever asked about it; one configured without a scope is scanning
+		// names nobody proved anything about, which N9 says a service must not
+		// do — and until somebody fixes that, it does not also read their
+		// pages. The demonstration is refused at the response in webprobe, so
+		// this line is not what protects it.
+		web: &webscan.Scanner{
+			Verify:     scanner.Verify,
+			Roots:      scanner.Roots,
+			ReadMarkup: scanner.Verify != nil,
+		},
 		limits:  limits,
 		rate:    newLimiter(limits.Burst, limits.Refill, limits.MaxTrackedIPs, now),
 		reads:   newLimiter(readBurst, readRefill, limits.MaxTrackedIPs, now),
