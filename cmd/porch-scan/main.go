@@ -277,29 +277,41 @@ func run() int {
 
 	scanner := tlsScanner(*timeout, *allowPrivate, *resolver, *searchLogs)
 
+	return runTLS(ctx, scanner, targets, *timeout, *asJSON, store)
+}
+
+// runTLS measures each target's transport and certificates.
+//
+// A function rather than the tail of run(), for the reason tlsScanner() is one:
+// run() takes flags, prints and returns a status, so nothing inside it can be
+// driven by a test. The other two checks already had runWeb and runMail; this
+// did not, and a sabotage that stopped the TLS path filing its results under a
+// name anything could read back escaped every test here on 2026-09-13 because
+// there was no way to call the code that did it.
+func runTLS(ctx context.Context, scanner *scan.Scanner, targets []string, timeout time.Duration, asJSON bool, store *results.Store) int {
 	// reports rather than results: internal/results is the store, and a local
 	// name shadowing a package is a name somebody later reads as the package.
 	reports := make([]result, 0, len(targets))
 
 	for _, target := range targets {
-		r := runScan(ctx, scanner, target, *timeout)
+		r := runScan(ctx, scanner, target, timeout)
 		reports = append(reports, r)
 
-		// Kept under the host rather than under what was typed, so one target
-		// has one history whether or not a port was written out. Only where
+		// Filed under the name -history resolves the same target to, which is
+		// one function for both so the two cannot disagree. Only where
 		// something was measured: a scan that failed is not a verdict, and a
 		// history holding one would read as a server that was graded rather
 		// than one that was never reached (R4).
 		if r.Result != nil {
-			keep(store, checkTLS, historyName(r.Target), r.Verdict, r.Policy, r.Findings())
+			keep(store, checkTLS, historyName(checkTLS, r.Target), r.Verdict, r.Policy, r.Findings())
 		}
 
-		if !*asJSON {
+		if !asJSON {
 			printReport(os.Stdout, r)
 		}
 	}
 
-	if *asJSON {
+	if asJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(reports); err != nil {

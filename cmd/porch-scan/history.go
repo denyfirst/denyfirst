@@ -8,6 +8,7 @@ import (
 
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/results"
+	"github.com/denyfirst/denyfirst/internal/scan"
 )
 
 // keep records one scan, where the operator asked for records to be kept.
@@ -49,7 +50,7 @@ func printHistory(w io.Writer, store *results.Store, check string, targets []str
 		}
 		fmt.Fprintf(w, "\n%s\n%s\n", target, strings.Repeat("=", len(target)))
 
-		records, err := store.History(check, target)
+		records, err := store.History(check, historyName(check, target))
 		if err != nil {
 			fmt.Fprintf(w, "\n  the history could not be read: %v\n", err)
 			return exitError
@@ -110,13 +111,36 @@ func printRuleSetBreaks(w io.Writer, records []results.Record) {
 	fmt.Fprintf(w, "  What changed is in docs/policy-changes.md.\n")
 }
 
-// historyName is the name a target's history is filed under.
+// historyName is the name a target's history is filed under, for one check.
 //
-// The TLS check takes host:port, and a colon is not a filename character on
-// every platform this ships to. Host and port are kept apart rather than the
-// port dropped: scanning one host on two ports is two different measurements —
-// the service's own per-target budget says so — and folding them into one
-// history would interleave two servers' verdicts under one name.
-func historyName(target string) string {
-	return strings.ReplaceAll(target, ":", "_")
+// One function for writing and for reading, because the two disagreed the first
+// time they were written separately. A scan of the TLS check files under
+// host_port — the port comes from the scan, which fills in the default — while
+// -history passed its argument through untouched and looked for the bare host.
+// Everything worked for the web and mail checks, which have no port, so the
+// defect was invisible until somebody read a TLS history back. Found by running
+// it rather than by any test, which is why the test below asserts that the two
+// agree rather than asserting two literals.
+//
+// Host and port are kept apart rather than the port dropped: scanning one host
+// on two ports is two different measurements — the service's own per-target
+// budget says so in the same words — and folding them into one history would
+// interleave two servers' verdicts under one name. A colon is not a filename
+// character on every platform this ships to, so the separator is not one.
+//
+// Only the TLS check has a port. The other two take a bare name, and giving
+// them a default one would file a history under a port nothing measured.
+func historyName(check, target string) string {
+	if check != checkTLS {
+		return strings.TrimSpace(target)
+	}
+
+	host, port, _, err := scan.SplitTargetPort(target)
+	if err != nil {
+		// Not this function's error to report. Whatever is wrong with the
+		// target will be said by the scan or by the store, in words about the
+		// rule that was broken rather than about a filename.
+		return strings.ReplaceAll(strings.TrimSpace(target), ":", "_")
+	}
+	return host + "_" + port
 }

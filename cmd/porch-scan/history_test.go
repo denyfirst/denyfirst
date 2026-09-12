@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,8 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/results"
+	"github.com/denyfirst/denyfirst/internal/scan"
+	"github.com/denyfirst/denyfirst/internal/tlsprobe"
 )
 
 // A scan that failed is not kept as a verdict.
@@ -75,7 +78,9 @@ func TestHistoryReadsWhatWasKept(t *testing.T) {
 	}
 
 	var out strings.Builder
-	if code := printHistory(&out, store, "tls", []string{"example.com_443"}); code != exitOK {
+	// What an operator types, not the name it is filed under. printHistory
+	// resolves the one into the other, which is the point of it.
+	if code := printHistory(&out, store, checkTLS, []string{"example.com:443"}); code != exitOK {
 		t.Fatalf("printHistory returned %d", code)
 	}
 
@@ -106,7 +111,7 @@ func TestAHistorySaysWhereTheRulesChanged(t *testing.T) {
 	}
 
 	var out strings.Builder
-	printHistory(&out, store, "tls", []string{"example.com_443"})
+	printHistory(&out, store, checkTLS, []string{"example.com:443"})
 
 	text := out.String()
 	if !strings.Contains(text, "not comparable") {
@@ -145,27 +150,133 @@ func TestHistoryWithoutAStoreSaysSo(t *testing.T) {
 // own per-target budget says so — and folding them into one history would
 // interleave two servers' verdicts under one name.
 func TestAHistoryNameKeepsTheHostAndPortApart(t *testing.T) {
-	for _, tc := range []struct{ target, want string }{
-		{"example.com:443", "example.com_443"},
-		{"example.com:8443", "example.com_8443"},
-		{"example.com", "example.com"},
+	for _, tc := range []struct{ check, target, want string }{
+		{checkTLS, "example.com:443", "example.com_443"},
+		{checkTLS, "example.com:8443", "example.com_8443"},
+
+		// The default port is filled in, because a scan fills it in. This is
+		// the case the first version got wrong: writing used the port a scan
+		// resolved and reading used the bare name somebody typed.
+		{checkTLS, "example.com", "example.com_443"},
+
+		// The other two checks take a bare name. Giving them a default port
+		// would file a history under a port nothing measured.
+		{checkWeb, "example.com", "example.com"},
+		{checkMail, "example.com", "example.com"},
 	} {
-		if got := historyName(tc.target); got != tc.want {
-			t.Errorf("historyName(%q) = %q, want %q", tc.target, got, tc.want)
+		if got := historyName(tc.check, tc.target); got != tc.want {
+			t.Errorf("historyName(%q, %q) = %q, want %q", tc.check, tc.target, got, tc.want)
 		}
 	}
 
-	if historyName("example.com:443") == historyName("example.com:8443") {
+	if historyName(checkTLS, "example.com:443") == historyName(checkTLS, "example.com:8443") {
 		t.Error("two ports on one host share a history")
 	}
 
 	// And the name is one a store will accept, which is the whole reason the
 	// colon is replaced rather than kept.
 	store := &results.Store{Dir: t.TempDir()}
-	if err := store.Put("tls", historyName("example.com:443"), "strong", "porch-tls-v7", nil); err != nil {
+	if err := store.Put("tls", historyName(checkTLS, "example.com:443"), "strong", "porch-tls-v7", nil); err != nil {
 		t.Errorf("the store refused a name this function produced: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(store.Dir, "tls", "example.com_443.jsonl")); err != nil {
 		t.Errorf("the history was not filed where expected: %v", err)
 	}
+}
+
+// What a scan writes is what -history reads.
+//
+// The two were written separately and disagreed: a TLS scan filed under
+// host_port, because the scan fills in the default port, while -history looked
+// for the bare name somebody typed. The web and mail checks take no port, so
+// both worked and the defect was invisible until a TLS history was read back —
+// found by running the thing rather than by any test here.
+//
+// So this asserts that the two agree rather than asserting two literals. Two
+// literals is what the first version had, one on each side, and they were both
+// correct about their own half.
+func TestWhatAScanWritesIsWhatHistoryReads(t *testing.T) {
+	for _, tc := range []struct{ check, typed, resolved string }{
+		// What an operator types, and what the scan resolves it to. The TLS
+		// check is the one where those differ.
+		{checkTLS, "example.com", "example.com:443"},
+		{checkTLS, "example.com:8443", "example.com:8443"},
+		{checkWeb, "example.com", "example.com"},
+		{checkMail, "example.com", "example.com"},
+	} {
+		store := &results.Store{Dir: t.TempDir()}
+
+		// Written under the name the scan produces.
+		written := historyName(tc.check, tc.resolved)
+		if err := store.Put(tc.check, written, "strong", "porch-tls-v7", nil); err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+
+		// Read under the name somebody types.
+		var out strings.Builder
+		if code := printHistory(&out, store, tc.check, []string{tc.typed}); code != exitOK {
+			t.Fatalf("printHistory returned %d", code)
+		}
+
+		if strings.Contains(out.String(), "has been kept here") {
+			t.Errorf("a %s scan of %q was written as %q and -history %q found nothing:\n%s",
+				tc.check, tc.resolved, written, tc.typed, out.String())
+		}
+	}
+}
+
+// A real TLS scan files its result where -history looks for it.
+//
+// The end-to-end version of the test above, and the one that would have caught
+// the defect. The other asserts that two functions agree; this drives the code
+// that calls them, because the escape was at the call site rather than in
+// either function.
+//
+// Against a server started here, so nothing reaches the network.
+func TestATLSScanFilesWhereHistoryLooks(t *testing.T) {
+	port := testServer(t, serverOpts{
+		names:      []string{"example.test"},
+		notBefore:  time.Now().Add(-time.Hour),
+		notAfter:   time.Now().Add(24 * time.Hour),
+		minVersion: tls.VersionTLS12,
+		maxVersion: tls.VersionTLS13,
+	})
+
+	scanner := &scan.Scanner{
+		Prober:       &tlsprobe.Prober{Dial: toLoopback(port), TotalTimeout: 10 * time.Second},
+		AllowAnyPort: true,
+		Resolver:     noResolver(),
+	}
+
+	store := &results.Store{Dir: t.TempDir()}
+	target := "example.test:" + port
+
+	if code := runTLS(context.Background(), scanner, []string{target}, 10*time.Second, true, store); code == exitError {
+		t.Fatalf("the scan failed, so this test proves nothing about where it files")
+	}
+
+	var out strings.Builder
+	if code := printHistory(&out, store, checkTLS, []string{target}); code != exitOK {
+		t.Fatalf("printHistory returned %d", code)
+	}
+	if strings.Contains(out.String(), "has been kept here") {
+		t.Errorf("a scan of %q was kept somewhere -history does not look:\n%s\nstore holds: %v",
+			target, out.String(), held(t, store))
+	}
+}
+
+// held lists what is actually on disk, so a failure says where things went
+// rather than only that they are not where they were expected.
+func held(t *testing.T, store *results.Store) []string {
+	t.Helper()
+
+	var out []string
+	_ = filepath.Walk(store.Dir, func(path string, info os.FileInfo, err error) error {
+		if err == nil && info != nil && !info.IsDir() {
+			rel, _ := filepath.Rel(store.Dir, path)
+			out = append(out, rel)
+		}
+		return nil
+	})
+	return out
 }
