@@ -150,6 +150,39 @@ already lets a sender policy's `include` be resolved: the domain published an
 reading the domain's own answer rather than wandering off it. Bounded, because
 the list is written by whoever is being measured.
 
+### Signing keys, under selectors somebody names
+
+A DKIM key lives at `<selector>._domainkey.<domain>` and DNS has no query for
+what is beneath a name. There is no set of selectors to discover, so keys are
+read under names this scan is told to look under: the operator's own, given with
+`-dkim-selector`, and the ones mail providers document for their own service.
+
+The second are on by default and that is a decision worth stating. Trying names
+nobody mentioned looks like the guessing this project refuses everywhere — but
+that rule is about constructing paths on somebody's *server*, where the request
+lands in their access log and looks like an attack. A DNS lookup reaches the
+zone rather than the host: a name that does not exist costs a resolver one
+answer and the domain nothing at all, and a key that does exist is published for
+every receiving mail server on the internet to read.
+
+What keeps it honest is not withholding the lookup. It is that the report names
+every selector it tried, and never turns *these names hold nothing* into *this
+domain publishes no key*. A selector the operator named and one a provider
+documents are reported differently for the same reason: they said theirs should
+be there, so an absence is a fact; a provider default holding nothing is not.
+
+The list is not one this project invented. Each entry is the name a provider
+tells its own customers to create, and each carries the provider it belongs to
+so a reader can check rather than take the file's word for it.
+
+**One rule is graded: `mail.dkim-weak-key`.** RFC 8301 raised the floor to 1024
+bits and says a verifier may treat anything shorter as insecure, so mail signed
+with a smaller key can be discarded by a receiver applying the rule. That is a
+measurement. Everything else about DKIM is reported: a key in testing mode
+(`t=y`), which RFC 6376 tells a verifier not to act on; a revoked key, which is
+an empty `p=` and a decision rather than a mistake; and which selectors held
+nothing.
+
 ### An address may be given, and the part before the @ is discarded
 
 Somebody checking a domain's mail policy has an address in front of them, and

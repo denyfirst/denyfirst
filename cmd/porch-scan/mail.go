@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/denyfirst/denyfirst/internal/dkim"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/mailscan"
 	"github.com/denyfirst/denyfirst/internal/policy"
@@ -27,8 +28,8 @@ type mailResult struct {
 // No -allow-private here and none to add: this check opens no connection at
 // all, so there is no dialler to relax and nothing an operator could be asking
 // for by relaxing one.
-func runMail(ctx context.Context, domains []string, timeout time.Duration, resolver string, asJSON bool, store *results.Store) int {
-	scanner := &mailscan.Scanner{}
+func runMail(ctx context.Context, domains []string, timeout time.Duration, resolver string, asJSON bool, store *results.Store, selectors []dkim.Selector) int {
+	scanner := &mailscan.Scanner{DKIMSelectors: selectors}
 	if resolver != "" {
 		scanner.Resolver = &dnsclient.Client{Server: resolver, Timeout: timeout}
 	}
@@ -203,4 +204,19 @@ func printMailPath(w io.Writer, f *policy.MailFacts) {
 	if f.DANEUnread > 0 {
 		fmt.Fprintf(w, "               %d could not be read\n", f.DANEUnread)
 	}
+}
+
+// selectorsFrom builds the list of names to look for DKIM keys under.
+//
+// The operator's own come first, because they are the authoritative answer and
+// the bound on how many names one scan asks about is small. A provider's
+// documented defaults are added only when asked for: they are a convenience,
+// and a scan that quietly tried ten names nobody mentioned would be reporting
+// on a list this program chose.
+func selectorsFrom(named string, common bool) []dkim.Selector {
+	out := dkim.Named(named)
+	if common {
+		out = append(out, dkim.DocumentedSelectors()...)
+	}
+	return out
 }

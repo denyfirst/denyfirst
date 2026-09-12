@@ -45,6 +45,11 @@ const (
 	// TypeTXT is the record type from RFC 1035.
 	TypeTXT = 16
 
+	// TypeCNAME is the record type from RFC 1035. A name that is an alias has
+	// one, and a resolver following it returns the target's records under the
+	// target's name — which is why parseAnswers has to know about it.
+	TypeCNAME = 5
+
 	// TypeMX is the record type from RFC 1035. It names the hosts that accept
 	// mail for a domain, each with a preference.
 	TypeMX = 15

@@ -56,6 +56,7 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/denyfirst/internal/dkim"
 	"github.com/denyfirst/denyfirst/internal/exclusion"
 	"github.com/denyfirst/denyfirst/internal/mailscan"
 	"github.com/denyfirst/denyfirst/internal/policy"
@@ -223,7 +224,14 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 		// ReadMarkup, because it fetches no page.
 		//
 		// The resolver is set below rather than here, and that is not tidiness.
-		mail:    &mailscan.Scanner{Verify: scanner.Verify},
+		// Documented selectors by default, and the operator's own are not
+		// offered here: a service takes one field, and a list of selectors in
+		// a request body is a field somebody else fills in. The command line
+		// is where an operator names their own.
+		mail: &mailscan.Scanner{
+			Verify:        scanner.Verify,
+			DKIMSelectors: dkim.DocumentedSelectors(),
+		},
 		limits:  limits,
 		rate:    newLimiter(limits.Burst, limits.Refill, limits.MaxTrackedIPs, now),
 		reads:   newLimiter(readBurst, readRefill, limits.MaxTrackedIPs, now),

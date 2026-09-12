@@ -1165,7 +1165,26 @@ established (R4).
 `TestTheAddressIsSplitWhereTheDomainBegins`,
 `TestTheMailPathIsDescribedAndNeverGraded`,
 `TestAnAnnouncedMTASTSPolicyIsNotAReadOne`,
-`TestTheThreeDANEStatesAreKeptApart`
+`TestTheThreeDANEStatesAreKeptApart`,
+`TestNothingIsLookedUnderWithoutASelector`,
+`TestAKeyIsReadWithItsSize`,
+`TestAKeyBelowTheFloorIsWeak`,
+`TestAnEmptyKeyIsRevokedRatherThanBroken`,
+`TestATestingKeyIsSeen`,
+`TestOnlyARecordThatAnnouncesItselfIsAKey`,
+`TestAFailedLookupIsNotAnAbsentKey`,
+`TestWhereASelectorCameFromIsKept`,
+`TestEveryDocumentedSelectorNamesItsProvider`,
+`TestASelectorIsAskedAboutOnce`,
+`TestTheSelectorListIsBounded`,
+`TestTheNameAskedAboutIsWhereAKeyLives`,
+`TestASelectorThatHeldNothingIsNotDescribed`,
+`TestAReportSaysWhichSelectorsWereTried`,
+`TestAnAbsenceMeansDifferentThingsByWhoNamedTheSelector`,
+`TestOnlyTheKeySizeIsGraded`,
+`TestARecordReachedThroughACNAMEIsRead`,
+`TestARecordForAnUnrelatedNameIsStillSkipped`,
+`TestACNAMELoopEnds`
 
 ## Input
 

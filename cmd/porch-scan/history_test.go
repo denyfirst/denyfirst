@@ -32,7 +32,7 @@ func TestAFailedScanIsNotKept(t *testing.T) {
 
 	// Refused before any lookup: the mail check takes a bare domain, and this
 	// is not one. Nothing reaches the network.
-	code := runMail(context.Background(), []string{"not a domain"}, time.Second, "", true, store)
+	code := runMail(context.Background(), []string{"not a domain"}, time.Second, "", true, store, nil)
 	if code == exitOK {
 		t.Error("a target that cannot be scanned exited zero")
 	}
@@ -52,7 +52,7 @@ func TestNothingIsKeptWithoutADirectory(t *testing.T) {
 
 	// A store pointed nowhere, beside a directory that would show any writing.
 	code := runMail(context.Background(), []string{"not a domain"}, time.Second, "",
-		true, &results.Store{})
+		true, &results.Store{}, nil)
 	if code == exitOK {
 		t.Error("a target that cannot be scanned exited zero")
 	}
