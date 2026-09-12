@@ -114,6 +114,8 @@ func printMail(w io.Writer, r mailResult) {
 			reporting = "yes"
 		}
 		fmt.Fprintf(w, "    TLS-RPT    %s\n", reporting)
+
+		printMailPath(w, f)
 	}
 
 	printFindings(w, r.Findings)
@@ -143,4 +145,51 @@ func mailOutcomes(results []mailResult) []outcome {
 		out = append(out, o)
 	}
 	return out
+}
+
+// printMailPath shows where the domain's mail goes and what protects it there.
+//
+// Three states kept apart in every line, because the difference between them is
+// the whole value: a domain with no DANE, a domain whose DANE could not be read,
+// and a domain that accepts no mail at all are three answers a reader would act
+// on differently.
+func printMailPath(w io.Writer, f *policy.MailFacts) {
+	fmt.Fprintf(w, "\n  Mail path\n")
+
+	switch {
+	case f.MXReason != "":
+		fmt.Fprintf(w, "    MX         not read: %s\n", f.MXReason)
+		return
+	case f.NullMX:
+		fmt.Fprintf(w, "    MX         null MX: the domain accepts no mail\n")
+		return
+	case !f.MXRead:
+		fmt.Fprintf(w, "    MX         not read\n")
+		return
+	case len(f.MXHosts) == 0:
+		fmt.Fprintf(w, "    MX         none published\n")
+	default:
+		fmt.Fprintf(w, "    MX         %s\n", strings.Join(f.MXHosts, ", "))
+	}
+
+	sts := "no"
+	if f.MTASTSRecords > 0 {
+		sts = "announced; the policy itself was not fetched"
+	}
+	fmt.Fprintf(w, "    MTA-STS    %s\n", sts)
+
+	switch {
+	case len(f.MXHosts) == 0:
+	case len(f.DANEHosts) == 0:
+		fmt.Fprintf(w, "    DANE       none of the %d\n", len(f.MXHosts))
+	case len(f.DANEHosts) == len(f.MXHosts):
+		fmt.Fprintf(w, "    DANE       all %d\n", len(f.MXHosts))
+	default:
+		fmt.Fprintf(w, "    DANE       %d of the %d: %s\n",
+			len(f.DANEHosts), len(f.MXHosts), strings.Join(f.DANEHosts, ", "))
+	}
+
+	if f.DANEUnread > 0 {
+		fmt.Fprintf(w, "               %d could not be read\n", f.DANEUnread)
+	}
 }

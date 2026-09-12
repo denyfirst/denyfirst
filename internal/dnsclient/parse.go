@@ -86,12 +86,14 @@ func parseReply(raw []byte, id uint16, question []byte, qtype uint16) (reply, er
 	}
 
 	answers := int(binary.BigEndian.Uint16(raw[6:8]))
-	records, txt, err := parseAnswers(raw, end, answers, qtype, foldName(question))
+	found, err := parseAnswers(raw, end, answers, qtype, foldName(question))
 	if err != nil {
 		return out, err
 	}
-	out.records = records
-	out.txt = txt
+	out.records = found.caa
+	out.txt = found.txt
+	out.mx = found.mx
+	out.tlsa = found.tlsa
 	return out, nil
 }
 
@@ -111,32 +113,34 @@ func parseReply(raw []byte, id uint16, question []byte, qtype uint16) (reply, er
 // is how RRSIG and every other type in the section are already handled. The
 // walk then reports no CAA at this name and carries on to the parent, which is
 // the honest answer: nothing was found for the name that was asked about.
-func parseAnswers(raw []byte, offset, count int, qtype uint16, wantName []byte) ([]CAA, []string, error) {
-	var (
-		out []CAA
-		txt []string
-	)
+func parseAnswers(raw []byte, offset, count int, qtype uint16, wantName []byte) (answerSet, error) {
+	var out answerSet
 
 	for i := 0; i < count; i++ {
 		owner, next, err := readName(raw, offset)
 		if err != nil {
-			return nil, nil, err
+			return answerSet{}, err
 		}
 		offset = next
 
 		// Type, class, TTL, and the length of what follows: ten bytes before
 		// anything variable.
 		if offset+10 > len(raw) {
-			return nil, nil, errors.New("dnsclient: a record ends before its header does")
+			return answerSet{}, errors.New("dnsclient: a record ends before its header does")
 		}
 		rrType := binary.BigEndian.Uint16(raw[offset : offset+2])
 		rdLength := int(binary.BigEndian.Uint16(raw[offset+8 : offset+10]))
 		offset += 10
 
 		if rdLength < 0 || offset+rdLength > len(raw) {
-			return nil, nil, errors.New("dnsclient: a record announces more data than the reply holds")
+			return answerSet{}, errors.New("dnsclient: a record announces more data than the reply holds")
 		}
 		rdata := raw[offset : offset+rdLength]
+
+		// Where this record's data begins in the whole message. A name inside
+		// it may be compressed — a pointer back into the message — so a parser
+		// handed only the record's own bytes could not follow one.
+		rdataAt := offset
 		offset += rdLength
 
 		// Anything else in the section is skipped rather than refused: a
@@ -152,19 +156,44 @@ func parseAnswers(raw []byte, offset, count int, qtype uint16, wantName []byte) 
 		case TypeCAA:
 			record, err := parseCAA(rdata)
 			if err != nil {
-				return nil, nil, err
+				return answerSet{}, err
 			}
-			out = append(out, record)
+			out.caa = append(out.caa, record)
 		case TypeTXT:
 			value, err := parseTXT(rdata)
 			if err != nil {
-				return nil, nil, err
+				return answerSet{}, err
 			}
-			txt = append(txt, value)
+			out.txt = append(out.txt, value)
+		case TypeMX:
+			record, err := parseMX(raw, rdata, rdataAt)
+			if err != nil {
+				return answerSet{}, err
+			}
+			out.mx = append(out.mx, record)
+		case TypeTLSA:
+			record, err := parseTLSA(rdata)
+			if err != nil {
+				return answerSet{}, err
+			}
+			out.tlsa = append(out.tlsa, record)
 		}
 	}
 
-	return out, txt, nil
+	return out, nil
+}
+
+// answerSet is what one answer section held, sorted by type.
+//
+// A struct rather than a growing list of return values: this returned two
+// slices and an error while there were two record types, and a fourth type
+// would have made every call site read a signature to find out which position
+// meant what.
+type answerSet struct {
+	caa  []CAA
+	txt  []string
+	mx   []MX
+	tlsa []TLSA
 }
 
 // parseCAA reads one property: a flags octet, a length-prefixed tag, and the
@@ -351,3 +380,91 @@ func parseTXT(rdata []byte) (string, error) {
 
 	return b.String(), nil
 }
+
+// parseMX reads one mail exchanger: a preference and a name.
+//
+// The name is read through readName rather than sliced out, because a name in
+// an answer may be compressed — a pointer back into the message — and a parser
+// that treated the bytes literally would produce a host nobody can resolve out
+// of a reply that is perfectly ordinary.
+func parseMX(raw, rdata []byte, rdataAt int) (MX, error) {
+	if len(rdata) < 3 {
+		return MX{}, errors.New("dnsclient: an MX record is shorter than its own header")
+	}
+
+	// Read through readName, from the position in the whole message, because
+	// the name may be compressed. A parser that sliced the bytes literally
+	// would produce a host nobody can resolve out of a reply that is perfectly
+	// ordinary — and most real answers compress this name.
+	host, _, err := readName(raw, rdataAt+2)
+	if err != nil {
+		return MX{}, err
+	}
+
+	return MX{
+		Preference: binary.BigEndian.Uint16(rdata[0:2]),
+		Host:       nameText(host),
+	}, nil
+}
+
+// parseTLSA reads one DANE record's three selectors.
+//
+// The certificate association data itself is deliberately not kept. This
+// project reports that a domain publishes DANE and what kind of binding it
+// declares; checking the binding means holding a certificate from the mail
+// host, which needs a connection to it, and the mail check makes none (N13).
+func parseTLSA(rdata []byte) (TLSA, error) {
+	if len(rdata) < 4 {
+		return TLSA{}, errors.New("dnsclient: a TLSA record is shorter than its own header")
+	}
+	return TLSA{
+		Usage:    rdata[0],
+		Selector: rdata[1],
+		Matching: rdata[2],
+	}, nil
+}
+
+// nameText turns a name in wire form into text a report can carry.
+//
+// The value comes from a resolver, which N5 treats as hostile, so it is
+// bounded, stripped of anything that is not an ordinary name character, and
+// lowercased for comparison (I7). A host name that reached a terminal report
+// carrying a newline would forge a line in it.
+//
+// The root — a single zero byte — comes back as "." rather than as an empty
+// string. A domain publishing MX "." is making RFC 7505's statement that it
+// accepts no mail at all, and an empty field would read as a record nobody
+// could parse instead of as the declaration it is.
+func nameText(encoded []byte) string {
+	var parts []string
+	for i := 0; i < len(encoded); {
+		size := int(encoded[i])
+		if size == 0 || i+1+size > len(encoded) {
+			break
+		}
+		parts = append(parts, string(encoded[i+1:i+1+size]))
+		i += 1 + size
+	}
+
+	name := strings.ToLower(strings.Join(parts, "."))
+	if name == "" {
+		return "."
+	}
+	if len(name) > maxNameLength {
+		name = name[:maxNameLength]
+	}
+
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			return r
+		case r == '.' || r == '-' || r == '_':
+			return r
+		}
+		return -1
+	}, name)
+}
+
+// maxNameLength is the longest name RFC 1035 allows, and the bound on anything
+// a resolver hands back.
+const maxNameLength = 253

@@ -335,3 +335,113 @@ func TestIncludeListReadsAsASentence(t *testing.T) {
 		}
 	}
 }
+
+// The mail path is described and never graded.
+//
+// Neither MTA-STS nor DANE is required by anything, and they are two competing
+// answers to the same problem: an operator may reasonably deploy either, both,
+// or neither. How many exchangers a domain has is an operational decision no
+// document settles. A verdict on any of it would be a threshold this project
+// invented (R21), landing on a choice somebody made deliberately.
+func TestTheMailPathIsDescribedAndNeverGraded(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		facts MailFacts
+	}{
+		{"no MTA-STS and no DANE", MailFacts{
+			SPFRecords: 1, SPFAll: "-", DMARCRecords: 1, DMARCPolicy: "reject",
+			MXRead: true, MXHosts: []string{"mx1.example"}, DANEAsked: 1,
+		}},
+		{"MTA-STS and no DANE", MailFacts{
+			SPFRecords: 1, SPFAll: "-", DMARCRecords: 1, DMARCPolicy: "reject",
+			MXRead: true, MXHosts: []string{"mx1.example"}, MTASTSRecords: 1, DANEAsked: 1,
+		}},
+		{"DANE on every exchanger", MailFacts{
+			SPFRecords: 1, SPFAll: "-", DMARCRecords: 1, DMARCPolicy: "reject",
+			MXRead: true, MXHosts: []string{"mx1.example"},
+			DANEHosts: []string{"mx1.example"}, DANEAsked: 1,
+		}},
+		{"DANE on some", MailFacts{
+			SPFRecords: 1, SPFAll: "-", DMARCRecords: 1, DMARCPolicy: "reject",
+			MXRead: true, MXHosts: []string{"mx1.example", "mx2.example"},
+			DANEHosts: []string{"mx1.example"}, DANEAsked: 2,
+		}},
+		{"a null MX", MailFacts{
+			SPFRecords: 1, SPFAll: "-", DMARCRecords: 1, DMARCPolicy: "reject",
+			MXRead: true, NullMX: true,
+		}},
+		{"twenty exchangers", MailFacts{
+			SPFRecords: 1, SPFAll: "-", DMARCRecords: 1, DMARCPolicy: "reject",
+			MXRead: true, MXHosts: make([]string, 20), DANEAsked: 8, DANEPartial: true,
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := GradeMail(tc.facts)
+			if len(got.Findings) != 0 {
+				t.Errorf("graded %v. Nothing about the mail path is an error any document names.",
+					mailRuleIDs(got))
+			}
+			if got.Verdict != Strong {
+				t.Errorf("verdict = %q, want strong", got.Verdict)
+			}
+		})
+	}
+}
+
+// A policy announced is not a policy read, and the report says which it means.
+//
+// The sentence a reader would otherwise complete in the stronger direction. The
+// record says a policy exists; whether it is in testing or enforcing mode is in
+// a file this check does not fetch, and the difference between those two is the
+// difference between a protection and a rehearsal.
+func TestAnAnnouncedMTASTSPolicyIsNotAReadOne(t *testing.T) {
+	got := GradeMail(MailFacts{
+		SPFRecords: 1, SPFAll: "-", DMARCRecords: 1, DMARCPolicy: "reject",
+		MXRead: true, MXHosts: []string{"mx1.example"}, MTASTSRecords: 1, DANEAsked: 1,
+	})
+
+	text := mailNoteText(got.Notes)
+	if !strings.Contains(text, "was not read") {
+		t.Errorf("the report does not say the policy itself was not read:\n%s", text)
+	}
+	if !strings.Contains(text, "announced") {
+		t.Errorf("the report does not distinguish announcing a policy from having one read:\n%s", text)
+	}
+}
+
+// Three states for DANE, kept apart.
+//
+// "None of them publish one", "some do", and "we could not find out" send a
+// reader to three different places, and the third is the one a report most
+// easily loses (R4).
+func TestTheThreeDANEStatesAreKeptApart(t *testing.T) {
+	base := MailFacts{
+		SPFRecords: 1, SPFAll: "-", DMARCRecords: 1, DMARCPolicy: "reject",
+		MXRead: true, MXHosts: []string{"mx1.example", "mx2.example"},
+	}
+
+	none := base
+	none.DANEAsked = 2
+	if text := mailNoteText(GradeMail(none).Notes); !strings.Contains(text, "No mail exchanger publishes a DANE record") {
+		t.Errorf("a domain with no DANE is not told so:\n%s", text)
+	}
+
+	some := base
+	some.DANEAsked = 2
+	some.DANEHosts = []string{"mx1.example"}
+	if text := mailNoteText(GradeMail(some).Notes); !strings.Contains(text, "1 of the 2 mail exchangers") {
+		t.Errorf("a partial rollout is not described as one:\n%s", text)
+	}
+
+	unread := base
+	unread.DANEAsked = 1
+	unread.DANEUnread = 1
+	graded := GradeMail(unread)
+	if text := mailNoteText(graded.Notes); !strings.Contains(text, "could not be read") {
+		t.Errorf("exchangers that could not be asked about are not reported as such:\n%s", text)
+	}
+	if len(NotesOfKind(graded.Notes, KindUnsettled)) == 0 {
+		t.Error("a lookup that failed was filed as an observation rather than as something the " +
+			"scan did not establish")
+	}
+}

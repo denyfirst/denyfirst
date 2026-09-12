@@ -1,11 +1,12 @@
 // Package mailscan reads what a domain's DNS says about its mail and grades it.
 //
 // It is the third check, and the only one that connects to nothing. Every fact
-// in a report from here came out of a DNS lookup: the sender policy, what it
-// costs a receiver to evaluate, the DMARC instruction, and whether the domain
-// asks for reports when transport security fails. No mail server is contacted,
-// no message is composed, nothing is sent, and nothing that would change state
-// at the other end is attempted.
+// in a report from here came out of a DNS lookup: the sender policy and what it
+// costs a receiver to evaluate, the DMARC instruction, whether the domain asks
+// for reports when transport security fails, which hosts accept its mail, and
+// what those hosts publish about protecting it in transit. No mail server is
+// contacted, no message is composed, nothing is sent, and nothing that would
+// change state at the other end is attempted.
 //
 // That is a property of what these records are rather than a restraint applied
 // to them, and it makes this the strongest privacy story any check in this
@@ -26,6 +27,18 @@
 // — is guessing, and guessing is what this project refuses everywhere else. So
 // a report says DKIM was not checked rather than that it is missing, because
 // those are different facts and only one of them is true (R4).
+//
+// **The MTA-STS policy itself.** The record at _mta-sts.<domain> announces that
+// a policy exists and is read here. The policy is a file served over HTTPS at
+// mta-sts.<domain>, and fetching it would be a connection on the mail path —
+// the one thing this check does not make. So a report says a policy is
+// announced, never what it says, and the difference is stated rather than left
+// for a reader to assume the stronger reading.
+//
+// **Whether a DANE binding is correct.** The TLSA records are read, so a report
+// can say which exchangers publish one and what kind of binding they declare.
+// Checking that the binding matches means holding a certificate from the mail
+// host, which needs a connection to it.
 package mailscan
 
 import (
@@ -50,6 +63,25 @@ const (
 	// tlsReportPrefix is where a TLS-RPT record lives.
 	tlsReportPrefix = "_smtp._tls."
 
+	// stsPrefix is where the record announcing an MTA-STS policy lives.
+	//
+	// The record, not the policy. RFC 8461 puts the policy itself in a file at
+	// mta-sts.<domain>, and fetching it is a connection on the mail path —
+	// which is the one thing this check does not make (N13). So the record is
+	// read, its presence and its id are reported, and the report says plainly
+	// that the policy behind it was not fetched.
+	stsPrefix = "_mta-sts."
+
+	// danePrefix is where DANE for SMTP lives, beneath each exchanger.
+	danePrefix = "_25._tcp."
+
+	// maxExchangers bounds how many hosts are looked up for DANE.
+	//
+	// One lookup each, and the list is written by whoever is being measured. A
+	// domain publishing four hundred exchangers would otherwise decide how many
+	// questions this scan asks.
+	maxExchangers = 8
+
 	// maxTagLength bounds one value read out of a record. These come from a
 	// zone the scanned party controls, so they are chosen by whoever is being
 	// measured.
@@ -64,6 +96,8 @@ const (
 // it stands.
 type Resolver interface {
 	LookupTXT(ctx context.Context, name string) (dnsclient.TXTAnswer, error)
+	LookupMX(ctx context.Context, name string) (dnsclient.MXAnswer, error)
+	LookupTLSA(ctx context.Context, name string) (dnsclient.TLSAAnswer, error)
 }
 
 // Scanner measures one domain's mail policy. The zero value is usable.
@@ -111,6 +145,10 @@ type Result struct {
 func (s *Scanner) Scan(ctx context.Context, domain string) (*Result, error) {
 	started := s.now()
 
+	// An address becomes a domain here, at the edge, and the local part is
+	// gone before anything else in this function can see it. See DropLocalPart.
+	domain, _ = DropLocalPart(domain)
+
 	domain = fold(domain)
 	if err := CheckDomain(domain); err != nil {
 		return nil, err
@@ -146,6 +184,8 @@ func (s *Scanner) Scan(ctx context.Context, domain string) (*Result, error) {
 	s.readSPF(ctx, resolver, domain, &facts)
 	s.readDMARC(ctx, resolver, domain, &facts)
 	s.readTLSReporting(ctx, resolver, domain, &facts)
+	s.readExchangers(ctx, resolver, domain, &facts)
+	s.readTransportSecurity(ctx, resolver, domain, &facts)
 
 	graded := policy.GradeMail(facts)
 
@@ -361,4 +401,114 @@ var errNotADomain = errors.New("mailscan: the target must be a domain name, such
 func isNilClient(r Resolver) bool {
 	c, ok := r.(*dnsclient.Client)
 	return ok && c == nil
+}
+
+// readExchangers reads which hosts accept mail for the domain.
+//
+// The list itself is worth reporting and is not graded: how many exchangers a
+// domain has, and whose they are, is an operational decision no document calls
+// right or wrong. What it settles is the question every rule below depends on —
+// whether this domain receives mail at all.
+func (s *Scanner) readExchangers(ctx context.Context, r Resolver, domain string, facts *policy.MailFacts) {
+	answer, err := r.LookupMX(ctx, domain)
+	if err != nil {
+		// The shape of the failure only: the underlying error names resolvers
+		// and addresses (I6).
+		facts.MXReason = "the MX records could not be read"
+		return
+	}
+
+	facts.MXRead = true
+	for _, mx := range answer.Records {
+		// RFC 7505: a single exchanger at "." is the domain stating that it
+		// accepts no mail. Recorded as its own fact rather than as a host
+		// nobody can resolve, because it is the answer to a different question
+		// and it makes several of the rules below inapplicable rather than
+		// unsatisfied.
+		if mx.Host == "." {
+			facts.NullMX = true
+			continue
+		}
+		if mx.Host == "" {
+			continue
+		}
+		facts.MXHosts = append(facts.MXHosts, mx.Host)
+	}
+}
+
+// readTransportSecurity reads what the domain publishes about encrypting the
+// mail path: an MTA-STS record, and DANE beneath each exchanger.
+//
+// Both are read from DNS and neither is followed any further. The MTA-STS
+// policy itself lives in a file at mta-sts.<domain>, and fetching it would be a
+// connection on the mail path — the one thing this check does not make. So what
+// is established is that a policy is announced, never what it says, and the
+// report has to say which of those it means.
+func (s *Scanner) readTransportSecurity(ctx context.Context, r Resolver, domain string, facts *policy.MailFacts) {
+	if answer, err := r.LookupTXT(ctx, stsPrefix+domain); err == nil {
+		for _, v := range answer.Values {
+			if isMTASTS(v) {
+				facts.MTASTSRecords++
+			}
+		}
+	}
+
+	// DANE is per exchanger, so a domain with none has nothing to ask about.
+	// Bounded, because the list is written by whoever is being measured.
+	hosts := facts.MXHosts
+	if len(hosts) > maxExchangers {
+		hosts = hosts[:maxExchangers]
+		facts.DANEPartial = true
+	}
+
+	for _, host := range hosts {
+		answer, err := r.LookupTLSA(ctx, danePrefix+host)
+		if err != nil {
+			// One exchanger that could not be asked about is not a domain
+			// without DANE. Counted, so the report can say the picture is
+			// incomplete rather than presenting it as complete (R4).
+			facts.DANEUnread++
+			continue
+		}
+		facts.DANEAsked++
+		if len(answer.Records) > 0 {
+			facts.DANEHosts = append(facts.DANEHosts, host)
+		}
+	}
+}
+
+// isMTASTS reports whether a TXT value announces itself as an MTA-STS record.
+//
+// The version tag must be first, as RFC 8461 requires, and is compared without
+// regard to case. A record that merely mentions the name is not one.
+func isMTASTS(value string) bool {
+	first, _, _ := strings.Cut(strings.TrimSpace(value), ";")
+	name, tag, ok := strings.Cut(strings.TrimSpace(first), "=")
+	return ok &&
+		strings.EqualFold(strings.TrimSpace(name), "v") &&
+		strings.EqualFold(strings.TrimSpace(tag), "STSv1")
+}
+
+// DropLocalPart returns the domain half of a mail address, and discards the rest
+// before anything can log, count or report it.
+//
+// Somebody checking a domain's mail policy has an address in front of them, and
+// pasting it is the natural thing to do. Refusing it teaches nothing; accepting
+// it and keeping the left half would be this project recording the one kind of
+// value it undertakes never to hold. A local part is a person's identity, and
+// nothing here has any use for it: every question this check asks is about the
+// zone.
+//
+// So the split happens where the string arrives, at the last "@" — a local part
+// may contain one when it is quoted, and the domain may not — and the left half
+// is returned to the caller as a flag rather than as a value, so that the only
+// thing that can reach a report is that an address was given.
+//
+// The page says this plainly rather than leaving somebody to trust it.
+func DropLocalPart(target string) (domain string, wasAddress bool) {
+	at := strings.LastIndex(target, "@")
+	if at < 0 {
+		return target, false
+	}
+	return target[at+1:], true
 }

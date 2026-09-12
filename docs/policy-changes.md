@@ -115,7 +115,54 @@ the only way to find out that something is.
 That is a description with a document behind it, not an error the document
 declares.
 
+### The mail path
+
+Three more things the DNS says, all reported and none graded.
+
+**Which hosts accept the mail.** The `MX` records, named. How many a domain has
+and whose they are is an operational decision no specification settles.
+
+**A null MX.** RFC 7505's single `.` is a domain stating that it accepts no mail
+at all, and it is the clearest case of a correct configuration a scanner could
+mark down. It is read as the statement it is, and every sentence below it about
+delivery is dropped rather than reported as unsatisfied (R6).
+
+**MTA-STS and DANE.** Whether the domain announces an MTA-STS policy, and which
+exchangers publish a DANE record. Neither is required by anything and they are
+two competing answers to the same problem — an operator may reasonably deploy
+either, both or neither — so a verdict on the choice would be a threshold this
+project invented (R21). What the report does is name what is there, because an
+operator choosing between them is owed the fact that at present they have
+picked neither.
+
+Two of those come with a limit that is stated rather than implied. The MTA-STS
+**record** is in DNS and is read; the **policy** is a file served over HTTPS,
+and fetching it would be a connection on the mail path — which this check does
+not make. So a report establishes that a policy is announced and never what
+mode it is in, and those are different enough to matter. The same for DANE: the
+records are read, and whether each binding is *correct* needs a certificate
+from the mail host, which needs a connection to it.
+
+DANE is asked about beneath each exchanger, which is the one place this check
+follows a name out of the target's own zone. The reasoning is the one that
+already lets a sender policy's `include` be resolved: the domain published an
+`MX` saying "this host takes my mail", so asking what that host publishes is
+reading the domain's own answer rather than wandering off it. Bounded, because
+the list is written by whoever is being measured.
+
+### An address may be given, and the part before the @ is discarded
+
+Somebody checking a domain's mail policy has an address in front of them, and
+pasting it is the natural thing to do. Refusing it teaches nothing.
+
+So it is accepted and split at the last `@` — a quoted local part may contain
+one and a domain may not — and the left half is gone before anything can log,
+count or report it. A local part is a person's identity, every question this
+check asks is about the zone, and the way to keep a promise about not holding
+something is to have nowhere for it to go.
+
 ### What it cannot see
+
 
 One standing limit, on every mail report: everything came from DNS. Whether the
 domain's mail servers actually accept encrypted connections, and what

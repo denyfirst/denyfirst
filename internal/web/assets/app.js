@@ -22,7 +22,7 @@ const result = document.getElementById("result");
 const VERDICT_ORDER = { insecure: 3, weak: 2, strong: 1 };
 
 /*
-  One script, two checks.
+  One script, three checks.
 
   The pages differ in four things: which endpoint they call, which method page
   their standing limits point at, what the button says while it waits, and how
@@ -63,7 +63,7 @@ const CHECKS = {
     // exist is worse than no URL, because a reader follows it.
     endpoint: "/api/v1/mail/scan",
     methodPage: "",
-    working: "Reading the sender policy, the DMARC record and the TLS reporting record.",
+    working: "Reading the sender policy, the DMARC record, the mail exchangers and what protects them.",
     build: (data) => buildMail(data),
   },
 };
@@ -988,6 +988,41 @@ function zone(facts) {
   }
 
   row("TLS-RPT", facts.tlsReporting ? "yes" : "no");
+
+  // Where the mail goes, and what protects it there.
+  //
+  // Three states kept apart on every line, because the difference is the whole
+  // value: a domain with no DANE, a domain whose DANE could not be read, and a
+  // domain that accepts no mail at all are three answers a reader acts on
+  // differently, and a table that drew them alike would be worse than silent.
+  if (facts.mxReason) {
+    row("MX", "not read: " + facts.mxReason);
+  } else if (facts.nullMX) {
+    row("MX", "null MX: the domain accepts no mail");
+  } else if (!facts.mxRead) {
+    row("MX", "not read");
+  } else {
+    const hosts = facts.mxHosts || [];
+    row("MX", hosts.length ? hosts.join(", ") : "none published");
+
+    row("MTA-STS", facts.mtaStsRecords
+      ? "announced; the policy itself was not fetched"
+      : "no");
+
+    if (hosts.length) {
+      const dane = facts.daneHosts || [];
+      if (dane.length === 0) {
+        row("DANE", "none of the " + hosts.length);
+      } else if (dane.length === hosts.length) {
+        row("DANE", "all " + hosts.length);
+      } else {
+        row("DANE", dane.length + " of the " + hosts.length + ": " + dane.join(", "));
+      }
+    }
+    if (facts.daneUnread) {
+      row("DANE", facts.daneUnread + " could not be read");
+    }
+  }
 
   table.appendChild(body);
   frag.appendChild(table);

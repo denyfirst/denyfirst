@@ -45,6 +45,14 @@ const (
 	// TypeTXT is the record type from RFC 1035.
 	TypeTXT = 16
 
+	// TypeMX is the record type from RFC 1035. It names the hosts that accept
+	// mail for a domain, each with a preference.
+	TypeMX = 15
+
+	// TypeTLSA is the record type from RFC 6698, which is how DANE binds a
+	// certificate to a name.
+	TypeTLSA = 52
+
 	classIN = 1
 	typeOPT = 41
 
@@ -123,6 +131,32 @@ type Answer struct {
 	// Queries counts the lookups the walk took, so a caller can charge them
 	// against a budget and say so when the budget ran out.
 	Queries int
+}
+
+// MX is one mail exchanger: which host accepts mail, and at what preference.
+type MX struct {
+	// Preference is the number in the record. Lower is tried first.
+	Preference uint16 `json:"preference"`
+
+	// Host is the name that accepts the mail, lowercased and without its
+	// trailing dot. A single "." means the domain accepts none — RFC 7505's
+	// null MX — and is kept as "." rather than turned into an empty string,
+	// because a domain that says it sends and receives nothing is making a
+	// statement and an empty field would read as a record nobody could parse.
+	Host string `json:"host"`
+}
+
+// TLSA is one DANE record, reduced to what a report may say about it.
+//
+// The certificate association data is deliberately absent. This project reports
+// that a domain publishes DANE and what kind of binding it declares; checking
+// the binding means holding a certificate from the mail host, which needs a
+// connection to it, and the mail check makes none (N13). A field holding data
+// nothing verifies would invite a report claiming the binding was checked.
+type TLSA struct {
+	Usage    uint8 `json:"usage"`
+	Selector uint8 `json:"selector"`
+	Matching uint8 `json:"matching"`
 }
 
 // CAA is one property from a CAA record set.
@@ -347,6 +381,12 @@ type reply struct {
 	// carry different things and a caller that had to switch on which one was
 	// filled would be reading the query type back out of the answer.
 	txt []string
+
+	// mx and tlsa hold what an MX or TLSA query found, for the same reason txt
+	// is separate from records: a caller switching on which field was filled
+	// would be reading the query type back out of the answer.
+	mx   []MX
+	tlsa []TLSA
 
 	validated bool
 	existed   bool
@@ -683,4 +723,57 @@ func (c *Client) LookupTXT(ctx context.Context, name string) (TXTAnswer, error) 
 func (c *Client) LookupChallenge(ctx context.Context, name string) (values []string, existed bool, err error) {
 	answer, err := c.LookupTXT(ctx, name)
 	return answer.Values, answer.Existed, err
+}
+
+// MXAnswer is what asking for a domain's mail exchangers found.
+type MXAnswer struct {
+	// Records are the exchangers, in the order the reply carried them.
+	Records []MX
+
+	// Existed is false when the name itself does not exist, which is a
+	// different fact from a name that exists and publishes no MX (R4).
+	Existed bool
+}
+
+// LookupMX reads the hosts that accept mail for a domain.
+//
+// No walk up the tree. MX is not inherited: a name with none does not fall back
+// to its parent's, it falls back to its own address record, and a walk would
+// report the parent's mail servers as this name's.
+func (c *Client) LookupMX(ctx context.Context, name string) (MXAnswer, error) {
+	servers, err := c.servers()
+	if err != nil {
+		return MXAnswer{}, err
+	}
+
+	reply, err := c.ask(ctx, &resolverSet{servers: servers}, name, TypeMX)
+	if err != nil {
+		return MXAnswer{Existed: reply.existed}, err
+	}
+	return MXAnswer{Records: reply.mx, Existed: reply.existed}, nil
+}
+
+// TLSAAnswer is what asking for a DANE binding found.
+type TLSAAnswer struct {
+	Records []TLSA
+	Existed bool
+}
+
+// LookupTLSA reads the DANE records at one name.
+//
+// The name is built by the caller rather than here, because the shape is the
+// caller's question: DANE for SMTP lives at _25._tcp.<host>, and a different
+// protocol would put it somewhere else. This resolver does not decide what is
+// being asked about.
+func (c *Client) LookupTLSA(ctx context.Context, name string) (TLSAAnswer, error) {
+	servers, err := c.servers()
+	if err != nil {
+		return TLSAAnswer{}, err
+	}
+
+	reply, err := c.ask(ctx, &resolverSet{servers: servers}, name, TypeTLSA)
+	if err != nil {
+		return TLSAAnswer{Existed: reply.existed}, err
+	}
+	return TLSAAnswer{Records: reply.tlsa, Existed: reply.existed}, nil
 }

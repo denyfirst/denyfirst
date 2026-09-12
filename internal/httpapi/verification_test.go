@@ -463,3 +463,11 @@ type silentZone struct{}
 func (silentZone) LookupTXT(context.Context, string) (dnsclient.TXTAnswer, error) {
 	return dnsclient.TXTAnswer{}, nil
 }
+
+func (silentZone) LookupMX(context.Context, string) (dnsclient.MXAnswer, error) {
+	return dnsclient.MXAnswer{}, nil
+}
+
+func (silentZone) LookupTLSA(context.Context, string) (dnsclient.TLSAAnswer, error) {
+	return dnsclient.TLSAAnswer{}, nil
+}
