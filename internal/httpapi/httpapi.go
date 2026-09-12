@@ -59,6 +59,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/exclusion"
 	"github.com/denyfirst/denyfirst/internal/mailscan"
 	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/denyfirst/internal/results"
 	"github.com/denyfirst/denyfirst/internal/scan"
 	"github.com/denyfirst/denyfirst/internal/verify"
 	"github.com/denyfirst/denyfirst/internal/webscan"
@@ -160,7 +161,12 @@ type Server struct {
 	// the reverse.
 	reads *limiter
 
-	routes  []route
+	routes []route
+
+	// store keeps results, where the operator asked for them to be kept. Nil
+	// keeps nothing, which is the default and what the demonstration gets.
+	store *results.Store
+
 	sem     semaphore
 	counts  *counters
 	targets *targetLimiter
@@ -632,6 +638,19 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, c check) {
 	// thing the moment a second check existed (R22).
 	s.counts.record(c.name, out.verdict)
 
+	// Kept, where the operator asked for results to be kept.
+	//
+	// This is the one place in this package that writes a target down, and it
+	// happens only because somebody named a directory. A failure is reported to
+	// the service's own error output and never to the caller: the scan ran, the
+	// report is about to be sent, and losing the copy is not the requester's
+	// problem to be told about.
+	if s.store.Enabled() {
+		if err := s.store.Put(c.name, t.historyName(), string(out.verdict), out.policy, out.findings); err != nil {
+			log.Printf("a result was not kept: %v", err)
+		}
+	}
+
 	writeJSON(w, http.StatusOK, out.body)
 }
 
@@ -746,6 +765,20 @@ var _ http.Handler = (*Server)(nil)
 // test, and a leaked address cannot be taken back.
 func SilentErrorLog() *log.Logger {
 	return log.New(io.Discard, "", 0)
+}
+
+// KeepResults tells this service where to write what it measured.
+//
+// Nil or an unset store keeps nothing, which is the default. Called before
+// serving, like every other piece of configuration here: a service that could
+// start keeping records while running would be one whose promise depends on
+// when somebody looked.
+//
+// What is written is the report that was already produced. Nothing here is
+// served back — see internal/results for why a browsable history of an estate's
+// weaknesses is not something a service with no authentication should offer.
+func (s *Server) KeepResults(store *results.Store) {
+	s.store = store
 }
 
 // UseWebScanner replaces the scanner behind the web check.

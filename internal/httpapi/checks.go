@@ -81,6 +81,26 @@ type outcome struct {
 
 	// body is what is written on success.
 	body any
+
+	// policy is the rule set that graded it, and findings are the rule
+	// identifiers raised.
+	//
+	// Both only so that a kept result can be compared against an earlier one.
+	// The rule set because a history spanning a rule-set change holds verdicts
+	// that are not comparable and only this says where the line falls; the
+	// identifiers because they are stable across releases where the prose is
+	// deliberately not, so a diff should rest on them.
+	policy   string
+	findings []string
+}
+
+// ruleIDs pulls the identifiers out of a set of findings.
+func ruleIDs(findings []policy.Finding) []string {
+	out := make([]string, 0, len(findings))
+	for _, f := range findings {
+		out = append(out, f.RuleID)
+	}
+	return out
 }
 
 // refusal is an answer that is not a report.
@@ -108,6 +128,8 @@ func (s *Server) tlsCheck() check {
 					Findings: result.Findings(),
 					Notes:    result.Notes(),
 				},
+				policy:   result.Policy,
+				findings: ruleIDs(result.Findings()),
 			}, nil
 		},
 	}
@@ -124,8 +146,10 @@ func (s *Server) webCheck() check {
 				return outcome{}, err
 			}
 			return outcome{
-				verdict: result.Verdict,
-				blocked: result.Observed != nil && result.Observed.BlockedDestination,
+				verdict:  result.Verdict,
+				policy:   result.Policy,
+				findings: ruleIDs(result.Findings),
+				blocked:  result.Observed != nil && result.Observed.BlockedDestination,
 
 				// The result is written as it is. Unlike scan.Result it
 				// already carries its findings and its notes, so there is
@@ -253,7 +277,9 @@ func (s *Server) mailCheck() check {
 				return outcome{}, err
 			}
 			return outcome{
-				verdict: result.Verdict,
+				verdict:  result.Verdict,
+				policy:   result.Policy,
+				findings: ruleIDs(result.Findings),
 
 				// Never blocked. safedial refuses destinations and this check
 				// has none: the resolver is the one this machine already uses
@@ -308,3 +334,17 @@ func parseMailTarget(raw string) (target, *refusal) {
 // mailTargetRule is spelled once because both branches above state it.
 const mailTargetRule = "The target must be a domain name, such as example.com. No scheme, no port, no path, " +
 	"and no spaces or control characters."
+
+// historyName is what a target's kept results are filed under.
+//
+// Host and port, kept apart rather than the port dropped: scanning one host on
+// two ports is two different measurements — the per-target budget above says so
+// in the same words — and folding them into one history would interleave two
+// servers' verdicts under one name. A colon is not a filename character on
+// every platform this ships to, so the separator is not one.
+func (t target) historyName() string {
+	if t.port == "" {
+		return t.host
+	}
+	return t.host + "_" + t.port
+}

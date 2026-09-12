@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/denyfirst/internal/results"
 	"github.com/denyfirst/denyfirst/internal/webprobe"
 	"github.com/denyfirst/denyfirst/internal/webscan"
 )
@@ -92,20 +93,28 @@ func webScanner(timeout time.Duration, allowPrivate bool) *webscan.Scanner {
 }
 
 // runWeb measures how each target is reached over HTTP.
-func runWeb(ctx context.Context, targets []string, timeout time.Duration, allowPrivate, asJSON bool) int {
+func runWeb(ctx context.Context, targets []string, timeout time.Duration, allowPrivate, asJSON bool, store *results.Store) int {
 	scanner := webScanner(timeout, allowPrivate)
 
-	results := make([]webResult, 0, len(targets))
+	// reports rather than results: internal/results is the store, and a local
+	// name shadowing a package is a name somebody later reads as the package.
+	reports := make([]webResult, 0, len(targets))
 	for _, target := range targets {
 		r := webResult{Host: target}
-		out, err := scanner.Scan(ctx, target)
+		measured, err := scanner.Scan(ctx, target)
 		if err != nil {
 			r.Error = err.Error()
 		} else {
-			r.Result = out
+			r.Result = measured
 		}
-		results = append(results, r)
+		reports = append(reports, r)
 
+		// Kept only where there is something to keep. A scan that failed is
+		// not a verdict, and a history holding one would read as a server that
+		// was graded rather than one that was never reached (R4).
+		if r.Result != nil {
+			keep(store, checkWeb, target, r.Verdict, r.Policy, r.Findings)
+		}
 		if !asJSON {
 			printWebReport(os.Stdout, r)
 		}
@@ -114,13 +123,13 @@ func runWeb(ctx context.Context, targets []string, timeout time.Duration, allowP
 	if asJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(results); err != nil {
+		if err := enc.Encode(reports); err != nil {
 			fmt.Fprintf(os.Stderr, "encoding output: %v\n", err)
 			return exitError
 		}
 	}
 
-	return exitCode(webOutcomes(results))
+	return exitCode(webOutcomes(reports))
 }
 
 func webOutcomes(results []webResult) []outcome {
