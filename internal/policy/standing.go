@@ -77,14 +77,33 @@ var (
 			"it, and not that none will.",
 	}
 
+	// What this says was true of every build until one of them started
+	// fetching revocation lists, and then it was true of one.
+	//
+	// It read "No certificate authority is ever asked ... revocation is read
+	// only from a response the server stapled", while the same report said two
+	// inches higher that the scan had fetched the authority's list and verified
+	// it. A standing limit is the sentence a reader is told holds on every
+	// scan, so a stale one is worse than a wrong finding: the finding is about
+	// a server and this is about us.
+	//
+	// One text true of both builds, rather than a version each. The difference
+	// between them belongs in it, because a reader arriving from a log line
+	// cannot tell which installation reached them.
 	LimitNoAuthorityAsked = StandingLimit{
 		ID:    "no-authority-asked",
-		Title: "No certificate authority is ever asked",
-		Text: "No certificate authority is asked anything by this scan: that question would tell " +
-			"the authority which certificate is being looked at. Revocation is read only from a " +
-			"response the server stapled into the handshake, so where none was stapled it has not " +
-			"been established here by any means. A chain reported as trusted reaches a root and is " +
-			"in date; it may still have been withdrawn.",
+		Title: "No authority is asked about this certificate",
+		Text: "No certificate authority is asked whether this particular certificate is still " +
+			"valid. That question carries the certificate's serial number, so it would tell the " +
+			"authority which certificate somebody is looking at, and no build asks it. " +
+			"Revocation is not therefore unexamined: a status response the server stapled into " +
+			"the handshake is read, because reading bytes already in hand asks nobody anything, " +
+			"and where a certificate names a revocation list an installation somebody runs " +
+			"themselves fetches it — one list covers thousands of certificates, so the request " +
+			"names none of them. The demonstration fetches no list, and that call is compiled out " +
+			"of its build rather than switched off. Where neither a staple nor a list settled it, " +
+			"a chain reported as trusted reaches a root and is in date, and may still have been " +
+			"withdrawn.",
 	}
 
 	LimitTransparencyReceipts = StandingLimit{

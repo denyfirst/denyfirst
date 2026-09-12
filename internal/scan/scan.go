@@ -1192,3 +1192,18 @@ func sameSerial(hexSerial string, leaf *x509.Certificate) bool {
 	}
 	return n.Cmp(leaf.SerialNumber) == 0
 }
+
+// revocationFetched reports whether this build fetches a certificate's
+// revocation list.
+//
+// It exists so a test can ask, because the standing limit on every report says
+// which of the two this build is and nothing otherwise connected the sentence
+// to the behaviour. One went stale exactly that way: the limit kept saying
+// nothing was asked of an authority for as long as it took somebody to read a
+// report closely.
+//
+// demo.Enabled is a constant, so this is decided at build time and the branch
+// below is the same one the scan takes.
+func (s *Scanner) revocationFetched() bool {
+	return !demo.Enabled
+}
