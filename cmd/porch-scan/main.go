@@ -42,6 +42,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/denyfirst/internal/results"
 	"github.com/denyfirst/denyfirst/internal/scan"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
 )
@@ -186,6 +187,29 @@ func run() int {
 			"ask a public certificate transparency monitor which certificates exist for\n"+
 				"\tthe name, to find any you did not order. Off by default: the question\n"+
 				"\tnames the domain to a service this project does not run")
+		// Where to keep the results, if anywhere.
+		//
+		// Empty keeps nothing, which is the default and the promise this
+		// project is built on. What changes on a machine somebody runs
+		// themselves is whose data it is: their scans of their own estate, on
+		// their own disk, because they asked. Nothing is kept unless this
+		// names a directory.
+		resultsDir = flag.String("results-dir", "",
+			"`directory` to keep results in, so -history can compare a target against\n"+
+				"\tearlier scans. Empty keeps nothing, which is the default")
+
+		// How many to hold per target and check. Zero keeps everything.
+		//
+		// No default number, because one this project chose would be a
+		// threshold nobody can argue with (R21) applied to somebody's disk. An
+		// operator who wants a bound says what it is.
+		resultsKeep = flag.Int("results-keep", 0,
+			"how many results to keep per target, oldest dropped first; 0 keeps all")
+
+		// Read what was kept, and scan nothing.
+		showHistory = flag.Bool("history", false,
+			"print what -results-dir has kept for each target and exit; makes no\n"+
+				"\tconnection and resolves nothing")
 	)
 
 	showVersion := flag.Bool("version", false, "print the release and policy versions, then exit")
@@ -231,24 +255,44 @@ func run() int {
 		return exitError
 	}
 
+	store := &results.Store{Dir: *resultsDir, Keep: *resultsKeep}
+
+	// Before anything is resolved or dialled. -history is the operator reading
+	// their own notes, and a command that reached the network to answer it
+	// would be doing something they did not ask for.
+	if *showHistory {
+		return printHistory(os.Stdout, store, *check, targets)
+	}
+
 	// Ctrl-C cancels in flight rather than leaving half-open connections.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	switch *check {
 	case checkWeb:
-		return runWeb(ctx, targets, *timeout, *allowPrivate, *asJSON)
+		return runWeb(ctx, targets, *timeout, *allowPrivate, *asJSON, store)
 	case checkMail:
-		return runMail(ctx, targets, *timeout, *resolver, *asJSON)
+		return runMail(ctx, targets, *timeout, *resolver, *asJSON, store)
 	}
 
 	scanner := tlsScanner(*timeout, *allowPrivate, *resolver, *searchLogs)
 
-	results := make([]result, 0, len(targets))
+	// reports rather than results: internal/results is the store, and a local
+	// name shadowing a package is a name somebody later reads as the package.
+	reports := make([]result, 0, len(targets))
 
 	for _, target := range targets {
 		r := runScan(ctx, scanner, target, *timeout)
-		results = append(results, r)
+		reports = append(reports, r)
+
+		// Kept under the host rather than under what was typed, so one target
+		// has one history whether or not a port was written out. Only where
+		// something was measured: a scan that failed is not a verdict, and a
+		// history holding one would read as a server that was graded rather
+		// than one that was never reached (R4).
+		if r.Result != nil {
+			keep(store, checkTLS, historyName(r.Target), r.Verdict, r.Policy, r.Findings())
+		}
 
 		if !*asJSON {
 			printReport(os.Stdout, r)
@@ -258,13 +302,13 @@ func run() int {
 	if *asJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(results); err != nil {
+		if err := enc.Encode(reports); err != nil {
 			fmt.Fprintf(os.Stderr, "encoding output: %v\n", err)
 			return exitError
 		}
 	}
 
-	return exitCode(outcomes(results))
+	return exitCode(outcomes(reports))
 }
 
 // outcome is what a status is decided from: a verdict, and whether the scan

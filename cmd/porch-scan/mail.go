@@ -12,6 +12,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/mailscan"
 	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/denyfirst/internal/results"
 )
 
 // mailResult is one domain, with room for the reason it could not be measured.
@@ -26,32 +27,42 @@ type mailResult struct {
 // No -allow-private here and none to add: this check opens no connection at
 // all, so there is no dialler to relax and nothing an operator could be asking
 // for by relaxing one.
-func runMail(ctx context.Context, domains []string, timeout time.Duration, resolver string, asJSON bool) int {
+func runMail(ctx context.Context, domains []string, timeout time.Duration, resolver string, asJSON bool, store *results.Store) int {
 	scanner := &mailscan.Scanner{}
 	if resolver != "" {
 		scanner.Resolver = &dnsclient.Client{Server: resolver, Timeout: timeout}
 	}
 
-	results := make([]mailResult, 0, len(domains))
+	// reports rather than results: internal/results is the store, and a local
+	// name shadowing a package is a name somebody later reads as the package.
+	reports := make([]mailResult, 0, len(domains))
 	for _, domain := range domains {
 		r := mailResult{Domain: domain}
 
-		out, err := scanner.Scan(ctx, domain)
+		measured, err := scanner.Scan(ctx, domain)
 		if err != nil {
 			r.Error = err.Error()
 		} else {
-			r.Result = out
+			r.Result = measured
 		}
-		results = append(results, r)
+		reports = append(reports, r)
+
+		// Kept under the domain the scan reported rather than the string that
+		// was typed. An address may be given and its local part is discarded
+		// on arrival; keeping a history under what somebody pasted would put
+		// the part that was dropped into a filename.
+		if r.Result != nil {
+			keep(store, checkMail, r.Domain, r.Verdict, r.Policy, r.Findings)
+		}
 	}
 
 	if asJSON {
-		if err := json.NewEncoder(os.Stdout).Encode(results); err != nil {
+		if err := json.NewEncoder(os.Stdout).Encode(reports); err != nil {
 			fmt.Fprintf(os.Stderr, "writing JSON: %v\n", err)
 			return exitError
 		}
 	} else {
-		for i, r := range results {
+		for i, r := range reports {
 			if i > 0 {
 				fmt.Println()
 			}
@@ -59,7 +70,7 @@ func runMail(ctx context.Context, domains []string, timeout time.Duration, resol
 		}
 	}
 
-	return exitCode(mailOutcomes(results))
+	return exitCode(mailOutcomes(reports))
 }
 
 // printMail writes one domain's report.

@@ -272,6 +272,15 @@ type consolePage struct {
 	Tool   string
 	Checks []consoleCheck
 
+	// Keeps says this installation writes results to disk.
+	//
+	// The console said "Not kept" unconditionally, which was true of every
+	// installation until one could be told to keep them. A page still saying it
+	// after an operator set -results-dir would be telling them their own
+	// configuration did not take — and the sentence it replaces is the one they
+	// would have read as a promise.
+	Keeps bool
+
 	// Verified says this installation was given a boundary, and ReadsPages
 	// follows from it: a page is read only where control was proven.
 	//
@@ -411,7 +420,7 @@ func init() {
 	// Rendered here at all so that every path in the table answers from the
 	// moment the package loads, including in a test that never calls Configure.
 	if !demo.Enabled {
-		rendered["/"] = renderConsole(false)
+		rendered["/"] = renderConsole(false, false)
 	}
 }
 
@@ -474,8 +483,8 @@ func render(p *page) ([]byte, error) {
 // claiming a boundary that is not there would tell an operator their service is
 // safe to expose when it is not; a page understating one costs them a second
 // look at a flag.
-func Configure(verified bool) {
-	rendered["/"] = renderConsole(verified)
+func Configure(verified, keeps bool) {
+	rendered["/"] = renderConsole(verified, keeps)
 }
 
 // renderConsole builds the tool surface.
@@ -484,7 +493,7 @@ func Configure(verified bool) {
 // page whose content depends on how the program was started. It is rendered at
 // init() too, so that a caller who never calls Configure still gets a page
 // rather than a blank response.
-func renderConsole(verified bool) []byte {
+func renderConsole(verified, keeps bool) []byte {
 	p := &page{
 		Title:       ToolName + " — check a name you run",
 		Description: "Run this project's checks against one name: the handshake and certificate, how the site is reached, and what the domain's DNS says about its mail.",
@@ -502,6 +511,7 @@ func renderConsole(verified bool) []byte {
 			// was read on a page with nothing behind it.
 			Verified:   verified,
 			ReadsPages: verified,
+			Keeps:      keeps,
 		},
 	}
 

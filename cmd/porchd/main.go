@@ -38,6 +38,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/httpapi"
 	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/denyfirst/internal/results"
 	"github.com/denyfirst/denyfirst/internal/scan"
 	"github.com/denyfirst/denyfirst/internal/verify"
 	"github.com/denyfirst/denyfirst/internal/web"
@@ -142,6 +143,24 @@ func run() int {
 		statsFile = flag.String("stats-file", "",
 			"path to a file holding the aggregate counters; empty keeps them in\n"+
 				"\tmemory only, so a restart resets the published total")
+
+		// Where to keep results, if anywhere.
+		//
+		// Empty keeps nothing, which is the default and the promise this
+		// project is built on. What changes on an installation somebody runs
+		// themselves is whose data it is: their scans of their own estate, on
+		// their own disk, because they asked.
+		//
+		// Written and never served. A browsable history of an estate's
+		// weaknesses is a thing worth attacking and this service has no
+		// authentication at all, so reading it back is porch-scan's job, on the
+		// machine itself. See internal/results.
+		resultsDir = flag.String("results-dir", "",
+			"`directory` to keep results in, readable with porch-scan -history. Never\n"+
+				"\tserved over HTTP. Empty keeps nothing, which is the default")
+
+		resultsKeep = flag.Int("results-keep", 0,
+			"how many results to keep per target, oldest dropped first; 0 keeps all")
 
 		showVersion = flag.Bool("version", false, "print the release and policy versions, then exit")
 	)
@@ -263,6 +282,11 @@ func run() int {
 	// whatever it is asked to.
 	api := httpapi.New(&scan.Scanner{Roots: roots, Verify: scope}, limits, nil)
 
+	// Where results are kept, if anywhere. Before serving, like every other
+	// piece of configuration here: a service that could start keeping records
+	// while running would be one whose promise depends on when somebody looked.
+	api.KeepResults(&results.Store{Dir: *resultsDir, Keep: *resultsKeep})
+
 	if *statsFile != "" {
 		if snapshot, err := loadStats(*statsFile); err == nil {
 			api.RestoreStats(snapshot)
@@ -289,7 +313,7 @@ func run() int {
 	// The pages are told what this installation is before any of them is
 	// served. The console says whether a boundary was configured, and an
 	// operator reading a report needs that to be true rather than plausible.
-	web.Configure(scope != nil)
+	web.Configure(scope != nil, *resultsDir != "")
 	root.Handle("/", web.Handler())
 
 	srv := &http.Server{

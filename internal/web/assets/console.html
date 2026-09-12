@@ -94,9 +94,15 @@
 
       <dt>Results</dt>
       <dd>
-        Not kept. Nothing about a scan is written to disk: not the name, not
-        the verdict, not the time. Close this page and the report is gone —
-        save the JSON from the report itself if you want to keep it.
+        {{if .Keeps}}Kept on this machine, because this installation was told
+        to keep them: the date, the verdict and which rules were raised, per
+        target and per check. Nothing is served back — read them with
+        <code>porch-scan -history</code>, which makes no connection. Nothing
+        about who asked is written down, here or anywhere.{{else}}Not kept.
+        Nothing about a scan is written to disk: not the name, not the verdict,
+        not the time. Close this page and the report is gone — save the JSON
+        from the report itself if you want to keep it, or start this
+        installation with <code>-results-dir</code>.{{end}}
       </dd>
 
       <dt>Rule sets</dt>

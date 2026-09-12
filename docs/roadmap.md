@@ -155,6 +155,25 @@ before anything can log, count or report it. Accepting an address at all is a
 convenience for whoever pastes one — so the page has to say plainly that the
 left half is dropped, rather than leaving somebody to trust that it was.
 
+### 4. Results kept on the machine that made them
+
+Done. `-results-dir` on either program writes the date, the check, the rule set,
+the verdict and the rules raised; `porch-scan -history` reads them back and says
+where in a history the rules changed.
+
+The promise was never "storage is bad". It was that the public deployment is
+the visible party in somebody else's logs and cannot say who asked, which makes
+holding other people's scanning behaviour a repository worth seizing. None of
+that survives the move to a machine somebody runs themselves, so the sentence is
+now the one that is actually true: **this installation holds nothing about
+anyone but you.**
+
+Never served over HTTP, and that is the part to keep. A browsable history of an
+estate's weaknesses is a thing worth attacking and `porchd` has no
+authentication at all. Offering it over HTTP is a separate decision with an
+authentication system attached, made deliberately rather than as a side effect
+of being able to write files.
+
 ### Later
 
 Certificate revocation fetched live (command line only — a certificate

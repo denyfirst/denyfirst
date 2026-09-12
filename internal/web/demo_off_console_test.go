@@ -3,6 +3,7 @@
 package web
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 
@@ -16,11 +17,16 @@ import (
 // reads. Leaving it changed would make this file decide what those tests see.
 func consoleAs(t *testing.T, verified bool) string {
 	t.Helper()
+	return consoleWith(t, verified, false)
+}
+
+func consoleWith(t *testing.T, verified, keeps bool) string {
+	t.Helper()
 
 	before := rendered["/"]
 	t.Cleanup(func() { rendered["/"] = before })
 
-	Configure(verified)
+	Configure(verified, keeps)
 	return flatten(get(t, "/").Body.String())
 }
 
@@ -127,6 +133,57 @@ func TestTheConsoleDoesNotPromiseMoreThanItDoes(t *testing.T) {
 		if strings.Contains(page, word) {
 			t.Errorf("the console offers a %q. docs/scope.md refuses that word, and the reason "+
 				"is that it authorises something this tool does not do.", word)
+		}
+	}
+}
+
+// The console says whether this installation keeps results.
+//
+// It said "Not kept" unconditionally, which was true of every installation
+// until one could be told to keep them. A page still saying it after an
+// operator set -results-dir would be telling them their own configuration did
+// not take — and the sentence it replaces is the one they would have read as a
+// promise.
+func TestTheConsoleSaysWhetherResultsAreKept(t *testing.T) {
+	nothing := consoleWith(t, false, false)
+	if !strings.Contains(nothing, "Not kept") {
+		t.Errorf("an installation keeping nothing does not say so:\n%s", nothing)
+	}
+	if !strings.Contains(nothing, "-results-dir") {
+		t.Errorf("it does not say how to start keeping them:\n%s", nothing)
+	}
+
+	keeping := consoleWith(t, false, true)
+	if strings.Contains(keeping, "Not kept") {
+		t.Errorf("an installation that was told to keep results says it keeps none:\n%s", keeping)
+	}
+	if !strings.Contains(keeping, "Kept on this machine") {
+		t.Errorf("it does not say results are kept:\n%s", keeping)
+	}
+
+	// And it says what is kept and what is not, because "kept" without either
+	// is the sentence an operator has to guess at.
+	if !strings.Contains(keeping, "porch-scan -history") {
+		t.Errorf("it does not say how to read them back:\n%s", keeping)
+	}
+	if !strings.Contains(keeping, "Nothing about who asked") {
+		t.Errorf("it does not say what is still not written down:\n%s", keeping)
+	}
+}
+
+// Keeping results does not make them readable over HTTP.
+//
+// A service with a browsable history of an estate's weaknesses is a thing worth
+// attacking, and this one has no authentication at all. The store is written
+// and never served; reading it back is the command line's job, on the machine
+// itself. This asserts the shape rather than the prose: no route serves it.
+func TestAKeptResultIsNotServedOverHTTP(t *testing.T) {
+	consoleWith(t, false, true)
+
+	for _, path := range []string{"/results", "/history", "/api/v1/results", "/api/v1/history"} {
+		if w := get(t, path); w.Code == http.StatusOK {
+			t.Errorf("%s is served, and a history of an estate's weaknesses is not something a "+
+				"service with no authentication should offer", path)
 		}
 	}
 }

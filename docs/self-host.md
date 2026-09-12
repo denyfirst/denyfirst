@@ -66,7 +66,92 @@ after they have finished is a warning about something they have already done.
 
 ---
 
+## Keeping your own results
+
+Nothing is kept unless you say where to keep it. That is the default and it
+does not change.
+
+What changes on a machine you run yourself is whose data it is. The public
+deployment holds nothing because it is the visible party in somebody else's
+logs and cannot say who asked — a repository worth seizing. None of that
+reasoning survives the move to your own machine: these are your scans, of your
+own estate, because you asked for them.
+
+```sh
+porch-scan -results-dir /var/lib/porch/results denyfirst.dev
+porch-scan -results-dir /var/lib/porch/results -history denyfirst.dev
+```
+
+```
+denyfirst.dev
+=============
+
+  DATE         VERDICT    FINDINGS
+  2026-08-14   weak       hsts.absent
+  2026-09-12   strong     none
+
+  All graded by porch-tls-v7
+```
+
+`porchd` takes the same two flags and writes to the same store, so a service
+scanning on a schedule and a person at a terminal build one history rather than
+two.
+
+**It is never served over HTTP.** A browsable history of an estate's weaknesses
+is a thing worth attacking, and `porchd` has no authentication at all. Reading
+it back is `porch-scan -history`, which runs on the machine, makes no
+connection and resolves nothing.
+
+**Nothing is kept that a report does not already carry**: the date, the check,
+the rule set, the verdict, and which rules were raised. No time of day, no
+client address, no markup, no cookie value. Writing a report down does not
+relax what a report may contain.
+
+**The rule set is kept beside each verdict**, and `-history` says where in a
+history it changed. A server that went from strong to weak because a rule got
+stricter has not changed at all, and a table that showed those two rows side by
+side without saying so would send somebody looking for a change that never
+happened.
+
+**No retention period is invented.** `-results-keep N` bounds a target's
+history and drops the oldest first; unset keeps everything. A number this
+project chose would be a threshold nobody can argue with, applied to your disk.
+
+### In Docker
+
+The container runs as `65534:65534` from a `scratch` image — there is no shell
+in it and nothing to `chown` — so the directory has to be owned before it is
+mounted:
+
+```sh
+mkdir -p porch-data && sudo chown 65534:65534 porch-data
+```
+
+```yaml
+services:
+  porch:
+    image: porch
+    ports:
+      - "443:8443"
+    volumes:
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - ./porch-data:/data
+    command:
+      - "-listen=0.0.0.0:8443"
+      - "-results-dir=/data/results"
+    read_only: true
+```
+
+`read_only: true` stays. It locks the container's own filesystem; a mounted
+volume is still writable, so nothing is given up to gain this.
+
+`command:` replaces `CMD` and not `ENTRYPOINT`, so `-listen` has to be repeated
+there or it reverts to the image's default.
+
+---
+
 ## Get a binary, and check it before you run it
+
 
 Every release carries `SHA256SUMS` and an OpenSSH signature over it, and a
 workflow rebuilds each release on a machine the maintainer does not control.

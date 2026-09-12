@@ -436,3 +436,35 @@ func TestTheReleaseProcedureSaysToWaitForChecksToRegister(t *testing.T) {
 			"which is the failure that reads like a policy block")
 	}
 }
+
+// The self-hosting page says how to keep results, and what that does not mean.
+//
+// The sentence it replaces was a promise: "nothing about a scan is written to
+// disk". That is still the default and it is no longer the whole story, so the
+// page has to carry both halves — and the half a reader most needs is the one
+// about what keeping results does *not* turn on.
+func TestTheSelfHostingPageExplainsKeepingResults(t *testing.T) {
+	page := repoFile(t, "docs/self-host.md")
+
+	for _, want := range []string{
+		"-results-dir",
+		"-results-keep",
+		"porch-scan -history",
+
+		// The three things that make it safe to offer at all.
+		"never served over HTTP",
+		"65534:65534",
+		"read_only: true",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("docs/self-host.md does not mention %q", want)
+		}
+	}
+
+	// The ownership step is the one that fails silently and confusingly: the
+	// image is scratch, so there is no shell in the container to fix it with.
+	if !strings.Contains(page, "chown 65534:65534") {
+		t.Error("the page does not say the volume must be owned before it is mounted, which is " +
+			"a permission denied with no shell in the image to diagnose it")
+	}
+}
