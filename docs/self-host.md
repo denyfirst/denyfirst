@@ -31,6 +31,39 @@ and you are not a stranger to your own network:
 | bare IP addresses | refused | accepted |
 | which hosts | the ones this project owns | whichever you point it at |
 
+### The last row is the one to read twice
+
+`porchd` listens on `127.0.0.1:8080` by default, and on that address the row
+above is exactly right: the only person who can reach it is you.
+
+**Bind it to an interface a stranger can reach, without
+`-verification-secret-file`, and you have built an open scanner.** Anyone who
+can reach the port can point it at any public host on the internet, and it is
+*your* address in that host's logs. That is the arrangement this project
+dismantled for its own public deployment — see `docs/scope.md` — rebuilt inside
+your network.
+
+A default is a mitigation rather than a boundary: it is the thing somebody
+changes on the afternoon they need the service reachable, without changing
+anything else. The boundary is proof of control, it is one flag, and
+`docs/verify.md` is how to set it up:
+
+```sh
+porchd -listen 0.0.0.0:8443 -verification-secret-file /etc/porch/secret
+```
+
+`porchd -version` says which of the two you have, so a deploy can read it
+rather than trust a filename:
+
+```
+scans whatever it is pointed at              # no proof required
+scans only domains it has been shown control of
+```
+
+This is written here rather than only in `docs/scope.md` because this is the
+page somebody follows while setting the service up, and a warning they meet
+after they have finished is a warning about something they have already done.
+
 ---
 
 ## Get a binary, and check it before you run it

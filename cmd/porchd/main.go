@@ -170,7 +170,19 @@ func run() int {
 		// in place, the service answers, the version matches — and the only
 		// symptom would be a public scanner nobody meant to run. The deploy
 		// procedure reads this line rather than trusting the filename.
-		fmt.Printf("porchd %s\npolicy %s\n%s\n", version, policy.TLSVersion, reach())
+		// The scope is read before the line is printed, so the line can say
+		// what this deployment is rather than what the build alone decides. A
+		// -version describing a deployment it has not yet configured would be
+		// guessing at the one thing it exists to state.
+		scope, err := verificationScope(*verifySecretFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			return 1
+		}
+
+		fmt.Printf("porchd %s\npolicy %s\npolicy %s\npolicy %s\n%s\n",
+			version, policy.TLSVersion, policy.WebVersion, policy.MailVersion,
+			reach(scope != nil))
 		return 0
 	}
 
@@ -698,15 +710,32 @@ func trustStoreUsable(pool *x509.CertPool, err error) error {
 //
 // Written from the same list the scanner enforces rather than from a constant
 // of its own, so a binary cannot say one thing and do another.
-func reach() string {
-	if !demo.Enabled {
-		return "scans whatever it is pointed at"
+// reach says which hosts this binary will connect to.
+//
+// Two sources of authority, and the line has to carry both or it is false for
+// half the deployments that read it. The compiled-in list is fixed at build
+// time; the verification scope is established when the process starts. A line
+// that named only the first told an operator running a bounded service that it
+// "scans whatever it is pointed at", which is the sentence they would read as
+// a reason to check their configuration — and a line that is wrong in the
+// alarming direction is still a line nobody trusts the second time.
+//
+// scoped is whether a proof of control is required, which the caller knows and
+// this does not: it is decided by a flag, and reading it here would put the
+// flag in two places.
+func reach(scoped bool) string {
+	if demo.Enabled {
+		hosts := demo.Targets()
+		if len(hosts) == 0 {
+			return "scans nothing: this is a demonstration build with an empty list"
+		}
+		return "demonstration: scans " + strings.Join(hosts, ", ") + " and nothing else"
 	}
-	hosts := demo.Targets()
-	if len(hosts) == 0 {
-		return "scans nothing: this is a demonstration build with an empty list"
+
+	if scoped {
+		return "scans only domains it has been shown control of"
 	}
-	return "demonstration: scans " + strings.Join(hosts, ", ") + " and nothing else"
+	return "scans whatever it is pointed at"
 }
 
 // verificationScope reads the deployment secret, or reports why it could not.

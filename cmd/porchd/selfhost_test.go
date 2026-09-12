@@ -261,34 +261,69 @@ func selfSignedPEM(t *testing.T) []byte {
 // binary says, and the deploy procedure reads what it says rather than
 // trusting a filename.
 func TestAVersionSaysWhichHostsTheBinaryWillReach(t *testing.T) {
-	line := reach()
+	for _, scoped := range []bool{false, true} {
+		line := reach(scoped)
 
-	if strings.TrimSpace(line) == "" {
-		t.Fatal("a binary says nothing about which hosts it will reach")
-	}
-	if strings.HasSuffix(line, ".") {
-		t.Error("the line ends in a full stop; the deploy procedure matches on its start and shape")
-	}
-
-	if demo.Enabled {
-		if !strings.HasPrefix(line, "demonstration: ") {
-			t.Errorf("a demonstration build says %q, which the deploy check does not match", line)
+		if strings.TrimSpace(line) == "" {
+			t.Fatal("a binary says nothing about which hosts it will reach")
 		}
-		// Read from the list the scanner enforces, so a binary cannot say one
-		// thing and do another.
-		for _, host := range demo.Targets() {
-			if !strings.Contains(line, host) {
-				t.Errorf("the binary reaches %s and does not say so: %q", host, line)
+		if strings.HasSuffix(line, ".") {
+			t.Error("the line ends in a full stop; the deploy procedure matches on its start and shape")
+		}
+
+		if demo.Enabled {
+			if !strings.HasPrefix(line, "demonstration: ") {
+				t.Errorf("a demonstration build says %q, which the deploy check does not match", line)
 			}
+			// Read from the list the scanner enforces, so a binary cannot say
+			// one thing and do another.
+			for _, host := range demo.Targets() {
+				if !strings.Contains(line, host) {
+					t.Errorf("the binary reaches %s and does not say so: %q", host, line)
+				}
+			}
+			continue
+		}
+
+		if strings.HasPrefix(line, "demonstration") {
+			t.Errorf("the ordinary build calls itself a demonstration: %q", line)
+		}
+	}
+}
+
+// The line says which of the two boundaries this deployment has.
+//
+// It named only the compiled-in list, so a service requiring proof of control
+// said it "scans whatever it is pointed at" — the sentence an operator reads as
+// a reason to go and check their configuration. Wrong in the alarming direction
+// is still a line nobody trusts the second time, and the deploy procedure reads
+// this line rather than trusting a filename.
+func TestTheReachLineSaysWhetherAScopeIsConfigured(t *testing.T) {
+	if demo.Enabled {
+		// A demonstration build's list is compiled in and a scope cannot widen
+		// or narrow it, so the line says the same thing either way. Asserted
+		// rather than skipped: a build that started describing a scope it does
+		// not enforce would be the same defect in the other direction.
+		if reach(false) != reach(true) {
+			t.Errorf("a demonstration build describes itself differently with a scope: %q and %q",
+				reach(false), reach(true))
 		}
 		return
 	}
 
-	if strings.HasPrefix(line, "demonstration") {
-		t.Errorf("the ordinary build calls itself a demonstration: %q", line)
+	open, bounded := reach(false), reach(true)
+	if open == bounded {
+		t.Fatalf("a deployment that requires proof of control says the same thing as one that "+
+			"does not: %q", open)
 	}
-	if !strings.Contains(line, "whatever it is pointed at") {
-		t.Errorf("the ordinary build does not say it is unrestricted: %q", line)
+	if !strings.Contains(open, "whatever it is pointed at") {
+		t.Errorf("an unbounded deployment does not say it is unbounded: %q", open)
+	}
+	if !strings.Contains(bounded, "shown control of") {
+		t.Errorf("a bounded deployment does not say what bounds it: %q", bounded)
+	}
+	if strings.Contains(bounded, "whatever it is pointed at") {
+		t.Errorf("a bounded deployment describes itself as unbounded: %q", bounded)
 	}
 }
 
@@ -305,7 +340,7 @@ func TestTheVersionOutputCarriesTheReachLine(t *testing.T) {
 	block := source[strings.Index(source, "if *showVersion {"):]
 	block = block[:strings.Index(block, "return 0")]
 
-	if !strings.Contains(block, "reach()") {
+	if !strings.Contains(block, "reach(") {
 		t.Error("-version does not say which hosts the binary will reach, so the deploy check " +
 			"has nothing to read and the two builds stay indistinguishable")
 	}
@@ -339,5 +374,65 @@ func TestTheDemonstrationBuildIsReleasedAndDeployed(t *testing.T) {
 	// And it reads what the binary says rather than trusting the filename.
 	if !strings.Contains(releasing, "grep -q '^demonstration: '") {
 		t.Error("the deploy procedure does not check which build it just installed")
+	}
+}
+
+// The self-hosting page says plainly what an unbounded service is.
+//
+// It described the defaults accurately and left the consequence to be worked
+// out: a table row saying "which hosts: whichever you point it at" is true, and
+// it reads as a capability rather than as a warning. Somebody binding the
+// service to an interface so their team can reach it has then built, inside
+// their own network, the arrangement this project dismantled for its own public
+// deployment — and it is their address in the scanned party's logs.
+//
+// On this page rather than only in docs/scope.md, because this is the page
+// somebody follows while setting the service up. A warning they meet afterwards
+// is a warning about something they have already done.
+func TestTheSelfHostingPageSaysWhatAnUnboundedServiceIs(t *testing.T) {
+	page := repoFile(t, "docs/self-host.md")
+
+	for _, want := range []string{
+		"open scanner",
+		"-verification-secret-file",
+		"your* address",
+	} {
+		// The middle phrase is the flag that fixes it; a warning naming no
+		// remedy is one a reader cannot act on.
+		if want == "your* address" {
+			if !strings.Contains(page, "*your* address") {
+				t.Error("the page does not say whose address ends up in the scanned party's logs")
+			}
+			continue
+		}
+		if !strings.Contains(page, want) {
+			t.Errorf("docs/self-host.md does not mention %q", want)
+		}
+	}
+
+	// And it says which of the two a running service is, because that is what
+	// an operator checks rather than what they remember configuring.
+	if !strings.Contains(page, "shown control of") {
+		t.Error("the page does not show what a bounded deployment's -version line says, so an " +
+			"operator has no way to confirm which one they have")
+	}
+}
+
+// The release procedure does not tell anybody to run a command that cannot work.
+//
+// `gh pr checks --watch` in the same breath as `gh pr create` reports that no
+// checks exist and exits, because none has registered yet. The merge then fails
+// with required checks not satisfied, which reads like a branch-protection
+// problem — and branch protection is working correctly, so the next half hour
+// goes on the wrong thing.
+func TestTheReleaseProcedureSaysToWaitForChecksToRegister(t *testing.T) {
+	page := repoFile(t, "docs/releasing.md")
+
+	if !strings.Contains(page, "gh pr checks --watch") {
+		t.Fatal("the procedure no longer watches the checks at all")
+	}
+	if !strings.Contains(page, "no checks exist") {
+		t.Error("the procedure does not warn that watching too early reports nothing and exits, " +
+			"which is the failure that reads like a policy block")
 	}
 }

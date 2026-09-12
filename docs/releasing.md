@@ -106,6 +106,14 @@ gh pr checks --watch
 gh pr merge --merge
 ```
 
+**Give the checks a moment to register first.** `gh pr checks --watch` run in
+the same breath as `gh pr create` reports that no checks exist and exits
+immediately, because none has been queued yet. The merge then fails for a
+reason that reads like a policy block — required checks not satisfied — and the
+obvious next move is to go looking at branch protection, which is working
+correctly. Wait a few seconds, or run `gh pr checks` once on its own and watch
+only when it lists something.
+
 ---
 
 ## Before the first time

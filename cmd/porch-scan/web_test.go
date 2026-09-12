@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/webprobe"
 	"github.com/denyfirst/denyfirst/internal/webscan"
@@ -226,5 +227,50 @@ func TestPrivateAddressesReachTheWebProberOnlyWhenAsked(t *testing.T) {
 	}
 	if webScanner(5*time.Second, true).Prober.Dial == nil {
 		t.Error("-allow-private was asked for and no dialler was installed, so the flag does nothing")
+	}
+}
+
+// This binary says which hosts it will connect to, like the other one.
+//
+// porchd said and this did not, which made the deploy check's whole argument —
+// read what a binary claims rather than trusting a filename — true of one of
+// the two programs this project ships. A demonstration build of this command
+// exists and is what scripts/build.sh produces under the tag; somebody holding
+// one had no way to find out that it refuses every host but ours, and would
+// read the refusal as a fault in their own configuration.
+func TestTheVersionSaysWhichHostsThisBinaryWillReach(t *testing.T) {
+	line := reach()
+	if strings.TrimSpace(line) == "" {
+		t.Fatal("this binary says nothing about which hosts it will reach")
+	}
+	if !strings.Contains(versionLine(), line) {
+		t.Errorf("-version does not carry the reach line:\n%s", versionLine())
+	}
+
+	if demo.Enabled {
+		if !strings.HasPrefix(line, "demonstration: ") {
+			t.Errorf("a demonstration build says %q", line)
+		}
+		for _, host := range demo.Targets() {
+			if !strings.Contains(line, host) {
+				t.Errorf("the binary reaches %s and does not say so: %q", host, line)
+			}
+		}
+		return
+	}
+
+	if strings.HasPrefix(line, "demonstration") {
+		t.Errorf("the ordinary build calls itself a demonstration: %q", line)
+	}
+	if !strings.Contains(line, "whatever it is pointed at") {
+		t.Errorf("the ordinary build does not say it is unrestricted: %q", line)
+	}
+
+	// And it says where the scan leaves from, which is the difference between
+	// this program and the service. docs/scope.md rests on it: whoever runs
+	// this already has the machine, and the scan is theirs rather than
+	// laundered through somebody else's.
+	if !strings.Contains(line, "from this machine") {
+		t.Errorf("the line does not say the scan leaves from the operator's own machine: %q", line)
 	}
 }
