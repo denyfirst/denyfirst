@@ -1050,10 +1050,13 @@ the mail policy of a zone somebody else runs. `verify.AnyPort`, deliberately,
 and the difference is the whole of it.
 
 **The names asked about are derived from the target, never constructed from an
-answer.** The one exception is a name the domain's own sender policy names, and
-that is not an exception: an `include` is the domain instructing every receiver
-on earth to resolve that name, so resolving it is reading the policy rather than
-wandering off it. The walk is bounded — ten lookups, ten levels, and a set of
+answer.** Two names come from the domain's own records rather than from its
+spelling, and neither is an exception. An `include` is the domain instructing
+every receiver on earth to resolve that name, so resolving it is reading the
+policy. An `MX` is the domain saying *this host takes my mail*, so asking what
+that host publishes under `_25._tcp` is reading the domain's own answer rather
+than wandering off it. Both are bounded, because both lists are written by
+whoever is being measured. The walk is bounded — ten lookups, ten levels, and a set of
 names already seen, because a policy that includes itself is a policy that would
 otherwise be followed forever.
 
@@ -1085,6 +1088,25 @@ the providers a policy includes, so a domain one provider away from switching
 its own policy off has no way to see that from its own zone. The included
 domains are named with the count, because a number alone says there is a problem
 and not where it is.
+
+**A record read is not a policy read, and the report says which it means.** The
+MTA-STS record at `_mta-sts.<domain>` announces that a policy exists; the policy
+itself is a file served over HTTPS at `mta-sts.<domain>`, and fetching it would
+be a connection on the mail path. So a report establishes that a policy is
+announced and never what mode it is in — and a reader left to complete that
+sentence completes it in the stronger direction, which is why it is completed
+for them. The same holds for DANE: the TLSA records are read, and whether each
+binding is *correct* needs a certificate from the host.
+
+**A null MX ends the questions it makes inapplicable.** RFC 7505's single `.`
+is a domain stating that it accepts no mail at all, which is the clearest case
+of a correct configuration a scanner could mark down. Every sentence about
+delivery is dropped rather than reported as unsatisfied (R6).
+
+**A mail address is accepted and the local part never travels.** The split is
+at the last `@`, at the edge, before anything can log, count or report it. A
+local part is a person's identity and every question here is about the zone, so
+there is nowhere for it to go rather than a rule about not putting it there.
 
 **And every report says it read only DNS.** Whether the domain's mail servers
 accept encrypted connections, and what certificates they present, was not
@@ -1127,7 +1149,23 @@ established (R4).
 `TestNotReadIsDistinguishableFromNotPublished`,
 `TestEveryMailReportSaysItOnlyReadDNS`,
 `TestTheMailLimitIsTheDeclaredOne`,
-`TestMailFindingsNameTheMailRuleSet`
+`TestMailFindingsNameTheMailRuleSet`,
+`TestTheMailExchangersAreRead`,
+`TestANullMXIsReadAsOne`,
+`TestAHostileExchangerNameIsStripped`,
+`TestAnEnormousExchangerNameIsBounded`,
+`TestTheNameRendererBoundsWhatItIsGiven`,
+`TestTheRootNameIsReadableAsItself`,
+`TestTheDANESelectorsAreReadAndTheDataIsNot`,
+`TestANameWithNoMXIsNotANameThatDoesNotExist`,
+`TestAShortMailRecordIsRefused`,
+`TestDANEIsAskedOnlyBeneathTheExchangersTheDomainNamed`,
+`TestANullMXEndsTheQuestionsAboutDelivery`,
+`TestAnAddressIsAcceptedAndTheLocalPartIsDropped`,
+`TestTheAddressIsSplitWhereTheDomainBegins`,
+`TestTheMailPathIsDescribedAndNeverGraded`,
+`TestAnAnnouncedMTASTSPolicyIsNotAReadOne`,
+`TestTheThreeDANEStatesAreKeptApart`
 
 ## Input
 
