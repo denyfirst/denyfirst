@@ -14,7 +14,38 @@ free to improve without breaking that.
 
 ---
 
-## `denyfirst-mail-v1` — a new rule set
+## The tool is called porch
+
+Every rule set is named `porch-<check>-vN` from this release. They were
+`denyfirst-<check>-vN`.
+
+**No rule changed and no verdict moved.** This is the name of the instrument,
+not a change to what it measures. `denyfirst` is the brand these rules are
+published under and it is going to carry more than one product; a rule set named
+for the brand says which company graded a report and not which tool did.
+
+**The numbers did not reset.** `denyfirst-tls-v7` became `porch-tls-v7`, not
+`porch-tls-v1`. Resetting would have told a reader the rules were new when they
+are the same rules under a different name — which is the one thing a version on
+a rule set exists to prevent.
+
+**Nothing anybody holds is affected.** All three of the rule sets renamed here
+were unreleased: `denyfirst-tls-v7`, `denyfirst-web-v3` and `denyfirst-mail-v1`
+never appeared in a report. The sections below name the last released rule set on
+each side of the change, so a reader comparing an older report against a new one
+is reading the whole story rather than a rename spliced into it. Sections for
+releases that did ship keep the names they shipped under, because that is what
+those reports say.
+
+The programs are `porch-scan` and `porchd`, and the user agent is `porch/1`. The
+addresses under `denyfirst.dev` are unchanged: that is the brand's domain, the
+pages explaining what a scan sends are there, and a log reader who looked one up
+is entitled to find it still answering.
+
+---
+
+
+## `porch-mail-v1` — a new rule set
 
 Unreleased.
 
@@ -97,7 +128,7 @@ establish, which is the thing R4 exists to prevent.
 ---
 
 
-## `denyfirst-tls-v6` → `denyfirst-tls-v7`
+## `denyfirst-tls-v6` → `porch-tls-v7`
 
 Unreleased.
 
@@ -133,7 +164,7 @@ says revocation was not checked, which is true there.
 
 ---
 
-## `denyfirst-web-v2` → `denyfirst-web-v3`
+## `denyfirst-web-v2` → `porch-web-v3`
 
 Unreleased.
 

@@ -48,7 +48,7 @@ Building from source is the other answer, and needs nothing but Go:
 ```sh
 git clone https://github.com/denyfirst/denyfirst
 cd denyfirst
-go build ./cmd/denyfirst-scan ./cmd/denyfirstd
+go build ./cmd/porch-scan ./cmd/porchd
 ```
 
 `go.mod` has no `require` block. Nothing is fetched beyond the standard
@@ -59,9 +59,9 @@ library, so there is no third-party supply chain to audit here.
 ## The command line
 
 ```sh
-./denyfirst-scan example.com
-./denyfirst-scan -json example.com
-./denyfirst-scan -allow-private 10.0.0.5
+./porch-scan example.com
+./porch-scan -json example.com
+./porch-scan -allow-private 10.0.0.5
 ```
 
 The exit status is the worst verdict found — `0` strong, `1` weak, `2`
@@ -75,8 +75,8 @@ run. A default that quietly started running a second check would change the
 exit status of a pipeline nobody touched.
 
 ```sh
-./denyfirst-scan example.com                 # the transport and its certificates
-./denyfirst-scan -check web example.com      # how the site is reached over HTTP
+./porch-scan example.com                 # the transport and its certificates
+./porch-scan -check web example.com      # how the site is reached over HTTP
 ```
 
 ### If the Issuance line says "not checked"
@@ -91,7 +91,7 @@ answer.
 If it still says *not checked*, name one:
 
 ```sh
-./denyfirst-scan -resolver 192.168.1.1:53 example.com
+./porch-scan -resolver 192.168.1.1:53 example.com
 ```
 
 Any resolver you would ordinarily use. There is deliberately no default: a
@@ -109,23 +109,23 @@ body unread, and follows only the addresses a `Location` header names. It
 never requests a path of its own choosing. `docs/invariants.md` N7 has the
 whole discipline.
 
-The two rule sets are separate and never comparable with each other:
-`denyfirst-tls-v6` grades a handshake, `denyfirst-web-v1` grades an HTTP
-response. `-version` prints both, and every report names the one that produced
-it.
+The three rule sets are separate and never comparable with each other:
+`porch-tls-v7` grades a handshake, `porch-web-v3` grades an HTTP response, and
+`porch-mail-v1` grades what a domain's DNS says about its mail. `-version`
+prints all three, and every report names the one that produced it.
 
 ```sh
-./denyfirst-scan -check web -limits          # what a header check cannot establish
+./porch-scan -check web -limits          # what a header check cannot establish
 ```
 
 ## The service
 
 ```sh
-./denyfirstd -listen 127.0.0.1:8080
+./porchd -listen 127.0.0.1:8080
 ```
 
 Loopback by default, so an accidental start is not immediately public.
-`denyfirstd -h` lists every limit and its default.
+`porchd -h` lists every limit and its default.
 
 ---
 
@@ -138,9 +138,9 @@ argument of this project is that the release is signed and reproducible. So
 the image is a wrapper around the binary **you verified**.
 
 ```sh
-curl -fsSLO https://github.com/denyfirst/denyfirst/releases/download/v0.13.0/denyfirstd_v0.13.0_linux_amd64
+curl -fsSLO https://github.com/denyfirst/denyfirst/releases/download/v0.13.0/porchd_v0.13.0_linux_amd64
 # verify it — docs/verify.md
-mv denyfirstd_v0.13.0_linux_amd64 denyfirstd
+mv porchd_v0.13.0_linux_amd64 porchd
 docker compose up -d
 ```
 

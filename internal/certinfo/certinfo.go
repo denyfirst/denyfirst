@@ -445,7 +445,7 @@ func mixedScriptNote(leaf *x509.Certificate) string {
 // Verify with a nil Roots does not mean "the system pool". On Linux it very
 // nearly does; on Windows and macOS it hands the whole question to the
 // platform verifier, which is a different code path reading a different store
-// and ignoring SSL_CERT_FILE and SSL_CERT_DIR entirely. So denyfirstd would
+// and ignoring SSL_CERT_FILE and SSL_CERT_DIR entirely. So porchd would
 // read a pool at startup, satisfy itself that it was not empty, and then judge
 // every chain against something else — on the two platforms self-hosting is
 // most likely to run on. Two tests in this package had failed there since they
@@ -1227,7 +1227,7 @@ func parseSCTList(list []byte) (count int, logIDs []string, malformed bool) {
 //
 // standing takes a limit rather than a sentence, so a standing claim cannot
 // be written here without being added to the declaration that /method and
-// `denyfirst-scan -limits` read. There was no standing helper in this package
+// `porch-scan -limits` read. There was no standing helper in this package
 // between 2026-09-01 and 2026-09-02: the only one it had made was a claim
 // about revocation it could not settle, and the one it has now is about whose
 // root store decided the word "trusted".

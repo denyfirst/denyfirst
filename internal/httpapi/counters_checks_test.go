@@ -212,7 +212,7 @@ func TestAFileWithoutCheckBlocksRestoresIntoTheTLSBlock(t *testing.T) {
 
 // An older build reading a file this one wrote keeps the right figures.
 //
-// cmd/denyfirstd reads the file with a plain json.Unmarshal, so a field it
+// cmd/porchd reads the file with a plain json.Unmarshal, so a field it
 // does not know is ignored rather than refused. That is what makes a rollback
 // safe — and it is only safe because the fields at the top still describe one
 // check. Had scansTotal been widened to cover both, the older binary would

@@ -1,4 +1,4 @@
-// Command denyfirstd serves the scanner over HTTP.
+// Command porchd serves the scanner over HTTP.
 //
 // The handler in internal/httpapi guards what arrives in a request. This
 // binary guards what happens before a request is complete — the part
@@ -6,8 +6,8 @@
 //
 // Usage:
 //
-//	denyfirstd -listen 127.0.0.1:8080
-//	denyfirstd -listen :443 -tls-cert /etc/ssl/denyfirst.pem -tls-key /etc/ssl/denyfirst.key
+//	porchd -listen 127.0.0.1:8080
+//	porchd -listen :443 -tls-cert /etc/ssl/denyfirst.pem -tls-key /etc/ssl/denyfirst.key
 //
 // Certificates are read from disk rather than obtained through an ACME
 // library, because every Go ACME client is a third-party module and this
@@ -147,7 +147,7 @@ func run() int {
 	)
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "denyfirstd serves the denyfirst scanner over HTTP.\n\n")
+		fmt.Fprintf(os.Stderr, "porchd serves the denyfirst scanner over HTTP.\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n  %s [flags]\n\nFlags:\n", os.Args[0])
 		flag.PrintDefaults()
 	}
@@ -170,7 +170,7 @@ func run() int {
 		// in place, the service answers, the version matches — and the only
 		// symptom would be a public scanner nobody meant to run. The deploy
 		// procedure reads this line rather than trusting the filename.
-		fmt.Printf("denyfirstd %s\npolicy %s\n%s\n", version, policy.TLSVersion, reach())
+		fmt.Printf("porchd %s\npolicy %s\n%s\n", version, policy.TLSVersion, reach())
 		return 0
 	}
 
@@ -416,7 +416,7 @@ func run() int {
 	}
 	// The only line this process prints in normal operation. It names the
 	// service, not a request.
-	fmt.Fprintf(os.Stderr, "denyfirstd listening on %s://%s, policy %s\n",
+	fmt.Fprintf(os.Stderr, "porchd listening on %s://%s, policy %s\n",
 		scheme, *listen, policy.TLSVersion)
 
 	select {
@@ -458,7 +458,7 @@ func run() int {
 		return 1
 	}
 
-	fmt.Fprintln(os.Stderr, "denyfirstd stopped")
+	fmt.Fprintln(os.Stderr, "porchd stopped")
 	return 0
 }
 

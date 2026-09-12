@@ -27,7 +27,7 @@ import "strconv"
 // the TLS name carries its check: "denyfirst-v1" over a mail report and over a
 // TLS report would be one name for two rule sets, which is exactly the
 // confusion the naming exists to prevent.
-const MailVersion = "denyfirst-mail-v1"
+const MailVersion = "porch-mail-v1"
 
 var (
 	rfc7208 = Reference{

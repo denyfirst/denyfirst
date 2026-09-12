@@ -291,7 +291,7 @@ func (f *Fetcher) download(ctx context.Context, address string) ([]byte, string)
 // The same identification the rest of the project sends, for the same reason:
 // an authority reading its own access log can find out precisely what asked and
 // why. A fetch that hides is a fetch nobody can make a decision about.
-const UserAgent = "denyfirst/1 (+https://denyfirst.dev/tls/method)"
+const UserAgent = "porch/1 (+https://denyfirst.dev/tls/method)"
 
 func (f *Fetcher) timeout() time.Duration {
 	if f.Timeout <= 0 {

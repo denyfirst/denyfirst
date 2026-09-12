@@ -1,4 +1,4 @@
-# Working on denyfirst
+# Working on porch
 
 This file is read at the start of every session. It is the rules that are not
 visible from the code, and the reasons behind them are in
@@ -15,8 +15,8 @@ session identifier, and nothing about who is working on it.
 
 A scanner that measures how a host is reached and grades what it finds. Three
 checks so far: the TLS handshake and the certificate behind it
-(`denyfirst-tls-v7`), how a website is reached over HTTP (`denyfirst-web-v3`),
-and what a domain's DNS says about its mail (`denyfirst-mail-v1`).
+(`porch-tls-v7`), how a website is reached over HTTP (`porch-web-v3`),
+and what a domain's DNS says about its mail (`porch-mail-v1`).
 
 Each carries its own rule-set name and its own version, and they move
 independently. A report says which one graded it, because a verdict from one
@@ -150,7 +150,7 @@ Two things about `go test ./...`:
   fixture installed a private authority through `SSL_CERT_FILE` and only Go's
   unix root loader reads that. The fixture was the symptom rather than the
   fault: `certinfo` verified with a nil `Roots`, which hands the whole question
-  to the platform verifier — a different store from the one `denyfirstd`
+  to the platform verifier — a different store from the one `porchd`
   checks when it starts. The store is passed explicitly now, so it is the same
   store on every platform and the package runs everywhere.
 - **`-race` needs cgo**, which needs a C toolchain a Go installation on

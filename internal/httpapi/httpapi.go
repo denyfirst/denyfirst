@@ -181,7 +181,7 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 		// The web check is built from the boundary the caller configured
 		// rather than from nothing.
 		//
-		// It was built from nothing, and that was a hole. denyfirstd passed a
+		// It was built from nothing, and that was a hole. porchd passed a
 		// verification scope to the TLS scanner and never touched this one, so
 		// the same service refused an unproven host on /api/v1/tls/scan and
 		// scanned it on /api/v1/web/scan. Every guard was in place, every unit
@@ -290,7 +290,7 @@ type route struct {
 
 // Paths are the addresses this service answers, for whatever mounts it.
 //
-// Exported because cmd/denyfirstd routes the API and the pages separately —
+// Exported because cmd/porchd routes the API and the pages separately —
 // they need different security headers, and one policy for both would mean the
 // API inherits permission it never needed. That separation requires the mount
 // to name each API path, and a second hand-written list is a list that falls

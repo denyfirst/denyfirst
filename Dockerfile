@@ -13,9 +13,9 @@
 # already verified on your own machine — see docs/verify.md — and the image is
 # a wrapper around bytes you have already decided to trust.
 #
-#   curl -fsSLO https://github.com/denyfirst/denyfirst/releases/download/vX.Y.Z/denyfirstd_vX.Y.Z_linux_amd64
+#   curl -fsSLO https://github.com/denyfirst/denyfirst/releases/download/vX.Y.Z/porchd_vX.Y.Z_linux_amd64
 #   # ... verify it, then:
-#   mv denyfirstd_vX.Y.Z_linux_amd64 denyfirstd
+#   mv porchd_vX.Y.Z_linux_amd64 porchd
 #   docker build -t denyfirst .
 #
 # The binary is built with CGO_ENABLED=0, so it needs no dynamic loader and no
@@ -29,12 +29,12 @@ FROM scratch
 # still a privilege nothing here needs.
 USER 65534:65534
 
-COPY --chmod=0555 denyfirstd /denyfirstd
+COPY --chmod=0555 porchd /porchd
 
 # Above 1024, so no capability is needed to bind it. Port 443 is reached by
 # publishing this one, which keeps the binding privilege in the container
 # runtime rather than in the program.
 EXPOSE 8443
 
-ENTRYPOINT ["/denyfirstd"]
+ENTRYPOINT ["/porchd"]
 CMD ["-listen", "0.0.0.0:8443"]

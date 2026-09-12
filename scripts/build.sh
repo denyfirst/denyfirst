@@ -24,7 +24,7 @@ mkdir -p "$out"
 # The targets. Adding one here adds it to the release and to every
 # reproduction of it, which is the point of the file.
 targets="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64"
-commands="denyfirst-scan denyfirstd"
+commands="porch-scan porchd"
 
 # -trimpath removes the local module path, CGO_ENABLED=0 removes the host C
 # toolchain, -buildvcs=false keeps the embedded VCS stamp from varying with
@@ -72,6 +72,6 @@ done
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -trimpath -buildvcs=false -tags demo \
         -ldflags "-s -w -X main.version=${tag}" \
-        -o "${out}/denyfirstd-demonstration_${tag}_linux_amd64" "./cmd/denyfirstd"
+        -o "${out}/porchd-demonstration_${tag}_linux_amd64" "./cmd/porchd"
 
 ls -la "$out"

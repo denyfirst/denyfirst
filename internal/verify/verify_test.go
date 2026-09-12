@@ -227,11 +227,11 @@ func TestATokenIsStableAndSpellable(t *testing.T) {
 		t.Error("a token depends on the spelling of the name, so a record published under one " +
 			"form would not match a scan of another")
 	}
-	if !strings.HasPrefix(first, "denyfirst-verification=") {
+	if !strings.HasPrefix(first, "porch-verification=") {
 		t.Errorf("a token does not say what it is: %q", first)
 	}
 
-	value := strings.TrimPrefix(first, "denyfirst-verification=")
+	value := strings.TrimPrefix(first, "porch-verification=")
 	if strings.ContainsAny(value, "=+/ ") {
 		t.Errorf("a token carries characters that do not survive being retyped: %q", value)
 	}

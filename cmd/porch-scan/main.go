@@ -1,4 +1,4 @@
-// Command denyfirst-scan inspects a server's TLS configuration and
+// Command porch-scan inspects a server's TLS configuration and
 // certificate chain from the command line.
 //
 // It exists to exercise the whole pipeline against real servers. The library
@@ -7,11 +7,11 @@
 //
 // Usage:
 //
-//	denyfirst-scan example.com
-//	denyfirst-scan example.com:8443 another.example
-//	denyfirst-scan -json example.com
-//	denyfirst-scan -allow-private 10.0.0.5
-//	denyfirst-scan 93.184.216.34
+//	porch-scan example.com
+//	porch-scan example.com:8443 another.example
+//	porch-scan -json example.com
+//	porch-scan -allow-private 10.0.0.5
+//	porch-scan 93.184.216.34
 //
 // Exit status is the worst verdict found, so the command can gate a pipeline:
 // 0 when everything measured was strong, 1 on a weak finding, 2 on an insecure
@@ -195,7 +195,7 @@ func run() int {
 		"print the limits of this method — true of every scan — then exit")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "denyfirst-scan inspects how a host is reached: its TLS configuration\nand certificates, or the way a website answers over HTTP.\n\n")
+		fmt.Fprintf(os.Stderr, "porch-scan inspects how a host is reached: its TLS configuration\nand certificates, or the way a website answers over HTTP.\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n  %s [flags] host[:port] ...\n\nFlags:\n", os.Args[0])
 		flag.PrintDefaults()
 	}
@@ -303,7 +303,7 @@ func outcomes(results []result) []outcome {
 // what a binary says it is happens to be the one thing an operator holding it
 // has to be able to check.
 func versionLine() string {
-	return fmt.Sprintf("denyfirst-scan %s\npolicy %s\npolicy %s\npolicy %s\n",
+	return fmt.Sprintf("porch-scan %s\npolicy %s\npolicy %s\npolicy %s\n",
 		version, policy.TLSVersion, policy.WebVersion, policy.MailVersion)
 }
 
@@ -625,7 +625,7 @@ func printNotes(w io.Writer, notes []policy.Note, page string) {
 		}
 
 		fmt.Fprintf(w, "    · %s\n", limitsLine(len(standing)))
-		fmt.Fprintf(w, "      denyfirst-scan -limits, or %s\n", page)
+		fmt.Fprintf(w, "      porch-scan -limits, or %s\n", page)
 	}
 }
 

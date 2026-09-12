@@ -237,7 +237,7 @@ deployed.** A restriction compiled into a build is worth nothing until that
 build is the one running, and a build that runs here is one that was released:
 signed, listed in `SHA256SUMS`, and rebuilt by the reproduction workflow like
 every other artifact. `scripts/build.sh` produces
-`denyfirstd-demonstration_<tag>_linux_amd64` — Linux and amd64 only, because
+`porchd-demonstration_<tag>_linux_amd64` — Linux and amd64 only, because
 this is not a thing to download and use but a thing one server runs, and
 offering it for five platforms would invite somebody to install a crippled
 scanner by mistake.
@@ -585,17 +585,17 @@ address.
 The command line needs no boundary: whoever runs it has the machine, the scan
 leaves from their own address, and nobody else can reach it. A service is the
 other case entirely, and until this existed it had nothing at all. A
-`denyfirstd` bound to an interface is reachable by a careless colleague, by a
+`porchd` bound to an interface is reachable by a careless colleague, by a
 compromised CI job, and by an SSRF into the scanner — and every scan any of
 them starts puts the operator's address in a stranger's logs. That is N6's
 arrangement rebuilt inside somebody's own network, which is the thing
 `docs/scope.md` was written to stop.
 
-**Proof is a TXT record at `_denyfirst-challenge.<domain>`** carrying the token
+**Proof is a TXT record at `_porch-challenge.<domain>`** carrying the token
 this deployment expects for that domain. Publishing it needs control of the
 zone, which is what is being proven.
 
-**Or a file at `/.well-known/denyfirst-challenge`**, for teams without access
+**Or a file at `/.well-known/porch-challenge`**, for teams without access
 to their own DNS — which is a common enough arrangement that refusing them
 would mean refusing the estates this tool is for.
 
@@ -707,7 +707,7 @@ carries the gap until it is.
 *Enforced in:* `internal/verify`, `internal/challenge`,
 `internal/scan.Scanner.Scan`, `internal/webscan.Scanner.Scan`,
 `internal/httpapi.New`, `internal/httpapi.Server.UseWebScanner`,
-`cmd/denyfirstd.verificationScope`
+`cmd/porchd.verificationScope`
 *Guarded by:* `TestAPublishedTokenCoversTheZone`,
 `TestADomainThatProvedNothingIsRefused`,
 `TestATokenFromOneDomainDoesNotProveAnother`,
@@ -1001,7 +1001,7 @@ Silence there would let a clean answer read as a clean estate.
 
 *Enforced in:* `internal/ctsearch`, `internal/scan.Scanner.searchLogs`,
 `internal/scan.sameSerial`, `internal/policy.LoggedLine`,
-`internal/policy.DescribeLogged`, `cmd/denyfirst-scan.tlsScanner`
+`internal/policy.DescribeLogged`, `cmd/porch-scan.tlsScanner`
 *Guarded by:* `TestOneCertificateLoggedTwiceIsOneCertificate`,
 `TestTwoDifferentCertificatesAreTwo`,
 `TestTheNameIsEscapedIntoTheQuery`,
@@ -1094,7 +1094,7 @@ measuring, so a report calling DKIM missing would claim something the scan never
 established (R4).
 
 *Enforced in:* `internal/mailscan`, `internal/spf`, `internal/policy.GradeMail`,
-`internal/policy.MailStandingLimits`, `cmd/denyfirst-scan.runMail`
+`internal/policy.MailStandingLimits`, `cmd/porch-scan.runMail`
 *Guarded by:* `TestTheScanAsksOnlyAboutTheDomainItWasGiven`,
 `TestOnlyTheZoneProofAuthorisesAMailScan`,
 `TestScanRefusesBeforeItAsksAnything`,
@@ -1551,7 +1551,7 @@ the same undertaking broken by somebody else.
 What it costs is a full handshake per connection. The site is four small files
 and the certificate is ECDSA, so the exchange is one nobody will notice.
 
-*Enforced in:* `cmd/denyfirstd` — `SessionTicketsDisabled`
+*Enforced in:* `cmd/porchd` — `SessionTicketsDisabled`
 
 ---
 
@@ -1579,7 +1579,7 @@ Command line clients and HTTP libraries have no standardised HSTS handling, so
 they do not benefit from either mechanism. They also do not type a scheme by
 accident.
 
-*Enforced in:* nftables, which opens 443 and nothing else; `denyfirstd` binds
+*Enforced in:* nftables, which opens 443 and nothing else; `porchd` binds
 one listener
 *Guarded by:* `TestHeadersOnEveryResponse` covers the header; the absence of a
 second listener is enforced by there being no flag that would create one
@@ -2015,13 +2015,13 @@ same rule read one layer down, and it was broken in the layer nobody looked
 at. `x509.Verify` with a nil `Roots` does not mean "the system pool"; it means
 *decide for yourself*, and on Windows and macOS deciding hands the whole
 question to the platform verifier — a different store, reading neither the
-pool `denyfirstd` reads when it starts nor `SSL_CERT_FILE`. So the service
+pool `porchd` reads when it starts nor `SSL_CERT_FILE`. So the service
 satisfied itself that its trust store was not empty and then judged every
 chain against something else, on the two platforms self-hosting is most likely
 to run on. It refused to start on a machine with no store and would have
 reported chains as trusted on one it never consulted.
 
-The pool is a parameter now, `denyfirstd` hands the scanner the pool it
+The pool is a parameter now, `porchd` hands the scanner the pool it
 checked, and nothing leaves `Roots` nil. A non-nil `Roots` takes the pure-Go
 path everywhere, so one store decides on every platform — which is what this
 invariant asks for and what the nil was quietly preventing.
@@ -2118,7 +2118,7 @@ and needs no cross toolchain.
 
 *Enforced in:* `internal/certinfo.chainComplete`,
 `internal/certinfo.resolveRoots`, `internal/scan.Scanner.Roots`,
-`cmd/denyfirstd`, `internal/truststore`, `internal/webprobe.Prober.Roots`,
+`cmd/porchd`, `internal/truststore`, `internal/webprobe.Prober.Roots`,
 `internal/webscan.Scanner.Roots`, `internal/policy.TrustStoreUnreadable`,
 `internal/dnsclient` (`resolver_unix.go`, `resolver_windows.go`, `Client.ask`),
 `.github/workflows/ci.yml`
@@ -2273,7 +2273,7 @@ are not the same finding either.
 `internal/tlsprobe.classifyHandshakeError`,
 `internal/tlsprobe.suiteCoverageApplies`, `internal/web/assets/app.js`
 (`outcomeCell`, `ciphers`, `transparencyText`),
-`cmd/denyfirst-scan.printVersions`, `cmd/denyfirst-scan.printCiphers`
+`cmd/porch-scan.printVersions`, `cmd/porch-scan.printCiphers`
 *Guarded by:* `TestOnlyAServerRefusalIsCalledOne`,
 `TestATruncatedListSaysSoWhereItIsShown`,
 `TestAVersionThatCouldNotBeMeasuredIsNotCalledRefused`,
@@ -2287,7 +2287,7 @@ are not the same finding either.
 
 ### R13 — An exit status is a verdict, and `ungraded` is not zero
 
-`denyfirst-scan` exists partly to gate a pipeline, and its status was the one
+`porch-scan` exists partly to gate a pipeline, and its status was the one
 reader of a verdict that could not be corrected afterwards. It exited `0` on
 `Ungraded`.
 
@@ -2307,7 +2307,7 @@ finding — an operator with both is sent to the finding first — and above a
 clean run. The decision is a function of the results rather than a switch at
 the end of `run`, so it can be exercised without a network.
 
-*Enforced in:* `cmd/denyfirst-scan.exitCode`
+*Enforced in:* `cmd/porch-scan.exitCode`
 *Guarded by:* `TestUngradedIsNotAPass`,
 `TestAnUngradedTargetIsNotHiddenByAGoodOne`,
 `TestSeverityOutranksAnAbsentResult`
@@ -2485,7 +2485,7 @@ be the false completeness this invariant exists to prevent.
 ### R16 — One result, two renderers, one set of facts
 
 A scan produces one result and two things render it: `app.js` for a browser
-and `cmd/denyfirst-scan` for a terminal. They are different code in different
+and `cmd/porch-scan` for a terminal. They are different code in different
 languages, nothing compared them, and on 2026-08-31 they were answering
 different questions. The page carried an Issuance line — which authorities may
 issue a certificate for this name, the whole CAA analysis — and the terminal
@@ -2533,8 +2533,8 @@ issuance — so the sentences saying where a CAA answer came from, whether the
 resolver claimed it was validated, and why a restriction is not a guarantee
 reached a reader of the JSON and no one else. They are collected now.
 
-*Enforced in:* `cmd/denyfirst-scan.printReport`,
-`cmd/denyfirst-scan.printCertificate`, `internal/scan.Result.Notes`
+*Enforced in:* `cmd/porch-scan.printReport`,
+`cmd/porch-scan.printCertificate`, `internal/scan.Result.Notes`
 *Guarded by:* `TestBothFacesOfTheReportShowTheSameFacts`,
 `TestAReportSaysWhatWasMeasured`
 
@@ -2684,7 +2684,7 @@ The third is not printed. A limit that is the same on every report is one
 nobody reads by the third report, and sitting beside a host's own
 shortcomings it reads as though it were one of them. They are declared once
 in `internal/policy/standing.go`; `/method` ranges over that declaration and
-`denyfirst-scan -limits` prints it, so the page cannot fall out of step with
+`porch-scan -limits` prints it, so the page cannot fall out of step with
 the code and somebody offline is not sent to a website.
 
 Nothing says how many there are. Both faces count the list at render time,
@@ -2710,7 +2710,7 @@ section renamed on the page and not in the terminal fails; a section on one
 face and not the other fails.
 
 *Enforced in:* `internal/policy/note.go`, `internal/policy/standing.go`;
-`noteSections` in `cmd/denyfirst-scan`; `NOTE_SECTIONS` in
+`noteSections` in `cmd/porch-scan`; `NOTE_SECTIONS` in
 `internal/web/assets/app.js`; `assets/method.html`
 *Guarded by:* `TestEveryNoteInAReportCarriesAKind`,
 `TestBothFacesNameTheSameNoteSections`,
@@ -2999,7 +2999,7 @@ does not restart a counter under a new name.
 the TLS check's, spelled the same way and counting the same thing, and the
 `tls` block repeats them. A field that keeps its name and changes its meaning
 is the change nobody notices until a graph has been wrong for a month, and it
-would survive a rollback as well: `cmd/denyfirstd` reads the file with a plain
+would survive a rollback as well: `cmd/porchd` reads the file with a plain
 `json.Unmarshal`, so an older binary ignores the new field — and what it then
 reads at the top has to still be one check's figures rather than a total with
 another check's scans folded in.
@@ -3013,7 +3013,7 @@ clock is free for an integer and is not free for a map.
 *Enforced in:* `internal/policy` (`TLSVersion`, `WebVersion`,
 `WebStandingLimits`); `internal/httpapi` (`checkNames`, `CheckCounts`,
 `Snapshot.Checks`)
-*Guarded by:* `TestTheWebRuleSetIsNamedForItsCheck`, `TestTheWebLimitsAreItsOwn`,
+*Guarded by:* `TestEveryRuleSetNamesTheToolAndTheCheck`, `TestTheWebLimitsAreItsOwn`,
 `TestEveryWebFindingIsUsableOnItsOwn`, `TestTheChangeLogCoversTheCurrentPolicy`,
 `TestThePublishedFieldsKeepTheirNamesAndTheirMeaning`,
 `TestTheTopLevelFiguresAreTheTLSCheck`,
@@ -3515,7 +3515,7 @@ certificate naming more than one is described by the strongest, which is the
 claim its issuer is standing behind.
 
 *Enforced in:* `internal/certinfo.validationLevel`, shown by
-`cmd/denyfirst-scan` and `internal/web/assets/app.js`
+`cmd/porch-scan` and `internal/web/assets/app.js`
 *Guarded by:* `TestTheValidationLevelIsNamed`,
 `TestACertificateWithNoKnownPolicySaysNothing`,
 `TestTheStrongestPolicyIsTheOneNamed`, `TestTheValidationLevelIsNotGraded`,
@@ -3861,7 +3861,7 @@ tree was fetched, so leaving it on makes two honest builds of one tag differ
 and destroys the property S3 and the reproduction workflow exist to establish.
 The consequence was that nothing inside a released binary said what it was.
 The tag is in the filename, and a filename survives until somebody renames the
-file, packages it, or copies it onto a server as `denyfirst-scan`.
+file, packages it, or copies it onto a server as `porch-scan`.
 
 For a program people run to answer security questions, *am I running the build
 that fixed this* is not a cosmetic question, and it had no answer.
@@ -3875,8 +3875,8 @@ Determinism is unaffected: the value is the tag, both callers pass the same
 one, and two builds of a tag remain byte-identical. Measured on 2026-08-22,
 twice, all ten artifacts.
 
-*Enforced in:* `scripts/build.sh`, `cmd/denyfirst-scan.version`,
-`cmd/denyfirstd.version`
+*Enforced in:* `scripts/build.sh`, `cmd/porch-scan.version`,
+`cmd/porchd.version`
 *Guarded by:* `TestTheBuildScriptStampsTheVersionSymbolThisProgramDefines`,
 `TestAnUnstampedBinaryDoesNotClaimAVersion`,
 `TestThePolicyVersionIsNotTheReleaseVersion`
@@ -4056,7 +4056,7 @@ running process, and the claim that the two are the same thing is made by a
 person typing commands into a server a few times a year.
 
 That sequence was written nowhere until 2026-09-01. `docs/releasing.md` said
-*then deploy* and gave one command — `denyfirstd -version` — which is not on
+*then deploy* and gave one command — `porchd -version` — which is not on
 `PATH` on the machine it was written for, so the single instruction that
 existed failed on the evening it was first followed. This is the defect S13
 records about the release procedure's entry point, in the one procedure S13
@@ -4083,7 +4083,7 @@ answering, with the new file in place and looking correct. Those two states
 are indistinguishable from the file, which is the reason the check is not the
 obvious one.
 
-The rollback is kept under the version it holds. `denyfirstd.bak`, left on
+The rollback is kept under the version it holds. `porchd.bak`, left on
 this server on 2026-08-18 with nothing recording what was in it, is what the
 alternative looks like a week later.
 
@@ -4136,7 +4136,7 @@ that goes wrong — the same rule `docs/releasing.md` follows about the build
 command.
 
 *Enforced in:* `Dockerfile`, `docker-compose.yml`, `docs/self-host.md`,
-`cmd/denyfirstd.trustStoreUsable`
+`cmd/porchd.trustStoreUsable`
 *Guarded by:* `TestTheImageHasNoBaseSystem`,
 `TestTheComposeFileTakesAwayWhatItSays`,
 `TestAnEmptyTrustStoreStopsTheServiceStarting`,
@@ -4263,8 +4263,8 @@ Anything below is open today.
   `internal/tlsprobe`, `internal/dnsclient` in full including the reply parser,
   `internal/safedial`, `internal/httpapi`, `internal/scan`, `internal/web`, and
   finally the two front ends, `internal/web/assets/app.js` and
-  `cmd/denyfirst-scan`, which had never been read and held R12 and R13 between
-  them, and `cmd/denyfirstd`. That last fact is the one to take from this entry rather than the
+  `cmd/porch-scan`, which had never been read and held R12 and R13 between
+  them, and `cmd/porchd`. That last fact is the one to take from this entry rather than the
   coverage: the packages that compute the answer were careful, and every defect
   found on the final pass was in the code that shows it. Nothing was wrong with
   what this project knew; four things were wrong with what it said. Completing

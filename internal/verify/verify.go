@@ -8,7 +8,7 @@
 // time, by the operator, about their own estate — and it is the one that makes
 // a self-hosted service safe to put on a network.
 //
-// Without it, a denyfirstd anyone can reach is the arrangement N6 dismantled,
+// Without it, a porchd anyone can reach is the arrangement N6 dismantled,
 // rebuilt inside somebody's intranet: a colleague types a hostname, a
 // compromised CI job types a different one, an SSRF into the scanner types
 // whatever it likes, and it is the operator's address in a stranger's logs.
@@ -16,7 +16,7 @@
 //
 // # What proof is
 //
-// A TXT record at _denyfirst-challenge.<domain> carrying the token this
+// A TXT record at _porch-challenge.<domain> carrying the token this
 // deployment expects for that domain. Publishing it requires control of the
 // zone, which is the thing being proven.
 //
@@ -48,7 +48,7 @@ import (
 )
 
 // Label is the name a challenge is published under, beneath the domain.
-const Label = "_denyfirst-challenge"
+const Label = "_porch-challenge"
 
 // Path is where the file half of the challenge is served from.
 //
@@ -59,7 +59,7 @@ const Label = "_denyfirst-challenge"
 // a host that has not been scanned yet and will not be unless the file is
 // found. Nothing about it is read as a measurement, and nothing it returns
 // reaches a report.
-const Path = "/.well-known/denyfirst-challenge"
+const Path = "/.well-known/porch-challenge"
 
 // Surface names what a check will reach, because the two proof methods do not
 // prove the same thing.
@@ -108,7 +108,7 @@ func Token(secret []byte, domain string) string {
 	mac := hmac.New(sha256.New, secret)
 	mac.Write([]byte(fold(domain)))
 
-	return "denyfirst-verification=" +
+	return "porch-verification=" +
 		strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(mac.Sum(nil)[:20]))
 }
 

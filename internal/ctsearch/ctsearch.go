@@ -224,7 +224,7 @@ func (c *CRTSh) Search(ctx context.Context, name string) Result {
 
 // UserAgent identifies this client to the monitor, as everything else here
 // identifies itself. A search that hides is one nobody can ask about.
-const UserAgent = "denyfirst/1 (+https://denyfirst.dev/tls/method)"
+const UserAgent = "porch/1 (+https://denyfirst.dev/tls/method)"
 
 // summarise turns what the monitor said into what a report may show.
 //
