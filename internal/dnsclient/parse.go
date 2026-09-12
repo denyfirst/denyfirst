@@ -116,6 +116,22 @@ func parseReply(raw []byte, id uint16, question []byte, qtype uint16) (reply, er
 func parseAnswers(raw []byte, offset, count int, qtype uint16, wantName []byte) (answerSet, error) {
 	var out answerSet
 
+	// Read the section once, then decide what answers the question.
+	//
+	// One pass was enough while every answer sat at the name that was asked
+	// about. It is not enough for a name that is an alias: a resolver
+	// following a CNAME returns the alias and the records at its target, and
+	// the target's owner name is not the question's. Deciding as it read, this
+	// skipped exactly those records — so a DKIM key published as a CNAME, which
+	// is how most mail providers publish one, came back as nothing at all.
+	//
+	// The owner check itself is not the mistake and is not being loosened. A
+	// resolver is hostile (N5) and a reply can carry records for any name it
+	// likes; what changes is that the set of names this accepts is now the
+	// chain the reply itself draws from the question, rather than the question
+	// alone.
+	var records []answerRecord
+
 	for i := 0; i < count; i++ {
 		owner, next, err := readName(raw, offset)
 		if err != nil {
@@ -143,12 +159,23 @@ func parseAnswers(raw []byte, offset, count int, qtype uint16, wantName []byte) 
 		rdataAt := offset
 		offset += rdLength
 
+		records = append(records, answerRecord{owner: owner, rrType: rrType, rdata: rdata, rdataAt: rdataAt})
+	}
+
+	// The names this reply says answer the question: the one that was asked,
+	// plus whatever a CNAME at it points to, followed as far as the reply goes.
+	answering := chainFrom(raw, wantName, records)
+
+	for _, r := range records {
+		owner, rrType, rdata, rdataAt := r.owner, r.rrType, r.rdata, r.rdataAt
+
 		// Anything else in the section is skipped rather than refused: a
 		// reply carrying RRSIG alongside the records asked for is what asking
 		// for DNSSEC produces, and treating it as a fault would reject every
-		// signed zone. A record for another owner is skipped for the same
-		// reason and with more cause: it answers a question nobody asked.
-		if rrType != qtype || !bytes.Equal(owner, wantName) {
+		// signed zone. A record for a name outside the chain above is skipped
+		// for the same reason and with more cause: it answers a question
+		// nobody asked.
+		if rrType != qtype || !answering[string(owner)] {
 			continue
 		}
 
@@ -468,3 +495,58 @@ func nameText(encoded []byte) string {
 // maxNameLength is the longest name RFC 1035 allows, and the bound on anything
 // a resolver hands back.
 const maxNameLength = 253
+
+// chainFrom returns the names a reply says answer the question.
+//
+// The question's own name, plus each name a CNAME at it points to, followed
+// while the reply keeps drawing the chain. A resolver asked for TXT at a name
+// that is an alias returns the CNAME and the records at its target, and the
+// target's owner name is not the one that was asked about — so a client that
+// accepted only the question's name saw the alias and nothing else.
+//
+// Bounded, and the bound is not a formality. A reply is bytes from a resolver
+// this project treats as hostile (N5), and a CNAME pointing at itself is two
+// records and an endless walk. A name already on the chain ends it.
+//
+// What this deliberately does not do is accept any name the reply happens to
+// carry. The chain has to start at the question and be drawn by the reply's own
+// CNAMEs; a record for a name nothing points at is still skipped, which is the
+// property the owner check existed for.
+func chainFrom(raw []byte, wantName []byte, records []answerRecord) map[string]bool {
+	const maxChain = 8
+
+	out := map[string]bool{string(wantName): true}
+	at := wantName
+
+	for range maxChain {
+		var next []byte
+		for _, r := range records {
+			if r.rrType != TypeCNAME || !bytes.Equal(r.owner, at) {
+				continue
+			}
+			target, _, err := readName(raw, r.rdataAt)
+			if err != nil {
+				return out
+			}
+			next = foldName(target)
+			break
+		}
+
+		if next == nil || out[string(next)] {
+			return out
+		}
+		out[string(next)] = true
+		at = next
+	}
+
+	return out
+}
+
+// answerRecord is one record out of an answer section, before anything decides
+// whether it answers the question.
+type answerRecord struct {
+	owner   []byte
+	rrType  uint16
+	rdata   []byte
+	rdataAt int
+}

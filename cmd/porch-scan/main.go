@@ -207,6 +207,23 @@ func run() int {
 			"how many results to keep per target, oldest dropped first; 0 keeps all")
 
 		// Read what was kept, and scan nothing.
+		// Which selectors to look for DKIM keys under.
+		//
+		// Nothing is looked under by default, and that is not caution: DNS
+		// cannot list what is beneath a name, so there is no set to discover.
+		// A selector is either one the operator names here or one a provider
+		// documents, and a scan given neither has looked nowhere and says so.
+		dkimSelectors = flag.String("dkim-selector", "",
+			"comma-separated `selectors` to look for DKIM keys under, such as\n"+
+				"\ts1,google. You know yours; DNS cannot be asked what they are")
+
+		dkimCommon = flag.Bool("dkim-common", true,
+			"look under the selectors mail providers document for their own service,\n"+
+				"\tas well as any named above. On by default: a DNS lookup reaches the\n"+
+				"\tzone rather than the domain, so it costs nobody anything. Nothing\n"+
+				"\tfound under them means those names hold nothing, never that the\n"+
+				"\tdomain publishes no key")
+
 		showHistory = flag.Bool("history", false,
 			"print what -results-dir has kept for each target and exit; makes no\n"+
 				"\tconnection and resolves nothing")
@@ -272,7 +289,8 @@ func run() int {
 	case checkWeb:
 		return runWeb(ctx, targets, *timeout, *allowPrivate, *asJSON, store)
 	case checkMail:
-		return runMail(ctx, targets, *timeout, *resolver, *asJSON, store)
+		return runMail(ctx, targets, *timeout, *resolver, *asJSON, store,
+			selectorsFrom(*dkimSelectors, *dkimCommon))
 	}
 
 	scanner := tlsScanner(*timeout, *allowPrivate, *resolver, *searchLogs)

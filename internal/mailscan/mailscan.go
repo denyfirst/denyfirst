@@ -22,11 +22,12 @@
 // most hosting providers, so the check would fail for a large share of the
 // deployments that would run it. A separate decision, deliberately.
 //
-// **DKIM.** A key lives at <selector>._domainkey.<domain> and there is no way
-// to enumerate selectors from DNS. Trying common ones — google, s1, selector1
-// — is guessing, and guessing is what this project refuses everywhere else. So
-// a report says DKIM was not checked rather than that it is missing, because
-// those are different facts and only one of them is true (R4).
+// **Discovering a DKIM selector.** A key lives at <selector>._domainkey.<domain>
+// and DNS offers no query for what is beneath a name, so there is no set to
+// find. Keys are read under selectors this scan is told to look under — the
+// operator's own, and the ones mail providers document for their own service —
+// and a report names every selector it tried. "These names hold nothing" is
+// never rendered as "this domain publishes no key" (R4). See internal/dkim.
 //
 // **The MTA-STS policy itself.** The record at _mta-sts.<domain> announces that
 // a policy exists and is read here. The policy is a file served over HTTPS at
@@ -49,6 +50,7 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/denyfirst/internal/dkim"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/exclusion"
 	"github.com/denyfirst/denyfirst/internal/policy"
@@ -110,6 +112,14 @@ type Scanner struct {
 	// scan a name. Nil means none is required, which is what the command line
 	// wants and what a service must not have.
 	Verify *verify.Scope
+
+	// DKIMSelectors are the names to look for signing keys under.
+	//
+	// Empty looks for none, and that is the default. DNS cannot list what is
+	// beneath a name, so there is no set to discover: a selector is either one
+	// the operator named or one a provider documents, and either way somebody
+	// has to say. See internal/dkim.
+	DKIMSelectors []dkim.Selector
 
 	// Now supplies the current time, so a duration is reproducible in tests.
 	Now func() time.Time
@@ -186,6 +196,7 @@ func (s *Scanner) Scan(ctx context.Context, domain string) (*Result, error) {
 	s.readTLSReporting(ctx, resolver, domain, &facts)
 	s.readExchangers(ctx, resolver, domain, &facts)
 	s.readTransportSecurity(ctx, resolver, domain, &facts)
+	s.readDKIM(ctx, resolver, domain, &facts)
 
 	graded := policy.GradeMail(facts)
 
@@ -511,4 +522,34 @@ func DropLocalPart(target string) (domain string, wasAddress bool) {
 		return target, false
 	}
 	return target[at+1:], true
+}
+
+// readDKIM looks for signing keys under the selectors this scan was given.
+//
+// None by default. A key lives at <selector>._domainkey.<domain> and DNS offers
+// no way to list what is beneath a name, so there is nothing to discover: a
+// selector is either one the operator named or one a provider documents, and a
+// scan given neither looks under nothing and says so rather than reporting an
+// absence it never established (R4).
+func (s *Scanner) readDKIM(ctx context.Context, r Resolver, domain string, facts *policy.MailFacts) {
+	if len(s.DKIMSelectors) == 0 {
+		return
+	}
+
+	got := dkim.Check(ctx, txtAdapter{r}, domain, s.DKIMSelectors)
+	facts.DKIMLooked = got.Looked
+
+	for _, k := range got.Keys {
+		facts.DKIMKeys = append(facts.DKIMKeys, policy.DKIMKey{
+			Selector:  k.Selector,
+			Named:     k.Source == dkim.FromOperator,
+			Found:     k.Found,
+			Reason:    k.Reason,
+			Describes: k.Describe(),
+			Bits:      k.Bits,
+			Revoked:   k.Revoked,
+			Testing:   k.Testing,
+			Weak:      k.Weak(),
+		})
+	}
 }

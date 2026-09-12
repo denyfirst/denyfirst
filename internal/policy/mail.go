@@ -38,6 +38,10 @@ var (
 		"RFC 7489 — Domain-based Message Authentication, Reporting and Conformance (DMARC)",
 		"https://www.rfc-editor.org/rfc/rfc7489",
 	}
+	rfc8301 = Reference{
+		"RFC 8301 — Cryptographic Algorithm and Key Usage Update to DKIM",
+		"https://www.rfc-editor.org/rfc/rfc8301",
+	}
 	nist800177 = Reference{
 		"NIST SP 800-177 Rev. 1 — Trustworthy Email",
 		"https://csrc.nist.gov/pubs/sp/800/177/r1/final",
@@ -147,6 +151,17 @@ type MailFacts struct {
 	// DANEPartial is true when there were more exchangers than were asked
 	// about, so an empty DANEHosts covers only the ones that were.
 	DANEPartial bool `json:"danePartial,omitempty"`
+
+	// Signing keys
+
+	// DKIMLooked is true when any selector was asked about. Without it an empty
+	// DKIMKeys is silence rather than a domain with no keys, and DKIM is the
+	// one record here where the difference is unavoidable: DNS cannot list what
+	// is beneath a name, so a scan given no selector has looked nowhere.
+	DKIMLooked bool `json:"dkimLooked"`
+
+	// DKIMKeys is one entry per selector asked about.
+	DKIMKeys []DKIMKey `json:"dkimKeys,omitempty"`
 }
 
 // MailFinding is the graded result.
@@ -240,7 +255,28 @@ func GradeMail(f MailFacts) MailFinding {
 			rfc7489)
 	}
 
+	// A signing key a receiver is entitled to ignore.
+	//
+	// Graded, and it is the only thing about DKIM that is. RFC 8301 raised the
+	// floor to 1024 bits and says a verifier MAY treat a shorter key as
+	// insecure — so a domain signing with one has a signature receivers are
+	// entitled to discard, which is a measurement rather than an opinion. Every
+	// other question about DKIM is one no document settles.
+	for _, k := range f.DKIMKeys {
+		if !k.Weak {
+			continue
+		}
+		add("mail.dkim-weak-key", Weak,
+			"A DKIM signing key is shorter than RFC 8301 allows",
+			"The key at selector "+k.Selector+" is "+strconv.Itoa(k.Bits)+" bits. RFC 8301 raised "+
+				"the floor to 1024 and says a verifier may treat anything shorter as insecure, so "+
+				"mail signed with this key can be discarded by a receiver that applies the rule — "+
+				"and a key this size is old enough that nobody has looked at it since it was made.",
+			rfc8301)
+	}
+
 	out.Notes = append(out.Notes, describeMail(f)...)
+	out.Notes = append(out.Notes, describeDKIM(f)...)
 	return out
 }
 
@@ -383,10 +419,9 @@ var LimitMailIsDNSOnly = StandingLimit{
 		"announced, what it says was not read: the record is in DNS and the policy is a file " +
 		"served over HTTPS, so a report here establishes that a policy exists and never what mode " +
 		"it is in. Where DANE is published, that the binding is correct was not checked, which " +
-		"needs a certificate from the host. And DKIM was not checked at all: a key lives under a " +
-		"selector, there is no way to list selectors from DNS, and trying likely ones is guessing " +
-		"rather than measuring. A report that said DKIM was missing would be stating something " +
-		"this scan did not establish.",
+		"needs a certificate from the host. And a DKIM signing key is read only under a selector " +
+		"this scan was told to look under: DNS cannot list what is beneath a name, so which " +
+		"selectors were tried — if any — is said in the report itself rather than here.",
 }
 
 // MailStandingLimits are true of every mail check this program runs.
@@ -509,4 +544,115 @@ func plainCount(n int, noun string) string {
 		return "one " + noun
 	}
 	return strconv.Itoa(n) + " " + noun + "s"
+}
+
+// DKIMKey is what one selector held, reduced to what a report may say.
+//
+// Named records whether the operator gave this selector or whether it came from
+// a provider's documentation, because it decides what an absence means. Nothing
+// at a selector somebody named is worth saying — they said it should be there.
+// Nothing at one of several provider defaults says only that this name holds
+// nothing.
+type DKIMKey struct {
+	Selector string `json:"selector"`
+	Named    bool   `json:"named"`
+
+	Found  bool   `json:"found"`
+	Reason string `json:"reason,omitempty"`
+
+	// Describes is how the key is written in a report: "RSA 2048", "Ed25519",
+	// "revoked". Rendered where the record was read rather than here, so a
+	// report and the JSON say the same words.
+	Describes string `json:"describes,omitempty"`
+
+	Bits    int  `json:"bits,omitempty"`
+	Revoked bool `json:"revoked,omitempty"`
+	Testing bool `json:"testing,omitempty"`
+
+	// Weak is true for an RSA key under the floor RFC 8301 sets, which is a
+	// key a verifier is entitled to treat as insecure.
+	Weak bool `json:"weak,omitempty"`
+}
+
+// describeDKIM says what looking under a set of selectors found, and — the part
+// that matters most — what it did not look under.
+//
+// DKIM is the one record here where silence is unavoidable. DNS cannot list
+// what is beneath a name, so a scan is only ever told where to look, and a
+// report that said "no DKIM" would be stating something no scan of this kind
+// can establish. Everything below therefore names the selectors it tried.
+func describeDKIM(f MailFacts) []Note {
+	var out []Note
+
+	if !f.DKIMLooked {
+		out = append(out, Unsettled("DKIM was not checked. A signing key lives under a selector "+
+			"and DNS cannot list what is beneath a name, so a scan has to be told where to look. "+
+			"Name your selectors to have them read; there is no way to discover them, and this "+
+			"report says nothing about whether the domain signs its mail."))
+		return out
+	}
+
+	var (
+		found, named, missing []string
+		unread                int
+	)
+	for _, k := range f.DKIMKeys {
+		switch {
+		case k.Reason != "":
+			unread++
+		case k.Found:
+			found = append(found, k.Selector+" ("+k.Describes+")")
+		case k.Named:
+			named = append(named, k.Selector)
+		default:
+			missing = append(missing, k.Selector)
+		}
+	}
+
+	if len(found) > 0 {
+		out = append(out, Observed("Signing keys were found at "+namedHosts(found)+"."))
+	}
+
+	// A selector the operator named and which holds nothing is worth saying:
+	// they said it should be there.
+	if len(named) > 0 {
+		out = append(out, Observed("No key is published at "+namedHosts(named)+", which you named. "+
+			"A signature made with a selector that publishes no key cannot be verified by anybody, "+
+			"so mail signed under it is treated as unsigned."))
+	}
+
+	// A provider default that holds nothing is not a finding about the domain.
+	if len(missing) > 0 && len(found) == 0 {
+		out = append(out, Unsettled("None of the selectors tried holds a key: "+
+			namedHosts(missing)+". These are names mail providers document for their own service, "+
+			"not names this domain has to use, so this establishes that these particular names "+
+			"hold nothing and not that the domain publishes no key. Name your own selectors to "+
+			"settle it."))
+	}
+
+	if unread > 0 {
+		out = append(out, Unsettled(plainCount(unread, "selector")+" could not be read, so the "+
+			"sentences above cover only the ones that answered."))
+	}
+
+	// Reported and not graded: a key left in testing after a rollout is a
+	// common state and no document calls it an error, but a verifier is told
+	// not to act on a failure under one — so a domain that thinks it is
+	// protected is not.
+	for _, k := range f.DKIMKeys {
+		if k.Found && k.Testing {
+			out = append(out, Observed("The key at "+k.Selector+" is marked as testing (t=y). "+
+				"RFC 6376 tells a verifier not to treat a failure under a testing key as a reason "+
+				"to reject, so signatures made with it protect nothing yet. That is the right "+
+				"setting during a rollout and the wrong one to leave behind."))
+		}
+		if k.Found && k.Revoked {
+			out = append(out, Observed("The key at "+k.Selector+" is revoked: the record is "+
+				"published with an empty key, which RFC 6376 defines as withdrawing it. Mail "+
+				"signed with it cannot verify, which is what revoking is for — this is named "+
+				"because a selector left revoked by accident looks exactly the same."))
+		}
+	}
+
+	return out
 }

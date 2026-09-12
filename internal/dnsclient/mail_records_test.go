@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
 )
 
 // connFor answers with the type asked for, rather than always CAA.
@@ -278,4 +279,108 @@ func TestAShortMailRecordIsRefused(t *testing.T) {
 	if _, err := d.LookupTLSA(context.Background(), "_25._tcp.example.com"); err == nil {
 		t.Error("a TLSA record shorter than its own header was accepted")
 	}
+}
+
+// cnameRecord builds one CNAME in wire form: an uncompressed target name.
+func cnameRecord(t *testing.T, target string) []byte {
+	t.Helper()
+
+	encoded, err := encodeName(target, false)
+	if err != nil {
+		t.Fatalf("test data is wrong: encoding %q: %v", target, err)
+	}
+	return encoded
+}
+
+// answeringMany serves a reply built from records at several names.
+func answeringMany(t *testing.T, qtype uint16, at string, records ...record) *Client {
+	t.Helper()
+
+	fake := &fakeResolver{answers: map[string][]record{lowerName(at): records}}
+	return &Client{Server: "resolver.invalid:53", Dial: fake.connFor(t, qtype)}
+}
+
+// A record reached through a CNAME answers the question.
+//
+// The case that made DKIM useless. Most mail providers publish a signing key as
+// a CNAME into their own zone, so a resolver returns the alias and the TXT at
+// its target — and the target's owner name is not the one that was asked about.
+// Accepting only the question's name saw the alias and nothing else, and the
+// report said the key could not be read.
+func TestARecordReachedThroughACNAMEIsRead(t *testing.T) {
+	asked := name(t, "key1._domainkey.example.com")
+	target := name(t, "key1.example.com._domainkey.provider.example")
+
+	c := answeringMany(t, TypeTXT, "key1._domainkey.example.com",
+		record{asked, TypeCNAME, cnameRecord(t, "key1.example.com._domainkey.provider.example")},
+		record{target, TypeTXT, txtRecord("v=DKIM1; k=rsa; p=AAAA")},
+	)
+
+	got, err := c.LookupTXT(context.Background(), "key1._domainkey.example.com")
+	if err != nil {
+		t.Fatalf("LookupTXT: %v", err)
+	}
+	if len(got.Values) != 1 || !strings.Contains(got.Values[0], "DKIM1") {
+		t.Errorf("the record behind the alias was not read: %+v", got.Values)
+	}
+}
+
+// A record for a name nothing points at is still skipped.
+//
+// The property the owner check exists for, and the one the CNAME chain must not
+// cost. A resolver is hostile (N5) and a reply may carry records for any name it
+// likes; what is accepted is the chain the reply itself draws from the question,
+// never whatever else happens to be in the section.
+func TestARecordForAnUnrelatedNameIsStillSkipped(t *testing.T) {
+	elsewhere := name(t, "somewhere.else.example")
+
+	c := answeringMany(t, TypeTXT, "key1._domainkey.example.com",
+		record{elsewhere, TypeTXT, txtRecord("v=DKIM1; k=rsa; p=INJECTED")},
+	)
+
+	got, err := c.LookupTXT(context.Background(), "key1._domainkey.example.com")
+	if err != nil {
+		t.Fatalf("LookupTXT: %v", err)
+	}
+	if len(got.Values) != 0 {
+		t.Errorf("a record for a name nothing pointed at was accepted: %+v", got.Values)
+	}
+}
+
+// A CNAME chain that loops ends rather than running forever.
+func TestACNAMELoopEnds(t *testing.T) {
+	a := name(t, "a.example.com")
+	b := name(t, "b.example.com")
+
+	c := answeringMany(t, TypeTXT, "a.example.com",
+		record{a, TypeCNAME, cnameRecord(t, "b.example.com")},
+		record{b, TypeCNAME, cnameRecord(t, "a.example.com")},
+	)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = c.LookupTXT(context.Background(), "a.example.com")
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a CNAME pointing back at itself did not end")
+	}
+}
+
+// txtRecord builds one TXT in wire form: length-prefixed character strings.
+func txtRecord(values ...string) []byte {
+	var out []byte
+	for _, v := range values {
+		for len(v) > 255 {
+			out = append(out, 255)
+			out = append(out, v[:255]...)
+			v = v[255:]
+		}
+		out = append(out, byte(len(v)))
+		out = append(out, v...)
+	}
+	return out
 }

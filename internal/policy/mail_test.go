@@ -250,9 +250,16 @@ func TestNotReadIsDistinguishableFromNotPublished(t *testing.T) {
 
 	// And the unsettled section rather than the observed one, since that is
 	// what the two headings mean.
-	if len(NotesOfKind(unread.Notes, KindUnsettled)) != 2 {
-		t.Errorf("want both failures under \"not established\"; got %d",
-			len(NotesOfKind(unread.Notes, KindUnsettled)))
+	//
+	// Asserted by what each note says rather than by counting them. The count
+	// was two when this was written and became three the day DKIM started
+	// saying it had looked nowhere — which is correct, and made a passing test
+	// fail for a reason that had nothing to do with what it was checking.
+	unsettled := mailNoteText(NotesOfKind(unread.Notes, KindUnsettled))
+	for _, want := range []string{"The SPF policy was not read", "The DMARC policy was not read"} {
+		if !strings.Contains(unsettled, want) {
+			t.Errorf("%q is not under \"not established\":\n%s", want, unsettled)
+		}
 	}
 }
 
@@ -273,8 +280,116 @@ func TestEveryMailReportSaysItOnlyReadDNS(t *testing.T) {
 			t.Fatalf("got %d standing notes, want %d", len(standing), len(MailStandingLimits()))
 		}
 		if !strings.Contains(standing[0].Text, "DKIM") {
-			t.Errorf("the standing limit does not mention DKIM, so a report that checked no "+
-				"selector reads as one that found none: %q", standing[0].Text)
+			t.Errorf("the standing limit does not mention DKIM at all, so a reader has no idea "+
+				"the question exists: %q", standing[0].Text)
+		}
+	}
+}
+
+// A report that looked under no selector says so, and one that looked says
+// where.
+//
+// The limit above is true of every scan and cannot say which selectors a
+// particular one tried — so it points at the report, and this is the report
+// keeping that promise. It used to be the other way round: the limit claimed
+// DKIM was never checked at all, which stopped being true the moment a selector
+// could be named, and a scan that had just read three keys carried a sentence
+// underneath saying it had read none.
+func TestAReportSaysWhichSelectorsWereTried(t *testing.T) {
+	// Nothing named, nothing looked under.
+	silent := GradeMail(MailFacts{SPFRecords: 1, SPFAll: "-", DMARCRecords: 1, DMARCPolicy: "reject"})
+	text := mailNoteText(NotesOfKind(silent.Notes, KindUnsettled))
+	if !strings.Contains(text, "DKIM was not checked") {
+		t.Errorf("a scan that looked under no selector does not say so:\n%s", text)
+	}
+
+	// Looked, and found one.
+	looked := GradeMail(MailFacts{
+		SPFRecords: 1, SPFAll: "-", DMARCRecords: 1, DMARCPolicy: "reject",
+		DKIMLooked: true,
+		DKIMKeys: []DKIMKey{
+			{Selector: "s1", Named: true, Found: true, Describes: "RSA 2048", Bits: 2048},
+		},
+	})
+	all := mailNoteText(looked.Notes)
+	if strings.Contains(all, "DKIM was not checked") {
+		t.Errorf("a scan that read a key says it checked none:\n%s", all)
+	}
+	if !strings.Contains(all, "s1") || !strings.Contains(all, "RSA 2048") {
+		t.Errorf("the key that was found is not named:\n%s", all)
+	}
+}
+
+// A selector the operator named and one a provider documents mean different
+// things when they hold nothing.
+//
+// They said theirs should be there, so an absence is worth reporting. A
+// provider default holding nothing says only that this name holds nothing, and
+// a report treating the two alike would either invent a finding or bury one.
+func TestAnAbsenceMeansDifferentThingsByWhoNamedTheSelector(t *testing.T) {
+	named := GradeMail(MailFacts{
+		SPFRecords: 1, SPFAll: "-", DMARCRecords: 1, DMARCPolicy: "reject",
+		DKIMLooked: true,
+		DKIMKeys:   []DKIMKey{{Selector: "mine", Named: true}},
+	})
+	if text := mailNoteText(named.Notes); !strings.Contains(text, "which you named") {
+		t.Errorf("a selector the operator named and which holds nothing is not reported:\n%s", text)
+	}
+
+	documented := GradeMail(MailFacts{
+		SPFRecords: 1, SPFAll: "-", DMARCRecords: 1, DMARCPolicy: "reject",
+		DKIMLooked: true,
+		DKIMKeys:   []DKIMKey{{Selector: "google"}, {Selector: "selector1"}},
+	})
+	text := mailNoteText(documented.Notes)
+	if strings.Contains(text, "which you named") {
+		t.Errorf("a provider default was reported as something the operator asked for:\n%s", text)
+	}
+	if !strings.Contains(text, "not names this domain has to use") {
+		t.Errorf("the report does not say these names are not this domain's:\n%s", text)
+	}
+	if len(NotesOfKind(documented.Notes, KindUnsettled)) == 0 {
+		t.Error("nothing found under provider defaults was filed as an observation rather than " +
+			"as something the scan did not establish")
+	}
+}
+
+// Only the key size is graded, and only against the floor a document sets.
+func TestOnlyTheKeySizeIsGraded(t *testing.T) {
+	base := MailFacts{SPFRecords: 1, SPFAll: "-", DMARCRecords: 1, DMARCPolicy: "reject", DKIMLooked: true}
+
+	for _, tc := range []struct {
+		name string
+		key  DKIMKey
+	}{
+		{"a testing key", DKIMKey{Selector: "s1", Found: true, Testing: true, Bits: 2048}},
+		{"a revoked key", DKIMKey{Selector: "s1", Found: true, Revoked: true}},
+		{"no key at all", DKIMKey{Selector: "s1", Named: true}},
+		{"a key at the floor", DKIMKey{Selector: "s1", Found: true, Bits: 1024}},
+		{"an Ed25519 key", DKIMKey{Selector: "s1", Found: true, Describes: "Ed25519"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := base
+			f.DKIMKeys = []DKIMKey{tc.key}
+			if got := GradeMail(f); len(got.Findings) != 0 {
+				t.Errorf("graded %v. No document calls this an error.", mailRuleIDs(got))
+			}
+		})
+	}
+
+	// The one that is graded, because RFC 8301 says a verifier may treat it as
+	// insecure.
+	weak := base
+	weak.DKIMKeys = []DKIMKey{{Selector: "s1", Found: true, Bits: 512, Weak: true}}
+
+	got := GradeMail(weak)
+	if !mailHas(got, "mail.dkim-weak-key") {
+		t.Fatalf("a key below RFC 8301's floor was not graded: %v", mailRuleIDs(got))
+	}
+	for _, f := range got.Findings {
+		if f.RuleID == "mail.dkim-weak-key" && len(f.References) == 0 {
+			t.Error("the finding cites no document, and the whole reason it is graded is that " +
+				"one exists")
 		}
 	}
 }

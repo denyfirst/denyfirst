@@ -989,6 +989,26 @@ function zone(facts) {
 
   row("TLS-RPT", facts.tlsReporting ? "yes" : "no");
 
+  // Signing keys, and which names were looked under.
+  //
+  // Nothing found is never drawn as "no DKIM". DNS cannot list what is beneath
+  // a name, so a scan only ever looked where it was told to look, and the
+  // difference between "these names hold nothing" and "this domain publishes no
+  // key" is the whole honesty of the section (R4).
+  if (facts.dkimLooked) {
+    const keys = facts.dkimKeys || [];
+    const found = keys.filter(k => k.found);
+
+    if (found.length) {
+      row("DKIM", found.map(k => k.selector + " (" + k.describes + ")").join(", "));
+    } else {
+      row("DKIM", "none at the " + keys.length + " selectors tried");
+    }
+  } else {
+    row("DKIM", "not checked: a selector has to be named");
+  }
+
+
   // Where the mail goes, and what protects it there.
   //
   // Three states kept apart on every line, because the difference is the whole
