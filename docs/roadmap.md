@@ -168,21 +168,19 @@ SSLv3, export and NULL suites and per-suite TLS 1.3 enumeration.
 
 ## Known defects
 
-**`porch-scan -version` prints both rule sets but no reach line**, while
-`porchd` prints one. Every binary should say what it will connect to. A
-deployment whose scope is established at run time rather than compiled in has
-to appear on that line as well, or the property the deploy procedure reads
-becomes false for the new mode.
+**A self-hosted `porchd` requires no proof by default.** The boundary exists
+and is opt-in; the default is the remaining half of item 2 above. The page now
+says plainly what an unbounded service is, and `-version` says which of the two
+a running one is, so an operator can check rather than remember — but the
+default itself has not moved, and moving it would stop every deployment that
+has not published a record yet.
 
-**A self-hosted `porchd` requires no proof by default.** The boundary
-exists and is opt-in; the default is the remaining half of item 2 above. Until
-it changes, `docs/self-host.md` notes that loopback is the default and does
-not say plainly that binding to a reachable interface without
-`-verification-secret-file` makes it an open scanner.
-
-**`docs/releasing.md` tells you to run `gh pr checks --watch` immediately
-after `gh pr create`.** No check has registered yet, the command exits saying
-so, and the merge then fails for a reason that reads like a policy block.
+**Every address a name resolves to is still not scanned.** The probe records
+the addresses its handshakes reached and the report says when a scan spanned
+more than one, which stops a report claiming to describe a server it may not
+have. It does not deliberately scan each address, so a name with four machines
+behind it is measured wherever the resolver happened to point — and one
+misconfigured machine of four can be missed entirely.
 
 ---
 

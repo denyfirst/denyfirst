@@ -39,6 +39,7 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/ctsearch"
+	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/scan"
@@ -303,8 +304,35 @@ func outcomes(results []result) []outcome {
 // what a binary says it is happens to be the one thing an operator holding it
 // has to be able to check.
 func versionLine() string {
-	return fmt.Sprintf("porch-scan %s\npolicy %s\npolicy %s\npolicy %s\n",
-		version, policy.TLSVersion, policy.WebVersion, policy.MailVersion)
+	return fmt.Sprintf("porch-scan %s\npolicy %s\npolicy %s\npolicy %s\n%s\n",
+		version, policy.TLSVersion, policy.WebVersion, policy.MailVersion, reach())
+}
+
+// reach says which hosts this binary will connect to.
+//
+// Every binary says. porchd said and this did not, which made the deploy
+// check's whole argument — read what a binary claims rather than trusting a
+// filename — true of one of the two programs this project ships.
+//
+// It matters less here and it is not nothing. A demonstration build of this
+// command exists, it is what scripts/build.sh produces under the tag, and
+// somebody holding one has no other way to find out that it will refuse every
+// host but ours. Saying so is cheaper than the refusal they would otherwise
+// read as a fault in their own configuration.
+//
+// No verification scope on this line, because proving control is a service's
+// boundary. Whoever runs this already has the machine and the scan leaves from
+// their own address; docs/scope.md says why a default restricting that would
+// limit the one person it exists for.
+func reach() string {
+	if !demo.Enabled {
+		return "scans whatever it is pointed at, from this machine"
+	}
+	hosts := demo.Targets()
+	if len(hosts) == 0 {
+		return "scans nothing: this is a demonstration build with an empty list"
+	}
+	return "demonstration: scans " + strings.Join(hosts, ", ") + " and nothing else"
 }
 
 func exitCode(outcomes []outcome) int {
