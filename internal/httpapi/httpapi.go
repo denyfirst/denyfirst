@@ -219,9 +219,21 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 			ReadMarkup: scanner.Verify != nil,
 		},
 
-		// The mail check carries the boundary and nothing else it does not
-		// need. No trust store, because it verifies no certificate; no
-		// ReadMarkup, because it fetches no page.
+		// The mail check carries the boundary, and now the trust store with it.
+		//
+		// It said "no trust store, because it verifies no certificate" until
+		// the MTA-STS policy could be read, and that stopped being true the day
+		// it could: the policy is fetched over HTTPS and the certificate must
+		// verify, so this check judges a chain and R7 says which store decides
+		// that cannot depend on the platform. One line behind one feature, and
+		// it is the third time this exact field has been the omission.
+		//
+		// ReadSTSPolicy follows the proof, exactly as ReadMarkup does above and
+		// for the argument written out there. A service configured with a scope
+		// fetches the policy of a domain somebody has shown is theirs; one
+		// configured without a scope is scanning names nobody proved anything
+		// about, which N9 says a service must not do — and until that is fixed,
+		// it does not also fetch their files.
 		//
 		// The resolver is set below rather than here, and that is not tidiness.
 		// Documented selectors by default, and the operator's own are not
@@ -230,6 +242,8 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 		// is where an operator names their own.
 		mail: &mailscan.Scanner{
 			Verify:        scanner.Verify,
+			Roots:         scanner.Roots,
+			ReadSTSPolicy: scanner.Verify != nil,
 			DKIMSelectors: dkim.DocumentedSelectors(),
 		},
 		limits:  limits,

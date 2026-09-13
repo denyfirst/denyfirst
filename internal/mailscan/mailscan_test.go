@@ -874,7 +874,7 @@ func TestAnAnnouncedMTASTSPolicyIsSeenAndNotFetched(t *testing.T) {
 	if sts == "" {
 		t.Fatalf("the report says nothing about MTA-STS:\n%s", aboutTheDomain(got))
 	}
-	if !strings.Contains(sts, "announces an MTA-STS policy") {
+	if !strings.Contains(sts, "policy is announced") {
 		t.Errorf("the report does not say a policy is announced: %q", sts)
 	}
 	if !strings.Contains(sts, "was not read") {

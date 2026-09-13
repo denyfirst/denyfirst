@@ -42,6 +42,10 @@ var (
 		"RFC 8301 — Cryptographic Algorithm and Key Usage Update to DKIM",
 		"https://www.rfc-editor.org/rfc/rfc8301",
 	}
+	rfc8461 = Reference{
+		"RFC 8461 — SMTP MTA Strict Transport Security (MTA-STS)",
+		"https://www.rfc-editor.org/rfc/rfc8461",
+	}
 	nist800177 = Reference{
 		"NIST SP 800-177 Rev. 1 — Trustworthy Email",
 		"https://csrc.nist.gov/pubs/sp/800/177/r1/final",
@@ -134,10 +138,58 @@ type MailFacts struct {
 
 	// Transport security on the mail path
 
-	// MTASTSRecords is how many records announce an MTA-STS policy. The policy
-	// itself was not fetched: it lives in a file, and fetching it would be a
-	// connection on the mail path (N13).
+	// MTASTSRecords is how many records announce an MTA-STS policy. The record
+	// only: it says a policy exists and never what the policy is.
 	MTASTSRecords int `json:"mtaStsRecords"`
+
+	// MTASTSPolicyRead is whether the policy file itself was fetched.
+	//
+	// The field the rest of this group depends on, and the reason it exists is
+	// R4. A deployment may not fetch the policy at all — the fetch is one HTTPS
+	// request, so it runs only where control of the domain has been proven —
+	// and without this flag an empty MTASTSMode would be a domain whose policy
+	// names no mode, which is a finding, rather than a scan that never looked.
+	MTASTSPolicyRead bool `json:"mtaStsPolicyRead"`
+
+	// MTASTSPolicyReason says why the policy was not read: because this
+	// deployment does not fetch it, or because the fetch did not succeed.
+	//
+	// Those two are different and the report says which. One is a limit of the
+	// installation and the other may be a fault in the domain — but only may
+	// be, because a fetch failing here is also what a blocked egress looks
+	// like, which is why nothing about it is graded.
+	MTASTSPolicyReason string `json:"mtaStsPolicyReason,omitempty"`
+
+	// MTASTSMode is what the policy's mode= said: "enforce", "testing",
+	// "none", or empty where the file carried no mode it recognised.
+	//
+	// The single most valuable fact this check reads, and the one that was
+	// missing for the whole life of the mail rule set. A policy in testing mode
+	// tells a sending server to deliver anyway when TLS fails and to send a
+	// report about it; from DNS it is indistinguishable from one in enforce
+	// mode. An operator who switched to testing during a rollout and never
+	// came back has the appearance of protection and none of it.
+	MTASTSMode string `json:"mtaStsMode,omitempty"`
+
+	// MTASTSMaxAge is what max_age= said, in seconds: how long a sending
+	// server may cache the policy.
+	//
+	// Reported and never compared against anything. RFC 8461 sets no floor a
+	// scanner could hold a domain to, so a number this project called too short
+	// would be a threshold it invented (R21).
+	MTASTSMaxAge int `json:"mtaStsMaxAge,omitempty"`
+
+	// MTASTSPolicyMX are the host patterns the policy permits, as written —
+	// including a leading "*." where the policy used one.
+	MTASTSPolicyMX []string `json:"mtaStsPolicyMX,omitempty"`
+
+	// MTASTSUncovered are exchangers published in DNS that no pattern in the
+	// policy matches.
+	//
+	// Empty where the policy was not read, and empty where the MX records were
+	// not read — in neither case has anything been established, and a rule
+	// below has to be able to tell that from a policy that covers everything.
+	MTASTSUncovered []string `json:"mtaStsUncovered,omitempty"`
 
 	// DANEHosts are the exchangers publishing a TLSA record, DANEAsked is how
 	// many were asked about, and DANEUnread is how many could not be.
@@ -253,6 +305,66 @@ func GradeMail(f MailFacts) MailFinding {
 			"RFC 7489 says a receiver finding more than one applies no policy at all. The domain "+
 				"appears to have DMARC and does not.",
 			rfc7489)
+	}
+
+	// An MTA-STS policy a sending server cannot apply.
+	//
+	// RFC 8461 §3.2 requires mode, and requires at least one mx for a policy in
+	// enforce or testing mode — a policy in either of those with nothing to
+	// match against permits no host at all. A sender that cannot parse the
+	// policy falls back to whatever it had before, which for most senders is
+	// nothing, so the domain has the record, the file, and no protection.
+	//
+	// Only where the file was read. Where it was not, nothing about it is
+	// graded: see MTASTSPolicyReason.
+	if f.MTASTSPolicyRead {
+		switch {
+		case f.MTASTSMode == "":
+			add("mail.mta-sts-policy-invalid", Weak,
+				"The MTA-STS policy names no mode",
+				"RFC 8461 requires a mode field, and the policy served at mta-sts."+
+					"<domain>/.well-known/mta-sts.txt carries none that this scan recognised. A "+
+					"sending server that cannot read the policy applies no MTA-STS at all, so the "+
+					"domain announces protection it does not have.",
+				rfc8461)
+
+		case (f.MTASTSMode == "enforce" || f.MTASTSMode == "testing") && len(f.MTASTSPolicyMX) == 0:
+			add("mail.mta-sts-policy-invalid", Weak,
+				"The MTA-STS policy names no mail exchangers",
+				"RFC 8461 requires at least one mx entry in a policy that is enforcing or testing. "+
+					"This one is in "+f.MTASTSMode+" mode and lists none, so there is no host a "+
+					"sending server could match — the policy permits nothing rather than "+
+					"protecting anything.",
+				rfc8461)
+		}
+	}
+
+	// The policy is enforcing and excludes the domain's own mail.
+	//
+	// RFC 8461 §5: a sending server applying an enforcing policy MUST NOT
+	// deliver to a host that no mx entry matches. So every sender that honours
+	// MTA-STS — which includes the largest of them — queues this domain's mail
+	// and then returns it.
+	//
+	// Weak rather than Insecure, and the distinction is worth writing down
+	// because it is arguable. The break is definite, specified, and worse in
+	// its consequences than several things this file grades Insecure. But it
+	// fails *closed*: mail stops rather than crossing the network unprotected,
+	// and Insecure in every other rule here means a sender or a receiver is
+	// induced to accept something it should not. One word cannot mean both
+	// without making a report harder to read than the configuration it
+	// describes. The consequence is carried by the sentence instead (R17).
+	if f.MTASTSPolicyRead && f.MTASTSMode == "enforce" && len(f.MTASTSUncovered) > 0 {
+		add("mail.mta-sts-uncovered-exchanger", Weak,
+			"The enforcing MTA-STS policy does not cover this domain's own mail exchangers",
+			"The policy is in enforce mode and names no pattern matching "+
+				namedHosts(f.MTASTSUncovered)+", which the domain publishes as "+
+				plainCount(len(f.MTASTSUncovered), "mail exchanger")+". RFC 8461 says a sending "+
+				"server applying an enforcing policy must not deliver to a host the policy does "+
+				"not match, so mail routed to "+thatHost(len(f.MTASTSUncovered))+" is refused by "+
+				"every sender that honours MTA-STS rather than delivered. This is what an "+
+				"exchanger added to DNS and not to the policy looks like.",
+			rfc8461)
 	}
 
 	// A signing key a receiver is entitled to ignore.
@@ -411,17 +523,29 @@ func includeList(includes []string) string {
 // complete picture of the domain's *DNS*, which is a different thing.
 var LimitMailIsDNSOnly = StandingLimit{
 	ID:    "mail-is-dns-only",
-	Title: "Everything here was read from DNS",
+	Title: "No mail server was contacted",
+
+	// This said "Everything here was read from DNS" and carried a sentence
+	// about the MTA-STS policy not being read, until the policy could be read.
+	// Both had to go rather than be reworded, and for the reason
+	// LimitWebRootOnly gives at length: a standing limit is the same sentence on
+	// every report and on the method page, and whether the policy is fetched
+	// now differs by deployment — one runs behind proof of control and fetches
+	// it, one requires no proof and must not. A single sentence covering both
+	// would have been false for one of them, and the false one would have been
+	// the reassuring one.
+	//
+	// So what is true of every mail scan stays here, and what this particular
+	// scan read about the policy is said by the report that read it. describeSTS
+	// names the reason where there is one.
 	Text: "No mail server was contacted, no message was composed or sent, and nothing that would " +
-		"change state at the other end was attempted. Four things follow. Whether this domain's " +
-		"mail servers actually accept encrypted connections, and what certificates they present, " +
-		"was not measured — that needs a connection on the mail path. Where an MTA-STS policy is " +
-		"announced, what it says was not read: the record is in DNS and the policy is a file " +
-		"served over HTTPS, so a report here establishes that a policy exists and never what mode " +
-		"it is in. Where DANE is published, that the binding is correct was not checked, which " +
-		"needs a certificate from the host. And a DKIM signing key is read only under a selector " +
-		"this scan was told to look under: DNS cannot list what is beneath a name, so which " +
-		"selectors were tried — if any — is said in the report itself rather than here.",
+		"change state at the other end was attempted. Whether this domain's mail servers actually " +
+		"accept encrypted connections, and what certificates they present, was not measured — " +
+		"that needs a connection on the mail path. Where DANE is published, that the binding is " +
+		"correct was not checked, which needs a certificate from the host. And a DKIM signing key " +
+		"is read only under a selector this scan was told to look under: DNS cannot list what is " +
+		"beneath a name, so which selectors were tried — if any — is said in the report itself " +
+		"rather than here.",
 }
 
 // MailStandingLimits are true of every mail check this program runs.
@@ -476,19 +600,7 @@ func describeMailPath(f MailFacts) []Note {
 		"how many, is an operational decision no specification settles, so it is named rather "+
 		"than graded."))
 
-	// MTA-STS, and the part of it this scan deliberately did not read.
-	switch {
-	case f.MTASTSRecords == 0:
-		out = append(out, Observed("The domain announces no MTA-STS policy. Without one, a "+
-			"sending server that cannot negotiate TLS with these hosts may deliver in the clear "+
-			"rather than refuse, because nothing told it not to."))
-	default:
-		out = append(out, Observed("The domain announces an MTA-STS policy. What the policy "+
-			"says — whether it is in testing or enforcing mode, and which hosts it names — was "+
-			"not read: that lives in a file served over HTTPS, and this check makes no "+
-			"connection on the mail path. A policy announced and a policy enforced are "+
-			"different things, and only the first was established here."))
-	}
+	out = append(out, describeSTS(f)...)
 
 	// DANE, with the three states kept apart.
 	switch {
@@ -531,6 +643,131 @@ func describeMailPath(f MailFacts) []Note {
 	return out
 }
 
+// describeSTS says what the domain publishes about MTA-STS, and — where the
+// policy was read — what it actually says.
+//
+// The mode is the point. Everything a domain can be said to have done about
+// MTA-STS from DNS alone is "announced a policy", and that sentence is true of
+// a domain fully protected and of a domain that has been rehearsing for two
+// years. Only the file separates them, which is why it is fetched.
+//
+// Almost none of this is graded, and the reason is the one the rest of the file
+// gives. testing mode is the staging position on the way to enforce, exactly as
+// p=none is for DMARC and ~all is for SPF, and a scanner marking it down would
+// be penalising an operator doing the right thing in the right order (R6).
+// What is owed to them is the sentence.
+func describeSTS(f MailFacts) []Note {
+	var out []Note
+
+	if f.MTASTSRecords == 0 {
+		return append(out, Observed("The domain announces no MTA-STS policy. Without one, a "+
+			"sending server that cannot negotiate TLS with these hosts may deliver in the clear "+
+			"rather than refuse, because nothing told it not to."))
+	}
+
+	if !f.MTASTSPolicyRead {
+		// Announced, and what it says is unknown. Unsettled rather than
+		// Observed: a reader who takes "a policy is announced" as "the mail
+		// path is protected" has completed the sentence in the stronger
+		// direction, and this is the kind under which that completion is
+		// refused (R4).
+		reason := f.MTASTSPolicyReason
+		if reason == "" {
+			reason = "this scan did not fetch it"
+		}
+		return append(out, Unsettled("An MTA-STS policy is announced and what it says "+
+			"was not read: "+reason+". A policy in testing mode asks a sending server to deliver "+
+			"anyway when TLS fails and to send a report about it, and from DNS it looks exactly "+
+			"like one in enforce mode — so an announcement on its own establishes that a policy "+
+			"exists and nothing about whether it protects anything."))
+	}
+
+	switch f.MTASTSMode {
+	case "enforce":
+		out = append(out, Observed("The MTA-STS policy is in enforce mode, so a sending server "+
+			"that honours it will refuse to deliver to these hosts rather than fall back to an "+
+			"unprotected connection. That is the position MTA-STS exists to reach."))
+
+	case "testing":
+		// Not graded, and this is the sentence that carries the whole check.
+		out = append(out, Observed("The MTA-STS policy is in testing mode. A sending server is "+
+			"asked to deliver as it would have anyway when TLS fails, and to send a report about "+
+			"it — so the policy is measuring the problem rather than preventing it. That is the "+
+			"right setting while the reports are being read and the wrong one to leave behind, "+
+			"and it is not graded here because moving to enforce before the policy is known to "+
+			"be complete stops real mail."))
+
+	case "none":
+		out = append(out, Observed("The MTA-STS policy is in none mode, which RFC 8461 defines "+
+			"as withdrawing a policy: a sending server holding a cached one is told to stop "+
+			"applying it. The record is still published, so this is a deliberate teardown rather "+
+			"than an absence — which is what it should look like, and what a switch-off somebody "+
+			"forgot to finish also looks like."))
+
+	case "":
+		// Graded above as an invalid policy. Nothing to describe: the finding
+		// says it, and a note repeating it would be the same fact twice.
+	}
+
+	if f.MTASTSMaxAge > 0 {
+		// The number, and nothing compared to it. RFC 8461 recommends a large
+		// value and sets no floor a scanner could hold a domain to, so a
+		// judgement here would be one this project invented (R21).
+		out = append(out, Observed("A sending server may cache this policy for "+
+			describeSeconds(f.MTASTSMaxAge)+" (max_age). A long cache is what makes MTA-STS "+
+			"resistant to an attacker who can interfere with DNS, and it is also how long a "+
+			"change to the policy takes to reach everybody."))
+	}
+
+	switch {
+	case len(f.MTASTSPolicyMX) == 0:
+		// Either graded above, or a none-mode policy where no mx is expected.
+
+	case f.MXReason != "" || !f.MXRead:
+		out = append(out, Unsettled("The policy names "+namedHosts(f.MTASTSPolicyMX)+". Whether "+
+			"that covers the domain's own mail exchangers was not established, because the MX "+
+			"records were not read."))
+
+	case len(f.MTASTSUncovered) == 0 && len(f.MXHosts) > 0:
+		out = append(out, Observed("Every mail exchanger the domain publishes is matched by the "+
+			"policy, so an enforcing sender has a host it is permitted to deliver to."))
+
+	case len(f.MTASTSUncovered) > 0 && f.MTASTSMode == "testing":
+		// The most useful sentence this check produces, and it is a note
+		// because in testing mode nothing is broken yet. It will be the day
+		// the operator does the thing the mode exists to lead them towards.
+		out = append(out, Observed("The policy does not match "+namedHosts(f.MTASTSUncovered)+
+			", which the domain publishes as "+plainCount(len(f.MTASTSUncovered), "mail exchanger")+
+			". In testing mode a sending server delivers anyway, so nothing is failing now — but "+
+			"an enforcing policy must not deliver to a host it does not match, so moving this "+
+			"policy to enforce as it stands would refuse mail routed to "+
+			thatHost(len(f.MTASTSUncovered))+"."))
+
+	case len(f.MTASTSUncovered) > 0:
+		// enforce is graded; none mode means no sender applies the policy at
+		// all, so an uncovered host has no consequence to report.
+	}
+
+	return out
+}
+
+// describeSeconds writes a cache lifetime the way somebody would say it.
+//
+// The number in seconds is what the file carries and is what the JSON keeps;
+// "1209600 seconds" in a sentence is a number a reader has to do arithmetic on
+// to understand, and a report that makes a reader do arithmetic is a report
+// they skim.
+func describeSeconds(n int) string {
+	switch {
+	case n%86400 == 0 && n >= 86400:
+		return plainCount(n/86400, "day")
+	case n%3600 == 0 && n >= 3600:
+		return plainCount(n/3600, "hour")
+	default:
+		return plainCount(n, "second")
+	}
+}
+
 // exchangerCount writes "two of the four mail exchangers", which is the shape
 // this sentence needs and the one count() does not produce: count() pluralises
 // by adding an "s", so a noun phrase ending in one comes back doubled.
@@ -544,6 +781,14 @@ func plainCount(n int, noun string) string {
 		return "one " + noun
 	}
 	return strconv.Itoa(n) + " " + noun + "s"
+}
+
+// thatHost agrees with a count that has already been written out.
+func thatHost(n int) string {
+	if n == 1 {
+		return "that host"
+	}
+	return "those hosts"
 }
 
 // DKIMKey is what one selector held, reduced to what a report may say.

@@ -80,9 +80,23 @@ usually reports this is a web form somebody types their domain into.
 | `mail.spf-void-lookups` | weak | more than the two lookups RFC 7208 allows return nothing |
 | `mail.dmarc-duplicate` | weak | more than one DMARC record, so RFC 7489 says a receiver applies none |
 | `mail.dmarc-no-policy` | weak | a DMARC record with no `p=`, which RFC 7489 requires |
+| `mail.dkim-weak-key` | weak | an RSA signing key below the floor RFC 8301 sets, which a verifier may treat as insecure |
+| `mail.mta-sts-policy-invalid` | weak | an MTA-STS policy with no `mode`, or none in `enforce`/`testing` naming no `mx`, both of which RFC 8461 requires |
+| `mail.mta-sts-uncovered-exchanger` | weak | an enforcing MTA-STS policy matching none of the exchangers the domain publishes |
 
 Every one of those is a specification calling something an error, or a
 configuration authorising everybody. There is no third kind.
+
+The last of them is the one worth arguing about, and the argument is written
+into the rule. An enforcing policy that does not match the domain's own `MX` is
+a break with a consequence RFC 8461 states outright — a sending server **must
+not** deliver — so mail from every sender that honours MTA-STS is queued and
+then returned. It is graded `weak` rather than `insecure` because it fails
+*closed*: mail stops rather than crossing the network unprotected, and
+`insecure` in every other rule here means a sender or a receiver was induced to
+accept something it should not have. One word cannot mean both without making a
+report harder to read than the configuration it describes, so the severity of
+this one is carried by its sentence.
 
 ### What it deliberately does not grade
 
@@ -135,13 +149,34 @@ project invented (R21). What the report does is name what is there, because an
 operator choosing between them is owed the fact that at present they have
 picked neither.
 
-Two of those come with a limit that is stated rather than implied. The MTA-STS
-**record** is in DNS and is read; the **policy** is a file served over HTTPS,
-and fetching it would be a connection on the mail path — which this check does
-not make. So a report establishes that a policy is announced and never what
-mode it is in, and those are different enough to matter. The same for DANE: the
-records are read, and whether each binding is *correct* needs a certificate
-from the mail host, which needs a connection to it.
+**What the MTA-STS policy says, where the deployment reads it.** The record at
+`_mta-sts.<domain>` says a policy exists; the policy itself is a file at
+`https://mta-sts.<domain>/.well-known/mta-sts.txt`, and only the file says
+whether it is in `enforce`, `testing` or `none` mode. From DNS a policy that
+protects the domain and one that has been rehearsing for two years look
+identical, so the file is fetched — under four conditions. Only where the domain
+announces a policy: no record, no request. Only where the deployment reads it:
+the command line does, and a service does exactly where it requires proof of
+control. One address, fixed by RFC 8461, no redirect followed, and the
+certificate must verify for the policy host. And it is a web host, not a mail
+server — no connection on the mail path is made.
+
+`testing` and `none` are described and never graded: `testing` is the staging
+position on the way to `enforce`, as `p=none` is for DMARC, and `none` is a
+deliberate withdrawal. `max_age` is reported as a duration and compared to
+nothing, because RFC 8461 sets no floor a scanner could hold a domain to. An
+exchanger the policy does not match is graded under `enforce` and, under
+`testing`, named with the consequence of moving to `enforce` as it stands —
+nothing is failing yet, and that sentence is the reason to read the file at all.
+
+A policy that could not be fetched is reported with its reason and graded for
+nothing. A failure here looks the same whether the policy host is broken or this
+machine's egress is blocked, and no measurement available from here tells them
+apart.
+
+DANE comes with a limit that is stated rather than implied: the records are
+read, and whether each binding is *correct* needs a certificate from the mail
+host, which needs a connection to it.
 
 DANE is asked about beneath each exchanger, which is the one place this check
 follows a name out of the target's own zone. The reasoning is the one that
@@ -197,13 +232,20 @@ something is to have nowhere for it to go.
 ### What it cannot see
 
 
-One standing limit, on every mail report: everything came from DNS. Whether the
-domain's mail servers actually accept encrypted connections, and what
+One standing limit, on every mail report: no mail server was contacted. Whether
+the domain's mail servers actually accept encrypted connections, and what
 certificates they present, was not measured — that needs a connection on the
-mail path. And DKIM was not checked at all: a key lives under a selector,
-selectors cannot be listed from DNS, and trying likely ones is guessing. A
-report saying DKIM was missing would be claiming something the scan did not
-establish, which is the thing R4 exists to prevent.
+mail path. A DANE binding's correctness was not checked. And a DKIM key is read
+only under a selector the scan was told to look under, because selectors cannot
+be listed from DNS; the report names every selector it tried, and a report
+saying DKIM was missing would be claiming something the scan did not establish
+(R4).
+
+This limit said "everything here was read from DNS" until the MTA-STS policy
+could be fetched, and that sentence had to go rather than be reworded. A
+standing limit is the same sentence on every report, and whether the policy is
+read now differs by deployment; what this particular scan read about the policy
+is said by the report that read it.
 
 ---
 

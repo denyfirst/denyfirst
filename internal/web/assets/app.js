@@ -1025,9 +1025,7 @@ function zone(facts) {
     const hosts = facts.mxHosts || [];
     row("MX", hosts.length ? hosts.join(", ") : "none published");
 
-    row("MTA-STS", facts.mtaStsRecords
-      ? "announced; the policy itself was not fetched"
-      : "no");
+    row("MTA-STS", stsSays(facts));
 
     if (hosts.length) {
       const dane = facts.daneHosts || [];
@@ -1047,6 +1045,42 @@ function zone(facts) {
   table.appendChild(body);
   frag.appendChild(table);
   return frag;
+}
+
+// What the MTA-STS row says.
+//
+// Four states, and the same four the terminal report draws — R16 says one
+// result, two renderers, one set of facts, and the only way that holds for a
+// sentence built by hand on each side is that somebody writes them together.
+// This row said "announced; the policy itself was not fetched" for the whole
+// life of the check, which covered a domain fully protected and a domain that
+// had been rehearsing for two years, and those are the two readers most need
+// told apart.
+//
+// A mode that was read is shown. A mode that was not is shown as not read, with
+// the reason, because an empty mode drawn as a mode is the R4 failure this
+// project keeps finding in other tools.
+function stsSays(facts) {
+  if (!facts.mtaStsRecords) {
+    return "no";
+  }
+  if (facts.mtaStsPolicyRead && facts.mtaStsMode) {
+    let out = "mode " + facts.mtaStsMode;
+    const uncovered = facts.mtaStsUncovered || [];
+    if (uncovered.length) {
+      const hosts = facts.mxHosts || [];
+      out += "; " + uncovered.length + " of the " + hosts.length +
+        " exchangers not covered";
+    }
+    return out;
+  }
+  if (facts.mtaStsPolicyRead) {
+    return "announced; the policy names no mode";
+  }
+  if (facts.mtaStsPolicyReason) {
+    return "announced; the policy was not read: " + facts.mtaStsPolicyReason;
+  }
+  return "announced; the policy was not read";
 }
 
 // ── Submission ──────────────────────────────────────────────────────────

@@ -12,9 +12,31 @@ import (
 	"github.com/denyfirst/denyfirst/internal/dkim"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/mailscan"
+	"github.com/denyfirst/denyfirst/internal/mtasts"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/results"
 )
+
+// mailScanner builds the check this command runs.
+//
+// A function rather than a literal inside runMail, for the reason webScanner is
+// one: a field set inside a function that also opens connections and prints
+// reports cannot be asserted on, and a sabotage turning the policy fetch off
+// would otherwise escape every test in this package — which is exactly what
+// happened to ReadMarkup on 2026-09-11.
+func mailScanner(timeout time.Duration, selectors []dkim.Selector) *mailscan.Scanner {
+	return &mailscan.Scanner{
+		DKIMSelectors: selectors,
+
+		// The command line reads the policy. It runs on the operator's own
+		// machine, from their own address, and the report goes to whoever ran
+		// it — the same argument webscan.ReadMarkup rests on here, and the
+		// reason the service instead ties this to proof of control.
+		ReadSTSPolicy: true,
+
+		STS: &mtasts.Fetcher{Timeout: timeout},
+	}
+}
 
 // mailResult is one domain, with room for the reason it could not be measured.
 type mailResult struct {
@@ -23,13 +45,15 @@ type mailResult struct {
 	Error  string `json:"error,omitempty"`
 }
 
-// runMail reads what each domain's DNS says about its mail.
+// runMail reads what each domain publishes about its mail.
 //
-// No -allow-private here and none to add: this check opens no connection at
-// all, so there is no dialler to relax and nothing an operator could be asking
-// for by relaxing one.
+// No -allow-private here and none to add. The one connection this check makes
+// is to mta-sts.<domain> over HTTPS, and a policy host on a private address is
+// not a case an operator is asking about: MTA-STS exists so that senders on the
+// public internet can find the policy, so a policy only this machine can reach
+// is one no sender would ever read.
 func runMail(ctx context.Context, domains []string, timeout time.Duration, resolver string, asJSON bool, store *results.Store, selectors []dkim.Selector) int {
-	scanner := &mailscan.Scanner{DKIMSelectors: selectors}
+	scanner := mailScanner(timeout, selectors)
 	if resolver != "" {
 		scanner.Resolver = &dnsclient.Client{Server: resolver, Timeout: timeout}
 	}
@@ -184,11 +208,7 @@ func printMailPath(w io.Writer, f *policy.MailFacts) {
 		fmt.Fprintf(w, "    MX         %s\n", strings.Join(f.MXHosts, ", "))
 	}
 
-	sts := "no"
-	if f.MTASTSRecords > 0 {
-		sts = "announced; the policy itself was not fetched"
-	}
-	fmt.Fprintf(w, "    MTA-STS    %s\n", sts)
+	fmt.Fprintf(w, "    MTA-STS    %s\n", stsLine(f))
 
 	switch {
 	case len(f.MXHosts) == 0:
@@ -203,6 +223,34 @@ func printMailPath(w io.Writer, f *policy.MailFacts) {
 
 	if f.DANEUnread > 0 {
 		fmt.Fprintf(w, "               %d could not be read\n", f.DANEUnread)
+	}
+}
+
+// stsLine writes the MTA-STS summary row.
+//
+// Four states and not two, because "announced" on its own is the sentence this
+// check spent its whole life unable to improve on, and it covers a domain fully
+// protected and a domain that has been rehearsing for two years. A mode that was
+// read is shown; a mode that was not is shown as not read, with the reason.
+func stsLine(f *policy.MailFacts) string {
+	switch {
+	case f.MTASTSRecords == 0:
+		return "no"
+	case f.MTASTSPolicyRead && f.MTASTSMode != "":
+		out := "mode " + f.MTASTSMode
+		if n := len(f.MTASTSUncovered); n > 0 {
+			// The count, on the same line as the mode, because the two together
+			// are the finding and a reader scanning the block sees one row.
+			out += fmt.Sprintf("; %d of the %d exchangers not covered",
+				n, len(f.MXHosts))
+		}
+		return out
+	case f.MTASTSPolicyRead:
+		return "announced; the policy names no mode"
+	case f.MTASTSPolicyReason != "":
+		return "announced; the policy was not read: " + f.MTASTSPolicyReason
+	default:
+		return "announced; the policy was not read"
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/denyfirst/denyfirst/internal/mailscan"
 	"github.com/denyfirst/denyfirst/internal/policy"
@@ -183,5 +184,81 @@ func TestAPolicyWithNoAllIsNotPrintedAsHavingOne(t *testing.T) {
 		if got := allOrNone(q); got != q {
 			t.Errorf("allOrNone(%q) = %q", q, got)
 		}
+	}
+}
+
+// The command line reads the MTA-STS policy.
+//
+// Asserted because the alternative is a field that is set, documented and handed
+// to nothing — which has happened twice in this repository, and which a sabotage
+// found again by turning ReadMarkup off here and watching every test pass.
+func TestTheCommandLineReadsTheSTSPolicy(t *testing.T) {
+	s := mailScanner(5*time.Second, nil)
+
+	if !s.ReadSTSPolicy {
+		t.Error("the command line does not read the MTA-STS policy. It runs on the operator's " +
+			"own machine, from their own address, and the report goes to whoever ran it — so a " +
+			"report saying only that a policy is announced is withholding the one fact DNS " +
+			"cannot carry.")
+	}
+	if s.STS == nil {
+		t.Error("no fetcher was installed, so the flag above is set and nothing acts on it")
+	}
+}
+
+// Four states on the MTA-STS row, not two.
+//
+// "announced" on its own covers a domain fully protected and a domain that has
+// been rehearsing for two years, and telling those apart is the whole reason the
+// policy is fetched. R16 says the browser draws the same four (see stsSays).
+func TestTheMTASTSRowSaysWhatWasRead(t *testing.T) {
+	for name, tc := range map[string]struct {
+		facts policy.MailFacts
+		want  string
+	}{
+		"nothing announced": {
+			facts: policy.MailFacts{},
+			want:  "no",
+		},
+		"announced and not read": {
+			facts: policy.MailFacts{MTASTSRecords: 1,
+				MTASTSPolicyReason: "this deployment reads the record and not the policy file"},
+			want: "not read: this deployment reads the record",
+		},
+		"read and enforcing": {
+			facts: policy.MailFacts{MTASTSRecords: 1, MTASTSPolicyRead: true,
+				MTASTSMode: "enforce"},
+			want: "mode enforce",
+		},
+		"read and testing": {
+			facts: policy.MailFacts{MTASTSRecords: 1, MTASTSPolicyRead: true,
+				MTASTSMode: "testing"},
+			want: "mode testing",
+		},
+		"read and naming no mode": {
+			facts: policy.MailFacts{MTASTSRecords: 1, MTASTSPolicyRead: true},
+			want:  "names no mode",
+		},
+		"enforcing and excluding an exchanger": {
+			facts: policy.MailFacts{MTASTSRecords: 1, MTASTSPolicyRead: true,
+				MTASTSMode:      "enforce",
+				MXHosts:         []string{"mx1.example.net", "mx2.example.net"},
+				MTASTSUncovered: []string{"mx2.example.net"}},
+			want: "1 of the 2 exchangers not covered",
+		},
+	} {
+		facts := tc.facts
+		if got := stsLine(&facts); !strings.Contains(got, tc.want) {
+			t.Errorf("%s: the row says %q, and does not carry %q", name, got, tc.want)
+		}
+	}
+
+	// And a policy that was read is never drawn as one that was not. The
+	// reassuring direction is the other one, so this is the assertion that
+	// matters: a reader told "not read" goes and looks, and a reader told
+	// "mode enforce" about a policy nobody fetched does not.
+	read := policy.MailFacts{MTASTSRecords: 1, MTASTSPolicyRead: true, MTASTSMode: "testing"}
+	if got := stsLine(&read); strings.Contains(got, "not read") {
+		t.Errorf("a policy that was read is drawn as unread: %q", got)
 	}
 }
