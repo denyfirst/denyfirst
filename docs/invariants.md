@@ -2354,6 +2354,15 @@ six queries and must not pay a dead resolver's timeout on each — and the same
 change closes the same latent defect on unix, where `resolv.conf` lists several
 for the same reason and only the first was read.
 
+**The service can be told which resolver to ask, the same as the command
+line.** A machine whose resolver rewrites answers — a home router is the
+ordinary case — gives answers about the router, and porchd had no way to step
+around it. `-resolver` reaches every lookup the service makes itself: the CAA
+walk, the mail check through httpapi, and the proof-of-control challenge. It
+must be an address and a port, because a resolver named by hostname would be
+found through the machine's resolver first. The addresses a scan connects to
+are still resolved by the machine, and the flag's help says so.
+
 **And a platform's file is compiled nowhere, so it is vetted everywhere.** `go
 vet ./...` on Linux does not read a file behind `//go:build windows`; it is not
 merely unvetted, it is never compiled, so a syntax error in it passes every
@@ -2426,6 +2435,9 @@ a signature, and it is said as that.
 `TestTheResolverListIsBounded`,
 `TestTheResolverFlagReachesTheScanner`,
 `TestNoResolverFlagLeavesTheMachinesOwnConfiguration`,
+`TestTheResolverFlagReachesEveryLookup`, `TestNoResolverFlagLeavesTheScannerUnset`,
+`TestAResolverThatIsNotAnAddressAndPortIsRefused`,
+`TestAServiceResolverReachesTheMailCheck`,
 `TestEveryReleasedPlatformIsVetted`,
 `TestAnUnreadableStoreResolvesToAnEmptyPoolRatherThanNil`,
 `TestTheRootsPassedInAreWhatVerifiesAWebChain`,
