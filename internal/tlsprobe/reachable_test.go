@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/denyfirst/internal/rawhello"
 )
 
 // A rule this front end can never reach is not coverage, and it is named here
@@ -27,18 +28,18 @@ import (
 // depends on the certificate a server chooses to present, which nothing here
 // can enumerate — claiming to have measured that would be the kind of false
 // completeness this test exists to prevent.
+//
+// Six left this list on 2026-09-13 — version.ssl3, cipher.null, cipher.export,
+// cipher.anonymous, cipher.des and cipher.ffdhe — when SSL 3.0 and the export
+// and NULL suites began to be asked about with a hand-written hello. Two of
+// those six are reachable only narrowly, and the Known gaps say how.
 var unreachableThroughThisFrontEnd = map[string]string{
-	"version.ssl3": "Go removed SSL 3.0 in 1.14 and probedVersions holds TLS 1.0 to 1.3, " +
-		"so a server speaking only SSL 3.0 is reported as refusing everything rather than as insecure",
-	"version.unknown": "probedVersions is a fixed list, so no version outside it can be negotiated",
+	"version.unknown": "probedVersions is a fixed list and a hand-written hello rejects any version it did not claim, " +
+		"so no version outside the known ones can come back",
 
-	"cipher.null":          "Go implements no NULL cipher suite",
-	"cipher.no-encryption": "Go implements no RFC 9150 integrity-only suite",
-	"cipher.anonymous":     "Go implements no anonymous suite",
-	"cipher.export":        "Go implements no export-grade suite",
-	"cipher.des":           "Go implements single DES in no suite; 3DES is a separate rule and is reachable",
-	"cipher.md5":           "Go implements no suite with an MD5 MAC",
-	"cipher.ffdhe":         "Go offers no finite-field DHE suite, so a server configured for DHE alone is measured as accepting nothing",
+	"cipher.no-encryption": "neither Go nor a hand-written hello offers an RFC 9150 integrity-only suite",
+	"cipher.md5": "every MD5 suite offered by hand is matched first by a more specific rule — " +
+		"NULL, export or RC4 — so the MD5 rule is shadowed",
 
 	"cipher.unrecognised": "every suite offered is one this build of Go names, so a suite it cannot describe " +
 		"cannot come back from an enumeration that only offers named ones",
@@ -70,6 +71,20 @@ func reachableRules(t *testing.T) map[string]bool {
 				t.Fatalf("suite %#04x is offered and this build of Go does not name it", id)
 			}
 			for _, f := range policy.GradeCipher(name).Findings {
+				reachable[f.RuleID] = true
+			}
+		}
+	}
+
+	// And what the hand-written hellos offer, which is what Go cannot. Graded
+	// exactly the way askLegacy grades an answer, so a rule reachable here is a
+	// rule a real reply can raise.
+	for _, f := range policy.GradeVersion(policy.VersionSSL30).Findings {
+		reachable[f.RuleID] = true
+	}
+	for _, list := range [][]rawhello.Suite{rawhello.SSL3, rawhello.Export, rawhello.Null} {
+		for _, s := range list {
+			for _, f := range policy.GradeCipher(s.Name).Findings {
 				reachable[f.RuleID] = true
 			}
 		}

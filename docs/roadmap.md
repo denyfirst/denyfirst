@@ -182,8 +182,10 @@ Certificate revocation fetched live (command line only — a certificate
 authority learns which certificate is being examined, and that is the
 operator's decision about their own certificate, not ours to make for them).
 Several trust stores. Transparency receipts verified offline against an
-embedded log list. Every address a name resolves to, capped. A hand-written ClientHello, for
-SSLv3, export and NULL suites and per-suite TLS 1.3 enumeration.
+embedded log list. Every address a name resolves to, capped. Per-suite TLS 1.3
+enumeration, and finite-field DHE and anonymous suites in the ordinary
+enumeration, which the hand-written ClientHello now in `internal/rawhello` makes
+possible without a new dependency.
 
 ---
 

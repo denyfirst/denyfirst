@@ -70,6 +70,11 @@ jobs:
           # it is the only cryptographic parser this project owns.
           - package: ./internal/ocsp
             target: FuzzCheck
+          # The reply to a hand-written hello. Every length in it is the
+          # scanned server's choice, and the parser's whole claim is that no
+          # choice of them makes it read further than an answer needs.
+          - package: ./internal/rawhello
+            target: FuzzReadReply
           # Both of these read what the scanned server sends. The first
           # decides where this program connects next, which makes it the only
           # place in the web probe where a hostile string chooses an action

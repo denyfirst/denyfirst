@@ -120,8 +120,17 @@ caller's deadline is never extended.
 
 *Enforced in:* `internal/safedial` (`Timeout`, `TotalTimeout`, `MaxAddrs`),
 `internal/tlsprobe` (`HandshakeTimeout`, `TotalTimeout`),
-`internal/httpapi` (`RequestTimeout`)
-*Guarded by:* `TestCallerDeadlineWins`, `TestTotalTimeoutBoundsTheOperation`
+`internal/httpapi` (`RequestTimeout`), `internal/rawhello.Ask` (the context's
+deadline on the connection), `internal/rawhello.ReadReply` (at most the bytes
+an answer needs)
+*Guarded by:* `TestCallerDeadlineWins`, `TestTotalTimeoutBoundsTheOperation`,
+`TestAskStopsWhenTheContextDoes`, `TestNoMoreIsReadThanTheAnswerNeeds`,
+`TestAskStopsWhenTheContextIsCancelledWithoutADeadline`,
+`TestARecordFromAnotherProtocolVersionIsNotBelieved`,
+`TestAnOversizedRecordIsNotBelievedWhateverFollows`,
+`TestOnlyAServerHelloIsAnAcceptance`,
+`TestAServerHelloSplitAcrossRecordsIsNotGuessed`,
+`FuzzReadReply`
 
 ---
 
@@ -1349,11 +1358,12 @@ safedial's current wording rather than a property of the function, so the
 order is pinned by a test rather than by a comment.
 
 *Enforced in:* `internal/tlsprobe.classifyHandshakeError`,
-`internal/webprobe.classifyProbeError`
+`internal/tlsprobe.legacyReason`, `internal/webprobe.classifyProbeError`
 *Guarded by:* `TestHandshakeErrorsCarryNoInfrastructure`,
 `TestReportFromAFailedProbeNamesNoAddress`,
 `TestAFailedHopNamesNoInfrastructure`,
-`TestAPolicyRefusalIsRecognisedWhateverItSays`
+`TestAPolicyRefusalIsRecognisedWhateverItSays`,
+`TestNoLegacyReasonNamesTheMachine`
 
 ### I7 — One host has one spelling
 
@@ -2047,7 +2057,11 @@ while the server that offered it was called strong.
 `policy.GradeVersion` (`version.unknown`), `policy.GradeCipher`
 (`cipher.unrecognised`), `policy.GradeLeaf` (`cert.key-algorithm-unrecognised`)
 *Guarded by:* `TestNothingMeasuredIsUngraded`, `TestUnreachableTargetIsUngraded`,
-`TestEveryStatedReasonIsTrueOfTheSuite`
+`TestEveryStatedReasonIsTrueOfTheSuite`,
+`TestAClosedConnectionIsNotARefusal`,
+`TestSilenceIsNotARefusal`,
+`TestOnlyAFatalAlertIsARefusal`,
+`TestLegacyNeverTurnsNoVerdictIntoStrong`
 
 ### R4a — A verdict's stated reason is true of the thing it grades
 
@@ -2096,8 +2110,17 @@ validity window, and that answer is the one reported.
 The attacker chooses which version and suite are negotiated, so aggregation is
 worst-case rather than average.
 
-*Enforced in:* `internal/policy.Worst`, used by `tlsprobe.summarise`
-*Guarded by:* `TestWorstCaseAggregation`
+The hand-written hellos are folded in the same way and only upwards: a server
+that accepts SSL 3.0 or an export suite by hand is insecure however well it
+answers everything else, and nothing they find can lift a verdict.
+
+*Enforced in:* `internal/policy.Worst`, used by `tlsprobe.summarise` and
+`tlsprobe.mergeLegacy`
+*Guarded by:* `TestWorstCaseAggregation`,
+`TestAServerSpeakingOnlySSL3IsGradedInsecure`,
+`TestAnExportSuiteAcceptedIsGraded`,
+`TestANullSuiteAcceptedIsGraded`,
+`TestALegacyFindingIsCountedOnce`
 
 ### R6 — Correct configuration is not penalised
 
@@ -2108,7 +2131,8 @@ certificate does not also raise chain-untrusted and chain-incomplete.
 *Enforced in:* `tlsprobe.summarise`, `policy.GradeLeaf`, `certinfo.Analyse`
 *Guarded by:* `TestUnsupportedVersionsDoNotContributeFindings`,
 `TestSelfSignedDoesNotAlsoReportUntrustedChain`,
-`TestPresentIssuerIsNotAnIncompleteChain`
+`TestPresentIssuerIsNotAnIncompleteChain`,
+`TestARefusalIsMeasuredAndCostsNothing`
 
 ### R7 — Results do not depend on the platform
 
@@ -2582,9 +2606,12 @@ position, and two of three version rules. A list naming one case out of nine
 reads as though the other eight do not exist, which is worse than naming none.
 
 So the set is measured rather than remembered. Everything this prober can offer
-— every version in `probedVersions`, every suite in `candidateSuites` — is
+— every version in `probedVersions`, every suite in `candidateSuites`, SSL 3.0,
+and every suite in `rawhello.SSL3`, `rawhello.Export` and `rawhello.Null` — is
 graded, the rule ids that come back are the reachable set, and every rule
-outside it has to be named with a reason. A rule that is neither reachable nor
+outside it has to be named with a reason. The hand-written hellos are in that
+list because they are graded the way `askLegacy` grades a real reply, so a rule
+counted reachable through them is one an answer can actually raise. A rule that is neither reachable nor
 named fails the test, and so does a rule named as unreachable that has started
 firing: Go gaining an FFDHE suite would close that gap, and a gap list still
 claiming it is the stale-list failure this document warns about elsewhere.
@@ -2600,7 +2627,8 @@ nothing in this repository can enumerate; claiming to have measured that would
 be the false completeness this invariant exists to prevent.
 
 *Enforced in:* `internal/tlsprobe.probedVersions`,
-`internal/tlsprobe.candidateSuites`, the list in
+`internal/tlsprobe.candidateSuites`, `internal/rawhello.SSL3`,
+`internal/rawhello.Export`, `internal/rawhello.Null`, the list in
 `internal/tlsprobe/reachable_test.go`
 *Guarded by:* `TestEveryGradingRuleIsReachableOrNamed`,
 `TestEveryUnreachableRuleIsInTheKnownGaps`
@@ -2659,7 +2687,11 @@ reached a reader of the JSON and no one else. They are collected now.
 *Enforced in:* `cmd/porch-scan.printReport`,
 `cmd/porch-scan.printCertificate`, `internal/scan.Result.Notes`
 *Guarded by:* `TestBothFacesOfTheReportShowTheSameFacts`,
-`TestAReportSaysWhatWasMeasured`
+`TestAReportSaysWhatWasMeasured`,
+`TestThePageReadsTheLegacyFieldsTheAPISends`,
+`TestSSL3IsAVersionRowInTheSameWords`,
+`TestTheHandWrittenHellosArePrintedWithWhatTheyFound`,
+`TestNothingIsPrintedForAQuestionNotAsked`
 
 ### R17 — A finding claims what was measured, not what it implies
 
@@ -3056,8 +3088,12 @@ records a value. Grading that would fail correct servers for a rule nobody
 wrote, which is exactly the failure this invariant is named for.
 
 *Enforced in:* `internal/policy/web.go`, `internal/policy/cookies.go`,
-`internal/policy/headers.go`
+`internal/policy/headers.go`, `internal/tlsprobe.Fallback` (whether a downgraded
+hello carrying `TLS_FALLBACK_SCSV` is refused: described, never graded, because
+what a downgrade costs is the grade of the version it lands on)
 *Guarded by:* `TestAShortMaxAgeIsDescribedAndNotGraded`,
+`TestTheFallbackSignalIsReadInAllThreeWays`,
+`TestTheFallbackIsNotAskedOfASingleVersion`,
 `TestIncludeSubDomainsIsDescribedAndNotGraded`,
 `TestATemporaryRedirectIsDescribedNotGraded`,
 `TestAPermanentRedirectIsNotCalledTemporary`,
@@ -4398,42 +4434,42 @@ Anything below is open today.
   suites Go does not implement is reported as refusing every version it in fact
   speaks. R12 puts the sentence saying so into any report containing a refusal,
   which is the honest half; the row itself still reads `refused`, because from
-  outside there is nothing else it could say. Closing it would need a TLS
-  client that can offer suites Go does not implement, which is the same
-  requirement as the entry below.
-- **Eleven grading rules cannot fire through this front end.** Measured rather
-  than estimated: every version in `probedVersions` and every suite in
-  `candidateSuites` is graded, and the rules that never come back are these.
-  Nine of the thirteen cipher rules and two of the three version rules are in
-  this position, and until 2026-08-31 one of them was named here and the other
-  ten were not.
+  outside there is nothing else it could say. Closing it needs a client that
+  can offer suites Go does not implement. `internal/rawhello` is that client,
+  and it is used today only to ask about SSL 3.0 and the export and NULL
+  families; the ordinary enumeration still goes through Go, so this entry
+  stands.
+- **Five grading rules cannot fire through this front end.** Measured rather
+  than estimated: every version in `probedVersions`, every suite in
+  `candidateSuites`, SSL 3.0, and every suite a hand-written hello offers is
+  graded, and the rules that never come back are these. Until 2026-09-13 there
+  were eleven; asking about SSL 3.0 and the export and NULL suites by hand
+  closed six.
 
-  The cause is the same in almost every case. This scanner speaks through Go's
-  TLS client, so it can only offer what Go implements, and a rule that matches
-  a suite Go does not implement will never be shown one. `cipher.null`,
-  `cipher.no-encryption` (RFC 9150 integrity-only), `cipher.anonymous`,
-  `cipher.export`, `cipher.des` — single DES, not the 3DES rule beside it,
-  which is reachable — and `cipher.md5` are all of that kind.
-
-  `cipher.ffdhe` is the one worth reading twice, because it changes what a
-  report means: Go offers no finite-field DHE suite, so a TLS 1.2 server
-  configured for DHE alone is measured as accepting nothing, and the report
-  does not distinguish that from a server that refused everything for its own
-  reasons.
-
-  `version.ssl3` has the same shape and the same consequence. Go removed
-  SSL 3.0 in 1.14, so a server speaking only SSL 3.0 is reported as refusing
-  every version rather than as insecure. After POODLE such a server is close
-  to extinct, which is a reason it matters little and not a reason it is
-  untrue. `version.unknown` cannot fire because `probedVersions` is a fixed
-  list, and `cipher.unrecognised` cannot fire because an enumeration that only
-  offers suites this Go names cannot be answered with one it does not.
+  `cipher.no-encryption` (RFC 9150 integrity-only) cannot fire because nothing
+  here offers such a suite — Go implements none and the hand-written hellos do
+  not ask. `cipher.md5` is shadowed: every MD5 suite offered by hand is matched
+  first by a more specific rule, NULL or export or RC4, so the MD5 rule is
+  never the one that answers. `version.unknown` cannot fire because
+  `probedVersions` is a fixed list and a hand-written hello rejects a version
+  it did not claim. `cipher.unrecognised` cannot fire because every suite
+  offered, by Go or by hand, is one this project names.
 
   `cipher.not-current-practice` is different and is listed for honesty rather
   than for the same reason. It is the catch-all that grades a suite matching no
-  specific rule, and it is reachable in principle; for all twenty-two suites
-  this prober can offer, a more specific rule matches first and stops the
-  search. It is shadowed rather than impossible.
+  specific rule, and it is reachable in principle; for every suite this prober
+  can offer, a more specific rule matches first and stops the search. It is
+  shadowed rather than impossible.
+
+  Two of the six that left the list are reachable only narrowly, and a reader
+  should know how narrowly. `cipher.ffdhe` fires because the SSL 3.0 hello
+  offers finite-field DHE suites; the ordinary enumeration still offers none,
+  so a TLS 1.2 server configured for DHE alone is still measured as accepting
+  nothing, and the report still does not distinguish that from a server that
+  refused everything. `cipher.anonymous` fires because the export hello offers
+  two anonymous export suites; an anonymous suite that is not export-grade is
+  still never offered. `cipher.des` is reachable through the SSL 3.0 hello
+  alone, for the same reason.
 
   None of this makes the rules wrong. They are correct and they are not
   coverage, and the second half is what a reader deciding whether this report
