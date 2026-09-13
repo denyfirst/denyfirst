@@ -128,9 +128,9 @@ established at run time.
 ### 3. Mail
 
 SPF with its ten-lookup and void-lookup limits, DMARC and alignment, MTA-STS,
-TLS-RPT, DANE on the MX hosts. DNS only: nothing is connected to on the
-target's mail path, which is the strongest privacy story any check here can
-have. It comes after scope because proving control of a domain is the natural
+TLS-RPT, DANE on the MX hosts, DKIM under named selectors. Nothing is connected
+to on the target's mail path. The one request it makes is for the MTA-STS policy
+file the zone announces, and only behind proof of control — see N13. It comes after scope because proving control of a domain is the natural
 condition for looking at its mail policy anyway.
 
 Two things about it are settled in advance, because both are easier to get
@@ -138,8 +138,10 @@ right before the check exists than after.
 
 **Only the zone proof authorises it.** A `TXT` record proves control of the
 zone, which is where every one of these records lives. The `.well-known` file
-proves control of one host's HTTP surface, and a mail check makes no HTTP
-request at all, so a file on a web server says nothing about the zone's `MX`.
+proves control of one host's HTTP surface, so a file on a web server says
+nothing about the zone's `MX`. That stays true now that the MTA-STS policy is
+fetched: the policy file is read because the zone announced it, and the right to
+read it still comes from the zone proof, not from the file proof.
 `internal/verify` already draws that line — the file half is offered only for a
 surface that reads HTTP — and mail asks for the other one. Its name will want
 revisiting when this is built: what the mail check needs is not "any port", it

@@ -34,6 +34,10 @@ func TestTheConsoleReadsTheFieldNamesTheAPISends(t *testing.T) {
 		DMARCRecords: 1, DMARCPolicy: "reject", DMARCPercent: 100,
 		DMARCReporting: true, DMARCReason: "unreadable",
 		TLSReporting: true,
+		MXRead:       true, MXHosts: []string{"mx.example"}, MXReason: "unreadable",
+		MTASTSRecords: 1, MTASTSPolicyRead: true, MTASTSPolicyReason: "unreadable",
+		MTASTSMode: "enforce", MTASTSMaxAge: 604800,
+		MTASTSPolicyMX: []string{"mx.example"}, MTASTSUncovered: []string{"mx2.example"},
 	})
 	if err != nil {
 		t.Fatalf("marshalling: %v", err)
@@ -54,6 +58,15 @@ func TestTheConsoleReadsTheFieldNamesTheAPISends(t *testing.T) {
 		"spfRecords", "spfAll", "spfLookups", "spfLookupLimit", "spfReason",
 		"dmarcRecords", "dmarcPolicy", "dmarcPercent", "dmarcReason",
 		"tlsReporting",
+
+		// The MTA-STS group, added when the policy file became readable. Four
+		// of these decide which of four sentences the row draws, and a name
+		// misspelled on either side of the seam picks the wrong one silently:
+		// mtaStsPolicyRead read as undefined draws "the policy was not read"
+		// over a policy that was, which is the reassuring failure rather than
+		// the loud one.
+		"mxHosts", "mtaStsRecords", "mtaStsPolicyRead", "mtaStsPolicyReason",
+		"mtaStsMode", "mtaStsUncovered",
 	} {
 		if !strings.Contains(source, "facts."+field) {
 			t.Errorf("the console does not read facts.%s; this test is naming a field nobody uses", field)

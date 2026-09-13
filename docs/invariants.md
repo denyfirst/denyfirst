@@ -1029,9 +1029,10 @@ Silence there would let a clean answer read as a clean estate.
 
 The mail check reads three names — the domain, `_dmarc.` under it, and
 `_smtp._tls.` under it — and whatever the domain's own sender policy points at.
-It opens no connection to anything else. No mail server is contacted, no message
-is composed, nothing is sent, and nothing that would change state at the other
-end is attempted.
+It opens one connection, to one address, under conditions set out below — and
+none to a mail server. No mail server is contacted, no message is composed,
+nothing is sent, and nothing that would change state at the other end is
+attempted.
 
 That is not restraint applied to the check. It is what these records are: a
 domain publishes them so that strangers will read them, and reading one is the
@@ -1091,12 +1092,37 @@ and not where it is.
 
 **A record read is not a policy read, and the report says which it means.** The
 MTA-STS record at `_mta-sts.<domain>` announces that a policy exists; the policy
-itself is a file served over HTTPS at `mta-sts.<domain>`, and fetching it would
-be a connection on the mail path. So a report establishes that a policy is
-announced and never what mode it is in — and a reader left to complete that
-sentence completes it in the stronger direction, which is why it is completed
-for them. The same holds for DANE: the TLSA records are read, and whether each
-binding is *correct* needs a certificate from the host.
+itself is a file at `https://mta-sts.<domain>/.well-known/mta-sts.txt`, and only
+the file says whether it enforces or is only rehearsing. From DNS those look
+identical, and a reader left to complete "a policy is announced" completes it in
+the stronger direction.
+
+So the file is read, and it is the one connection this check makes. It is
+fenced four ways, and each is a test:
+
+- **Only where the zone announces one.** No record, no request. The record is
+  the domain naming the address, which is what makes the request the following
+  of a published instruction rather than an address this program chose — the
+  thing N7 refuses.
+- **Only where the deployment reads it.** Off unless a caller sets it. The
+  command line sets it, for the argument `-allow-private` and page reading rest
+  on; a service sets it exactly where it requires proof of control (N9), so the
+  host is in an estate the person asking has shown is theirs.
+- **One address, fixed by RFC 8461.** HTTPS on 443 through the dialler that
+  refuses private and reserved destinations (N1), no redirect followed, no
+  proxy, a bounded body, and a certificate that must verify for the policy host
+  against the deployment's own trust store (R7).
+- **Not a mail server.** The policy host is a web host; the claim that nothing
+  on the mail path is contacted survives.
+
+Where the policy is not read — the deployment does not read it, or the fetch
+failed — the report says so with the reason, and nothing about the policy is
+graded. A failed fetch looks the same whether the policy host is broken or this
+machine's egress is blocked, and no measurement available from here separates
+them (R4).
+
+The same holds for DANE: the TLSA records are read, and whether each binding is
+*correct* needs a certificate from the host.
 
 **A null MX ends the questions it makes inapplicable.** RFC 7505's single `.`
 is a domain stating that it accepts no mail at all, which is the clearest case
@@ -1108,15 +1134,19 @@ at the last `@`, at the edge, before anything can log, count or report it. A
 local part is a person's identity and every question here is about the zone, so
 there is nowhere for it to go rather than a rule about not putting it there.
 
-**And every report says it read only DNS.** Whether the domain's mail servers
-accept encrypted connections, and what certificates they present, was not
-measured. DKIM was not checked at all — a key lives under a selector, selectors
-cannot be listed from DNS, and trying likely ones is guessing rather than
-measuring, so a report calling DKIM missing would claim something the scan never
-established (R4).
+**And every report says no mail server was contacted.** Whether the domain's
+mail servers accept encrypted connections, and what certificates they present,
+was not measured. A DKIM key is read only under a selector the scan was told to
+look under — selectors cannot be listed from DNS — and the report names every
+one it tried, so "these names hold nothing" is never rendered as "this domain
+publishes no key" (R4). The standing limit said "everything here was read from
+DNS" until the policy file could be read, and it had to lose that sentence
+rather than reword it: whether the policy is read differs by deployment, and a
+standing limit is the same sentence on every report.
 
-*Enforced in:* `internal/mailscan`, `internal/spf`, `internal/policy.GradeMail`,
-`internal/policy.MailStandingLimits`, `cmd/porch-scan.runMail`
+*Enforced in:* `internal/mailscan`, `internal/spf`, `internal/mtasts`,
+`internal/policy.GradeMail`, `internal/policy.MailStandingLimits`,
+`internal/httpapi.New`, `cmd/porch-scan.mailScanner`, `cmd/porch-scan.runMail`
 *Guarded by:* `TestTheScanAsksOnlyAboutTheDomainItWasGiven`,
 `TestOnlyTheZoneProofAuthorisesAMailScan`,
 `TestScanRefusesBeforeItAsksAnything`,
@@ -1184,7 +1214,43 @@ established (R4).
 `TestOnlyTheKeySizeIsGraded`,
 `TestARecordReachedThroughACNAMEIsRead`,
 `TestARecordForAnUnrelatedNameIsStillSkipped`,
-`TestACNAMELoopEnds`
+`TestACNAMELoopEnds`,
+`TestTheOnlyAddressAskedForIsTheOneRFC8461Names`,
+`TestThePolicyIsRead`,
+`TestOnlyTheThreeModesAreRead`,
+`TestAnUnknownKeyDoesNotDiscardThePolicy`,
+`TestOnlyASuccessfulResponseIsAPolicy`,
+`TestAnEnormousBodyIsBounded`,
+`TestAFailedFetchIsNotAnAbsentPolicy`,
+`TestAPolicyIsNotReadOverAnUntrustedConnection`,
+`TestTheCertificateMustNameThePolicyHost`,
+`TestNoReasonNamesTheInfrastructure`,
+`TestTheWildcardCoversOneLabel`,
+`TestAPolicyWithNoPatternsCoversNothing`,
+`TestAHostileNameInThePolicyIsStripped`,
+`TestNoProxyIsConsulted`,
+`TestTheDefaultFetcherUsesTheScannersTrustStore`,
+`TestThePolicyModeReachesTheReport`,
+`TestATestingPolicyIsDescribedRatherThanGraded`,
+`TestThePolicyIsFetchedOnlyWhereTheZoneAnnouncesOne`,
+`TestADeploymentThatDoesNotReadThePolicySaysSo`,
+`TestAnExchangerTheEnforcingPolicyExcludesIsFound`,
+`TestAPolicyCoveringEveryExchangerIsNotAFinding`,
+`TestAFailedFetchIsNotAPolicyThatNamesNoMode`,
+`TestCoverageIsNotClaimedWhereTheExchangersWereNotRead`,
+`TestAnEnforcingPolicyThatCoversItsMailIsStrong`,
+`TestAnEnforcingPolicyThatExcludesItsOwnExchangerIsGraded`,
+`TestAnUncoveredExchangerUnderTestingIsSaidAndNotGraded`,
+`TestAPolicyThatNamesNoModeIsGraded`,
+`TestAPolicyNamingNoExchangerIsGraded`,
+`TestAPolicyNobodyReadIsNotGraded`,
+`TestTheCacheLifetimeIsReportedAndNotGraded`,
+`TestModeNoneIsReadAsAWithdrawal`,
+`TestTheSTSFindingsCiteTheirDocument`,
+`TestTheCommandLineReadsTheSTSPolicy`,
+`TestTheMTASTSRowSaysWhatWasRead`,
+`TestTheServiceFetchesTheSTSPolicyOnlyWhereItRequiredProof`,
+`TestTheTrustStoreReachesTheMailCheck`
 
 ## Input
 

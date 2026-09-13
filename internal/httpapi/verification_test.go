@@ -471,3 +471,47 @@ func (silentZone) LookupMX(context.Context, string) (dnsclient.MXAnswer, error) 
 func (silentZone) LookupTLSA(context.Context, string) (dnsclient.TLSAAnswer, error) {
 	return dnsclient.TLSAAnswer{}, nil
 }
+
+// The service fetches an MTA-STS policy only where it required proof of control.
+//
+// The same hole as the one above, one check later. A deployment that requires no
+// proof is scanning names nobody proved anything about, which N9 says a service
+// must not do — and until somebody fixes that, it does not also fetch files from
+// hosts in their estate. A sabotage turning this on unconditionally is the one to
+// watch for: every other test in this package would pass.
+func TestTheServiceFetchesTheSTSPolicyOnlyWhereItRequiredProof(t *testing.T) {
+	scope := &verify.Scope{Secret: []byte("a deployment secret")}
+
+	withProof := New(&scan.Scanner{Verify: scope}, Limits{}, nil)
+	if !withProof.mail.ReadSTSPolicy {
+		t.Error("a service that requires proof of control does not read the MTA-STS policy, so " +
+			"its mail reports say a policy is announced and never whether it enforces")
+	}
+	if withProof.mail.Verify != scope {
+		t.Error("the boundary did not reach the mail check")
+	}
+
+	withoutProof := New(&scan.Scanner{}, Limits{}, nil)
+	if withoutProof.mail.ReadSTSPolicy {
+		t.Error("a service configured with no scope fetches files from hosts in the estates of " +
+			"names nobody proved anything about")
+	}
+}
+
+// The trust store reaches the mail check, which now verifies a certificate.
+//
+// It did not need one until the MTA-STS policy could be read, and the comment in
+// New saying so was true when it was written. This is the third time this exact
+// field has been the omission: a service that resolved its own store, checked it
+// was not empty and refused to start without one handed it to one check and not
+// another, and the one without it judged chains against whatever the platform
+// picks (R7).
+func TestTheTrustStoreReachesTheMailCheck(t *testing.T) {
+	roots := x509.NewCertPool()
+	srv := New(&scan.Scanner{Verify: &verify.Scope{Secret: []byte("s")}, Roots: roots}, Limits{}, nil)
+
+	if srv.mail.Roots != roots {
+		t.Error("the store this service resolved did not reach the mail check, so which " +
+			"certificates an MTA-STS policy may be read over depends on the platform")
+	}
+}

@@ -1,17 +1,41 @@
-// Package mailscan reads what a domain's DNS says about its mail and grades it.
+// Package mailscan reads what a domain publishes about its mail and grades it.
 //
-// It is the third check, and the only one that connects to nothing. Every fact
-// in a report from here came out of a DNS lookup: the sender policy and what it
-// costs a receiver to evaluate, the DMARC instruction, whether the domain asks
-// for reports when transport security fails, which hosts accept its mail, and
-// what those hosts publish about protecting it in transit. No mail server is
+// Almost everything here comes out of a DNS lookup: the sender policy and what
+// it costs a receiver to evaluate, the DMARC instruction, whether the domain
+// asks for reports when transport security fails, which hosts accept its mail,
+// and what those hosts publish about protecting it in transit. No mail server is
 // contacted, no message is composed, nothing is sent, and nothing that would
-// change state at the other end is attempted.
+// change state at the other end is attempted. That is a property of what these
+// records are rather than a restraint applied to them: the queries go to the
+// resolver this machine already asks about every target, and the domain being
+// examined learns nothing at all.
 //
-// That is a property of what these records are rather than a restraint applied
-// to them, and it makes this the strongest privacy story any check in this
-// project has: the queries go to the resolver this machine already asks about
-// every target, and the domain being examined learns nothing at all.
+// # The one exception, and what it is fenced with
+//
+// An MTA-STS policy is announced in DNS and served as a file over HTTPS. The
+// record says a policy exists; only the file says what it is, and the difference
+// between a policy in testing mode and one in enforce mode is the difference
+// between measuring the problem and preventing it. For the whole life of this
+// check a report could say a policy was announced and nothing more, and an
+// operator who left a rollout in testing mode two years ago had the appearance
+// of protection and none of it.
+//
+// So the policy is fetched, under four conditions, and ReadSTSPolicy is off
+// until a caller says otherwise:
+//
+//   - **Only where the domain announces one.** No record, no request. The
+//     record is the zone saying *there is a policy at that address*, which is
+//     what makes reading it an instruction being followed rather than an
+//     address being tried (N7).
+//   - **Only where control of the domain has been proven.** The same condition
+//     the web check reads a page under, and the same reason: the request goes to
+//     a host in an estate the person asking has shown is theirs.
+//   - **One address, fixed by RFC 8461.** No path is constructed, no redirect
+//     is followed, and the certificate must verify.
+//   - **Not a mail server.** mta-sts.<domain> on port 443 is a web host. The
+//     claim that nothing on the mail path is contacted survives intact.
+//
+// See internal/mtasts, and N13 for the argument.
 //
 // # What is deliberately not here
 //
@@ -29,12 +53,12 @@
 // and a report names every selector it tried. "These names hold nothing" is
 // never rendered as "this domain publishes no key" (R4). See internal/dkim.
 //
-// **The MTA-STS policy itself.** The record at _mta-sts.<domain> announces that
-// a policy exists and is read here. The policy is a file served over HTTPS at
-// mta-sts.<domain>, and fetching it would be a connection on the mail path —
-// the one thing this check does not make. So a report says a policy is
-// announced, never what it says, and the difference is stated rather than left
-// for a reader to assume the stronger reading.
+// **The MTA-STS policy, where a deployment does not fetch it.** Reading the
+// policy is one HTTPS request and runs only behind proof of control, so a
+// deployment configured without proof reads the record and stops there. What
+// such a report says is that a policy is announced and that what it says was not
+// read — never the stronger reading, which is the one a reader supplies for
+// themselves if nobody stops them.
 //
 // **Whether a DANE binding is correct.** The TLSA records are read, so a report
 // can say which exchangers publish one and what kind of binding they declare.
@@ -44,6 +68,7 @@ package mailscan
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"strconv"
 	"strings"
@@ -53,6 +78,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/dkim"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/exclusion"
+	"github.com/denyfirst/denyfirst/internal/mtasts"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/spf"
 	"github.com/denyfirst/denyfirst/internal/verify"
@@ -68,10 +94,10 @@ const (
 	// stsPrefix is where the record announcing an MTA-STS policy lives.
 	//
 	// The record, not the policy. RFC 8461 puts the policy itself in a file at
-	// mta-sts.<domain>, and fetching it is a connection on the mail path —
-	// which is the one thing this check does not make (N13). So the record is
-	// read, its presence and its id are reported, and the report says plainly
-	// that the policy behind it was not fetched.
+	// mta-sts.<domain>, which is fetched where the deployment is allowed to and
+	// reported as unread where it is not (N13). Reading the record first is not
+	// only ordering: no record means no request, and the record is what makes
+	// the request an instruction from the zone rather than an address tried.
 	stsPrefix = "_mta-sts."
 
 	// danePrefix is where DANE for SMTP lives, beneath each exchanger.
@@ -102,6 +128,16 @@ type Resolver interface {
 	LookupTLSA(ctx context.Context, name string) (dnsclient.TLSAAnswer, error)
 }
 
+// PolicyFetcher reads the MTA-STS policy file for a domain.
+//
+// No error in the signature, deliberately. A policy that could not be fetched
+// and a domain with no policy are different answers, and an implementation that
+// returned the first as an error would eventually be called by somebody who
+// treated the zero value as the second (R4). The reason travels inside.
+type PolicyFetcher interface {
+	Fetch(ctx context.Context, domain string) mtasts.Policy
+}
+
 // Scanner measures one domain's mail policy. The zero value is usable.
 type Scanner struct {
 	// Resolver asks the questions. Nil means one reading this machine's own
@@ -112,6 +148,43 @@ type Scanner struct {
 	// scan a name. Nil means none is required, which is what the command line
 	// wants and what a service must not have.
 	Verify *verify.Scope
+
+	// ReadSTSPolicy asks for the MTA-STS policy file to be fetched, where the
+	// domain announces one.
+	//
+	// False by default, which is the behaviour this check had for its whole life
+	// and the safe thing for an unset field to mean. What a true here buys is
+	// the one fact DNS cannot carry: whether the policy enforces or is only
+	// rehearsing. What it costs is one HTTPS request to mta-sts.<domain> — not a
+	// mail server, and not a path this program invented.
+	//
+	// A caller sets this where control of the domain has been proven and
+	// nowhere else. It is a separate field from Verify rather than derived from
+	// it, because the two answer different questions: Verify says whose estate
+	// this is, and this says whether this deployment fetches files at all. A
+	// service ties them together (see internal/httpapi); the command line sets
+	// this and leaves Verify nil, because it runs on the operator's own machine
+	// from their own address — the same argument webscan.ReadMarkup rests on.
+	ReadSTSPolicy bool
+
+	// STS fetches the policy. Nil means internal/mtasts, dialling through the
+	// guard that refuses private and reserved destinations.
+	//
+	// An interface for the reason Resolver is one: a test that could not answer
+	// without a network would exercise whichever domain the machine running the
+	// tests happens to reach.
+	STS PolicyFetcher
+
+	// Roots is the trust store the policy fetch is judged against. Nil means
+	// the system store.
+	//
+	// Here because this check now verifies a certificate, which it did not
+	// before, and R7 says a verdict must not depend on which platform ran it.
+	// A service that resolved its own store, checked it was not empty and
+	// refused to start without one has to be able to hand over the store it
+	// resolved — the field the web check was missing for a while, for the same
+	// reason and with the same consequence.
+	Roots *x509.CertPool
 
 	// DKIMSelectors are the names to look for signing keys under.
 	//
@@ -448,13 +521,13 @@ func (s *Scanner) readExchangers(ctx context.Context, r Resolver, domain string,
 }
 
 // readTransportSecurity reads what the domain publishes about encrypting the
-// mail path: an MTA-STS record, and DANE beneath each exchanger.
+// mail path: an MTA-STS record, the policy behind it, and DANE beneath each
+// exchanger.
 //
-// Both are read from DNS and neither is followed any further. The MTA-STS
-// policy itself lives in a file at mta-sts.<domain>, and fetching it would be a
-// connection on the mail path — the one thing this check does not make. So what
-// is established is that a policy is announced, never what it says, and the
-// report has to say which of those it means.
+// The record and the DANE bindings come from DNS. The policy is a file, and it
+// is fetched only where the domain announced one and this deployment is
+// configured to read it — see readSTSPolicy, which is where the whole of that
+// argument lives.
 func (s *Scanner) readTransportSecurity(ctx context.Context, r Resolver, domain string, facts *policy.MailFacts) {
 	if answer, err := r.LookupTXT(ctx, stsPrefix+domain); err == nil {
 		for _, v := range answer.Values {
@@ -463,6 +536,10 @@ func (s *Scanner) readTransportSecurity(ctx context.Context, r Resolver, domain 
 			}
 		}
 	}
+
+	// Before DANE rather than after, so that a scan which spends its context
+	// budget on TLSA lookups does not drop the one fact nothing else can supply.
+	s.readSTSPolicy(ctx, domain, facts)
 
 	// DANE is per exchanger, so a domain with none has nothing to ask about.
 	// Bounded, because the list is written by whoever is being measured.
@@ -498,6 +575,89 @@ func isMTASTS(value string) bool {
 	return ok &&
 		strings.EqualFold(strings.TrimSpace(name), "v") &&
 		strings.EqualFold(strings.TrimSpace(tag), "STSv1")
+}
+
+// readSTSPolicy fetches the policy the domain announced, and works out whether
+// it covers the domain's own mail.
+//
+// # The conditions, and why each one is here
+//
+// **A record has to announce it.** Where the domain publishes no MTA-STS record
+// this makes no request at all, and that is not an optimisation. A request to
+// mta-sts.<domain> for a domain that announced nothing is this program picking an
+// address and trying it, which is the thing N7 refuses. A record is the zone
+// naming the address itself, so fetching it is following an instruction the
+// domain published for every sending server on the internet to follow.
+//
+// **The deployment has to be allowed to.** ReadSTSPolicy is false unless a
+// caller sets it, and a caller sets it where control of the domain has been
+// proven. The request goes to a host in somebody's estate; the condition is that
+// it is the estate of whoever asked.
+//
+// **A failure is never a finding.** A policy that could not be fetched is
+// recorded with its reason and nothing about it is graded, because a fetch
+// failing here looks identical to a domain whose policy host is broken and to
+// this machine's egress being blocked. The first is theirs to fix and the second
+// is not theirs at all, and no measurement available from here separates them.
+func (s *Scanner) readSTSPolicy(ctx context.Context, domain string, facts *policy.MailFacts) {
+	if facts.MTASTSRecords == 0 {
+		return
+	}
+	if !s.ReadSTSPolicy {
+		// Said rather than left blank. A deployment that does not fetch the
+		// policy is a limit of the installation, and a report that showed an
+		// empty mode without saying why would read as a policy that named none
+		// — which is a finding (R4).
+		facts.MTASTSPolicyReason = "this deployment reads the record and not the policy file"
+		return
+	}
+
+	got := s.stsFetcher().Fetch(ctx, domain)
+	if !got.Fetched {
+		facts.MTASTSPolicyReason = got.Reason
+		return
+	}
+
+	facts.MTASTSPolicyRead = true
+	facts.MTASTSMode = string(got.Mode)
+	facts.MTASTSMaxAge = got.MaxAge
+	facts.MTASTSPolicyMX = got.MX
+
+	// Which of the domain's exchangers the policy leaves out. Only where the MX
+	// records were read: an empty list of uncovered hosts has to mean "the
+	// policy covers everything" and never "nobody looked" (R4).
+	//
+	// A sabotage removing this guard escaped every test on 2026-09-13, and that
+	// is not a missing test: readExchangers returns before it appends anything
+	// when the lookup fails, so today the loop below has nothing to walk. The
+	// guard is here so that stays true when somebody makes readExchangers keep a
+	// partial answer — at which point a failed lookup would produce a coverage
+	// verdict over half a list, and TestCoverageIsNotClaimedWhereTheExchangersWereNotRead
+	// is the test that will say so.
+	if !facts.MXRead || facts.MXReason != "" {
+		return
+	}
+	for _, host := range facts.MXHosts {
+		if !got.Covers(host) {
+			facts.MTASTSUncovered = append(facts.MTASTSUncovered, host)
+		}
+	}
+}
+
+// stsFetcher is the fetcher this scan uses: the one supplied, or internal/mtasts
+// judging certificates against this scanner's trust store.
+//
+// A method rather than two lines inside readSTSPolicy, because those two lines
+// are where the store is handed over and nothing could see them there. A
+// sabotage dropping Roots from the default escaped every test on 2026-09-13 —
+// every test supplies its own fetcher, and a real fetch needs a network — and
+// the consequence would have been a service whose policy fetch trusted whatever
+// the platform picks rather than the store it resolved and checked (R7).
+func (s *Scanner) stsFetcher() PolicyFetcher {
+	if s.STS != nil {
+		return s.STS
+	}
+	return &mtasts.Fetcher{Roots: s.Roots}
 }
 
 // DropLocalPart returns the domain half of a mail address, and discards the rest
