@@ -74,14 +74,18 @@ var (
 			"choose among TLS 1.3 suites, so the rest could not be enumerated.",
 	}
 
+	// Rewritten when the stores of four clients began to be carried. The
+	// verdict still rests on one store, and that half is unchanged; what
+	// changed is that the others are no longer only a warning.
 	LimitOneTrustStore = StandingLimit{
 		ID:    "one-trust-store",
-		Title: "Trust is decided by one root store",
+		Title: "The verdict rests on this machine's root store",
 		Text: "A chain reported as trusted was verified against the root store of the machine that ran " +
-			"this scan, which is one store among several. Chrome, Apple and Microsoft each ship their " +
-			"own, remove authorities on their own timetables, and a packaged store lags the programme " +
-			"it is built from. So this says a chain verified here: not that every client will accept " +
-			"it, and not that none will.",
+			"this scan, and the verdict rests on that store. Where the report names them, what Mozilla, " +
+			"Chrome, Microsoft and Apple make of the chain comes from copies of their stores dated in the " +
+			"report: a store changes after that date, and only which roots it includes and Mozilla's " +
+			"dates for distrusting a root are evaluated — other conditions a store places on a root are " +
+			"named, not applied.",
 	}
 
 	// What this says was true of every build until one of them started

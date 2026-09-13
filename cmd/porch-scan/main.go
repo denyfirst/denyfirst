@@ -625,6 +625,11 @@ func printCertificate(w io.Writer, r result) {
 	} else {
 		fmt.Fprintf(w, "    Chain        %d certificate(s), not trusted: %s\n", len(c.Chain), c.VerifyError)
 	}
+	if c.StoresLine != "" {
+		// The line certinfo writes, printed as it is, so the page and this
+		// say the same words (R16).
+		fmt.Fprintf(w, "    Stores       %s\n", wrap(c.StoresLine, 60, "                 "))
+	}
 
 	// The page has shown this since the row was added and this report never
 	// has, so the answer to "who may issue for this name" reached a reader

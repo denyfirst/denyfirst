@@ -644,6 +644,10 @@ function certificate(cert, tls, issuance, stapling, report) {
 
   pair("Chain", cert.chain.length + (cert.trusted ? " certificates, trusted" : " certificates, not trusted"));
 
+  // What Mozilla, Chrome, Microsoft and Apple make of the chain, in the words
+  // certinfo wrote, which the terminal prints too (R16).
+  if (cert.storesLine) pair("Stores", cert.storesLine);
+
   // What the certificate asks for, and what the handshake carried.
   //
   // Four states rather than a tick. "Not stapled" alone reads as a fault,

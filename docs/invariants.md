@@ -2361,7 +2361,24 @@ gate and fails in `scripts/build.sh` on a release evening. CI now vets `linux`,
 `darwin` and `windows`. vet type-checks rather than links, so it costs seconds
 and needs no cross toolchain.
 
+**Other clients' stores are said beside the verdict, never instead of it.** One
+store deciding is what makes a verdict reproducible, and it is also one store
+among several: Mozilla, Chrome, Microsoft and Apple each ship their own and
+remove authorities on their own timetables. So a report says, beside the
+verdict, what each of those four makes of the chain — from copies carried in
+`internal/rootstores` and dated in the report. Only which roots a store includes,
+and Mozilla's dates for distrusting a root, are evaluated; Chrome's
+version-dependent constraints and Microsoft's "NotBefore" roots are reported as
+conditional rather than guessed at. None of it moves a verdict. The copies are
+not signed by their publishers: a refresh refuses any certificate that does not
+hash to the fingerprint its publisher lists, a test checks every carried root
+against its recorded hash on every build, a weekly workflow opens an issue when a
+store changes, and a person reads the diff before signing it. That is less than
+a signature, and it is said as that.
+
 *Enforced in:* `internal/certinfo.chainComplete`,
+`internal/rootstores.Parse`, `internal/rootstores.Set.Judge`,
+`internal/certinfo.judgeStores`, `internal/policy.StoresLine`,
 `internal/certinfo.resolveRoots`, `internal/scan.Scanner.Roots`,
 `cmd/porchd`, `internal/truststore`, `internal/webprobe.Prober.Roots`,
 `internal/webscan.Scanner.Roots`, `internal/policy.TrustStoreUnreadable`,
@@ -2369,6 +2386,23 @@ and needs no cross toolchain.
 `.github/workflows/ci.yml`
 *Guarded by:* `TestMissingIssuerIsAnIncompleteChain`,
 `TestPresentIssuerIsNotAnIncompleteChain`,
+`TestARootThatDoesNotMatchItsFingerprintIsRefused`,
+`TestAnUnknownStoreOrStatusIsRefused`, `TestEachStoreAnswersForItself`,
+`TestTheDistrustDateIsTheLastDayTrusted`, `TestTheCarriedStoresTrustARealChain`,
+`TestTheSummaryIgnoresWhenAFileWasFetched`,
+`TestChromeAnchorsAreReadWithTheirConstraints`,
+`TestACertificateNotMatchingItsListedFingerprintIsRefused`,
+`TestCheckExitsOneWhenAStoreChanged`, `TestTheStoresLineGroupsByWhatEachSaid`,
+`TestAllStoresTrustingIsOneSentence`, `TestAStoreThatRefusesIsSaidBesideTheVerdict`,
+`TestAConditionalStoreIsUnsettled`, `TestADistrustDateThatAppliesIsSaid`,
+`TestStoresNotUsedAreUnsettledWithTheReason`,
+`TestTheTrustStoreLimitSaysWhatTheOtherStoresAre`,
+`TestThePageReadsTheStoresLineTheAPISends`, `TestTheReportPrintsTheStoresLine`,
+`TestAnalyseNamesWhatEachStoreMakesOfTheChain`,
+`TestAFileNamingTooManyRootsIsRefused`, `TestAnExpiredChainIsJudgedWithinItsValidity`,
+`TestTheSummaryNamesTheStore`, `TestTheBestPathToARootDecides`,
+`TestBuildCarriesWhatEachStoreTrustsForTLS`,
+`TestAnUnparseableRootMatchingItsFingerprintIsLeftOut`,
 `TestTheRootsPassedInAreTheOnesThatDecide`,
 `TestANilPoolBecomesTheSystemPoolRatherThanThePlatformVerifier`,
 `TestAPoolPassedInIsNotReplaced`,

@@ -281,6 +281,19 @@ is said by the report that read it.
 
 Unreleased.
 
+**Four clients' root stores are named beside the verdict.** The verdict on a
+chain still rests on the store of the machine that ran the scan (R7). Beside it,
+a report now says what Mozilla, Chrome, Microsoft and Apple make of the chain,
+from copies of their stores carried in `internal/rootstores` and dated in the
+report: trusted, conditionally trusted, distrusted for certificates issued after
+a date, or not trusted. Only membership and Mozilla's TLS distrust dates are
+evaluated; Chrome's version-dependent constraints and Microsoft's "NotBefore"
+roots are reported as conditional rather than guessed at. **No verdict moved:**
+which clients matter is the operator's to decide (R21). The sources are not
+signed by their publishers; a refresh refuses any certificate that does not hash
+to the fingerprint its publisher lists, and a weekly workflow opens an issue when
+a store changes.
+
 **Transparency receipts are now checked, not only counted.** Each receipt a
 certificate or handshake carries is checked against the key Chrome's log list
 gives its log, offline. The list is Google's published file, carried byte for

@@ -1,0 +1,99 @@
+name: Root stores
+
+# Compares the root stores internal/rootstores carries — Mozilla's, Chrome's,
+# Microsoft's and Apple's — with what their publishers list, and opens an issue
+# when a store has changed what it says about a root.
+#
+# It does not update the file, for the reason ct-log-list.yml gives: a workflow
+# able to open a pull request that passes the signed-commit check would hold a
+# signing key on a machine this project does not control (S6). This job can read
+# the repository and write issues, and nothing else.
+#
+# These sources carry no publisher signature. The refresh refuses a source whose
+# certificates do not hash to the fingerprints it lists, and a person reads the
+# diff before signing it; that is the whole of the protection, and it is stated
+# rather than implied.
+
+on:
+  schedule:
+    # Wednesday morning, off the hour, the day after the log list.
+    - cron: "17 5 * * 3"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: root-stores
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    name: Carried root stores match their publishers
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Check out the default branch
+        run: |
+          git init -q
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "${GITHUB_REF_NAME}"
+          git checkout -q FETCH_HEAD
+
+      - name: Compare the carried stores with the published ones
+        id: compare
+        run: |
+          set +e
+          go run ./internal/rootstores/refresh -check > compare.txt 2>&1
+          code=$?
+          cat compare.txt
+          echo "code=${code}" >> "${GITHUB_OUTPUT}"
+          exit 0
+
+      - name: Open or update an issue when a store changed
+        if: steps.compare.outputs.code == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          title="The carried root stores are out of date"
+
+          {
+            echo "A root store now says something about a root that the copy in"
+            echo "internal/rootstores does not. Reports keep naming the carried stores'"
+            echo "date until the copy is refreshed."
+            echo
+            echo "Refresh it on a machine that can sign the commit:"
+            echo
+            echo "    go run ./internal/rootstores/refresh"
+            echo
+            echo "Read the diff — these sources are not signed by their publishers, so"
+            echo "reading it is part of the check — commit it signed, and open a pull"
+            echo "request."
+            echo
+            echo "What changed:"
+            echo
+            echo '```'
+            cat compare.txt
+            echo '```'
+          } > body.md
+
+          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open \
+            --search "\"${title}\" in:title" --json number --jq '.[0].number // empty')"
+
+          if [ -n "${existing}" ]; then
+            gh issue comment "${existing}" --repo "${GITHUB_REPOSITORY}" --body-file body.md
+          else
+            gh issue create --repo "${GITHUB_REPOSITORY}" --title "${title}" --body-file body.md
+          fi
+
+      - name: Fail when the comparison could not be made
+        if: steps.compare.outputs.code != '0' && steps.compare.outputs.code != '1'
+        run: |
+          echo "The comparison did not run to an answer: a fetch failed, or a source"
+          echo "did not agree with the fingerprints it lists. A source that does not"
+          echo "agree with itself is never written."
+          exit 1
