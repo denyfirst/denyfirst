@@ -245,6 +245,16 @@ prints all three, and every report names the one that produced it.
 Loopback by default, so an accidental start is not immediately public.
 `porchd -h` lists every limit and its default.
 
+The service takes `-resolver` too, for the lookups it makes itself — CAA, the
+mail records and the proof-of-control challenge — and for the same reason as
+above. It has to be an address and a port, not a name:
+
+```sh
+./porchd -listen 127.0.0.1:8080 -resolver 192.168.1.1:53
+```
+
+The addresses a scan connects to are still resolved by the machine.
+
 ---
 
 ## In a container

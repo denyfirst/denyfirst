@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -162,6 +163,23 @@ func run() int {
 		resultsKeep = flag.Int("results-keep", 0,
 			"how many results to keep per target, oldest dropped first; 0 keeps all")
 
+		// Which resolver the lookups this service makes itself are asked: CAA,
+		// the mail records, and the proof-of-control challenge.
+		//
+		// The same flag porch-scan has, for the same reason (R7): the machine's
+		// own configuration is assembled rather than read on Windows, and a
+		// home router that rewrites answers is a resolver whose answers are
+		// about the router. No default — a public resolver chosen here would
+		// decide who learns which names are looked up.
+		//
+		// An address, not a name. A resolver named by hostname has to be found
+		// through the machine's resolver first, which is the one this flag
+		// exists to step around.
+		resolver = flag.String("resolver", "",
+			"`address` of the resolver for the lookups this service makes, ip:port; empty\n"+
+				"\treads this machine's own configuration. The addresses scans connect to\n"+
+				"\tare still resolved by the machine")
+
 		showVersion = flag.Bool("version", false, "print the release and policy versions, then exit")
 	)
 
@@ -171,6 +189,13 @@ func run() int {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+
+	// Before anything reads it, so a mistyped resolver stops the process rather
+	// than costing every lookup a timeout once the service is answering.
+	if err := resolverAddress(*resolver); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
 
 	if *showVersion {
 		// Both, because they answer different questions. The release names
@@ -193,7 +218,7 @@ func run() int {
 		// what this deployment is rather than what the build alone decides. A
 		// -version describing a deployment it has not yet configured would be
 		// guessing at the one thing it exists to state.
-		scope, err := verificationScope(*verifySecretFile)
+		scope, err := verificationScope(*verifySecretFile, *resolver)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
@@ -212,7 +237,7 @@ func run() int {
 	// The alternative is a service that was asked to require proof, could not,
 	// and scanned whatever it was given — the failure mode this whole boundary
 	// exists to prevent, arriving through a typo in a path.
-	scope, err := verificationScope(*verifySecretFile)
+	scope, err := verificationScope(*verifySecretFile, *resolver)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
@@ -280,7 +305,7 @@ func run() int {
 	// platform picks, which is the store this program did not check. Verify
 	// is the scope read before that: leaving it nil is a service that scans
 	// whatever it is asked to.
-	api := httpapi.New(&scan.Scanner{Roots: roots, Verify: scope}, limits, nil)
+	api := httpapi.New(serviceScanner(roots, scope, *resolver), limits, nil)
 
 	// Where results are kept, if anywhere. Before serving, like every other
 	// piece of configuration here: a service that could start keeping records
@@ -706,6 +731,38 @@ func (r *certReloader) reload() error {
 	return nil
 }
 
+// serviceScanner is the scanner the service is built on.
+//
+// A function rather than a literal inside run(), so that what each flag
+// reaches can be asserted: run() parses flags and binds a port. porch-scan
+// learned this when its -resolver was parsed, documented and never assigned.
+func serviceScanner(roots *x509.CertPool, scope *verify.Scope, resolver string) *scan.Scanner {
+	scanner := &scan.Scanner{Roots: roots, Verify: scope}
+
+	// Only when there is one. An empty Server already means the machine's own
+	// configuration, but a non-nil client where there was nil before is not the
+	// same thing to httpapi, which copies this into an interface field (see the
+	// comment there on a nil pointer inside an interface).
+	if resolver != "" {
+		scanner.Resolver = &dnsclient.Client{Server: resolver}
+	}
+	return scanner
+}
+
+// resolverAddress refuses a -resolver that is not an IP address and a port.
+//
+// Empty is accepted: it means this machine's own configuration.
+func resolverAddress(resolver string) error {
+	if resolver == "" {
+		return nil
+	}
+	addr, err := netip.ParseAddrPort(resolver)
+	if err != nil || addr.Port() == 0 || addr.Addr().Zone() != "" {
+		return errors.New("-resolver must be an IP address and a port, such as 192.0.2.53:53 or [2001:db8::53]:53")
+	}
+	return nil
+}
+
 // trustStoreUsable reports whether chains can be judged against anything.
 //
 // Written to take what x509.SystemCertPool returns rather than to call it,
@@ -774,7 +831,9 @@ func reach(scoped bool) string {
 //
 // The secret is read from a file rather than a flag: a flag value is in the
 // process list, where every user on the machine reads it.
-func verificationScope(path string) (*verify.Scope, error) {
+//
+// resolver is the -resolver flag: the challenge is read through it when set.
+func verificationScope(path, resolver string) (*verify.Scope, error) {
 	if path == "" {
 		return nil, nil
 	}
@@ -796,7 +855,7 @@ func verificationScope(path string) (*verify.Scope, error) {
 
 	return &verify.Scope{
 		Secret:   secret,
-		Resolver: &dnsclient.Client{},
+		Resolver: &dnsclient.Client{Server: resolver},
 
 		// The file method, for teams without access to their own DNS. It
 		// is consulted only when the zone proof was not found, and only for
