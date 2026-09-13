@@ -54,10 +54,17 @@ var (
 	LimitCipherSuitesOffered = StandingLimit{
 		ID:    "cipher-suites-offered",
 		Title: "Only the suites this client can offer were offered",
-		Text: "Only cipher suites implemented by Go's TLS stack were offered. Suites outside it, " +
-			"and SSLv2 or SSLv3, are not covered. A server that speaks a version but shares no " +
-			"suite with this client answers a handshake the same way as one that refuses the " +
-			"version, so a refusal here is not proof the version is switched off.",
+		// This said "Suites outside it, and SSLv2 or SSLv3, are not covered"
+		// until SSL 3.0 and the export and NULL suites were asked about by
+		// hand. The sentence is attached on exactly the reports where those
+		// questions are put — both hang on suiteCoverageApplies — so the
+		// rewritten one is true wherever it appears.
+		Text: "Cipher suites were enumerated only among those Go's TLS stack implements. SSL 3.0 and " +
+			"the export-grade and NULL suites were asked about with a hand-written hello, which " +
+			"establishes whether any of each is accepted and not every one that is. Other suites " +
+			"outside Go's stack, and SSLv2, are not covered. A server that speaks a version but " +
+			"shares no suite with this client answers a handshake the same way as one that refuses " +
+			"the version, so a refusal here is not proof the version is switched off.",
 	}
 
 	LimitTLS13Suites = StandingLimit{

@@ -26,9 +26,14 @@
 // Go's crypto/tls will only offer cipher suites it implements, roughly
 // twenty-seven of the three hundred or so in the IANA registry. Suites Go has
 // never carried — Camellia, ARIA, GOST — cannot be detected here even if the
-// server supports them, and the same applies to SSLv2 and SSLv3. TLS 1.3
-// suites are not configurable at all in Go, so for that version the probe
-// reports the negotiated suite rather than enumerating.
+// server supports them, and neither can SSLv2. TLS 1.3 suites are not
+// configurable at all in Go, so for that version the probe reports the
+// negotiated suite rather than enumerating.
+//
+// SSL 3.0 and the export-grade and NULL suites are the exception, because they
+// are the ones a report most needs: they are asked about with a hand-written
+// hello (see legacy.go and internal/rawhello). That establishes whether any of
+// each is accepted, not every one that is.
 //
 // Callers must surface this. A report that silently omits what it could not
 // test is worse than one that tests less and says so.
@@ -168,6 +173,11 @@ type Report struct {
 	// PostQuantum is the answer to the one extra handshake this probe makes
 	// beyond version and suite enumeration.
 	PostQuantum PostQuantum `json:"postQuantum"`
+
+	// Legacy is what hand-written hellos established about what Go's own client
+	// cannot offer: SSL 3.0, the export-grade and NULL suites, and whether a
+	// downgraded hello is refused. See legacy.go.
+	Legacy Legacy `json:"legacy"`
 
 	OCSPStapled bool `json:"ocspStapled"`
 
@@ -424,6 +434,16 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 
 	report.Verdict, report.Findings = summarise(results)
 	report.BlockedDestination = blockedDestination(results)
+
+	// What Go's client cannot ask, asked by hand, and folded in only upwards.
+	//
+	// A server speaking only SSL 3.0 was reported as refusing every version
+	// until this existed, because the client measuring it could not speak
+	// SSL 3.0 either. That is the flattering direction on exactly the servers
+	// that most need the finding.
+	report.Legacy = p.legacy(ctx, host, port, results, reached)
+	report.Verdict, report.Findings = mergeLegacy(report.Verdict, report.Findings, report.Legacy)
+	report.describeLegacy()
 
 	// Said plainly, because the alternative is a list that reads as the whole
 	// answer. A reader who is not told the enumeration stopped early will take
@@ -951,6 +971,11 @@ func candidateSuites(version uint16) []uint16 {
 
 func versionName(v uint16) string {
 	switch v {
+	case policy.VersionSSL30:
+		// Never negotiated by crypto/tls. Named because a hand-written hello
+		// can be answered with it, and "unknown (0x0300)" beside a finding
+		// titled SSL 3.0 would be one report describing one fact twice.
+		return "SSL 3.0"
 	case tls.VersionTLS10:
 		return "TLS 1.0"
 	case tls.VersionTLS11:

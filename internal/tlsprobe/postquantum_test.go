@@ -160,26 +160,44 @@ func TestThePostQuantumQuestionCostsOneHandshake(t *testing.T) {
 	var with, without atomic.Int64
 
 	port := groupServer(t, nil, tls.VersionTLS13, &with)
-	if _, err := proberFor(port).Probe(context.Background(), "localhost", port); err != nil {
+	modern, err := proberFor(port).Probe(context.Background(), "localhost", port)
+	if err != nil {
 		t.Fatalf("probing: %v", err)
 	}
 
 	old := groupServer(t, nil, tls.VersionTLS12, &without)
-	if _, err := proberFor(old).Probe(context.Background(), "localhost", old); err != nil {
+	legacyOnly, err := proberFor(old).Probe(context.Background(), "localhost", old)
+	if err != nil {
 		t.Fatalf("probing: %v", err)
 	}
 
 	t.Logf("a TLS 1.3 server received %d connections; a TLS 1.2 server received %d",
 		with.Load(), without.Load())
 
-	// Exactly one, and the comparison is clean: both servers get the same
-	// four version probes, the same TLS 1.2 enumeration and the same two
-	// ordering probes, so everything except the question cancels. Asserting
-	// the difference rather than the total, because the total moves whenever
-	// Go changes which suites it offers and that is not a change in what
-	// this costs anybody.
-	if got := with.Load() - without.Load(); got != 1 {
-		t.Errorf("the question cost %d connections; it is meant to cost one (%d against %d)",
-			got, with.Load(), without.Load())
+	// Exactly one, once the one other question that differs is taken out.
+	//
+	// Both servers get the same four version probes, the same TLS 1.2
+	// enumeration, the same two ordering probes and the same three
+	// hand-written hellos. The downgraded hello does not cancel: it is sent
+	// only to a server accepting more than one version, and the TLS 1.3 server
+	// accepts two where the TLS 1.2 one accepts one. Taken from the reports
+	// rather than written in as a number, so that this stays a test of what
+	// the post-quantum question costs and not of when the fallback is asked —
+	// which TestTheFallbackIsNotAskedOfASingleVersion covers.
+	//
+	// Asserting the difference rather than the total, because the total moves
+	// whenever Go changes which suites it offers and that is not a change in
+	// what this costs anybody.
+	fallback := int64(0)
+	if modern.Legacy.Fallback.Asked != "" {
+		fallback++
+	}
+	if legacyOnly.Legacy.Fallback.Asked != "" {
+		fallback--
+	}
+
+	if got := with.Load() - without.Load() - fallback; got != 1 {
+		t.Errorf("the question cost %d connections; it is meant to cost one (%d against %d, %d of the "+
+			"difference being the downgraded hello)", got, with.Load(), without.Load(), fallback)
 	}
 }

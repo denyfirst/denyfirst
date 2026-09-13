@@ -522,6 +522,7 @@ func printVersions(w io.Writer, t *tlsprobe.Report) {
 			fmt.Fprintf(w, "    %-9s not measured   %s\n", v.Name, v.Error)
 		}
 	}
+	printLegacyVersion(w, t.Legacy)
 }
 
 func printCiphers(w io.Writer, t *tlsprobe.Report) {
@@ -547,6 +548,8 @@ func printCiphers(w io.Writer, t *tlsprobe.Report) {
 			fmt.Fprintf(w, "    %-9s %-48s %s / %s\n", c.Verdict, c.Name, c.KeyExchange, c.Cipher)
 		}
 	}
+
+	printLegacySuites(w, t.Legacy)
 
 	// Labelled rather than left as prose.
 	//

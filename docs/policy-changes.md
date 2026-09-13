@@ -254,6 +254,35 @@ is said by the report that read it.
 
 Unreleased.
 
+**SSL 3.0, the export-grade suites and the NULL suites are now asked about.**
+The rules `version.ssl3`, `cipher.export` and `cipher.null` existed in every
+version and could not fire: this scanner measured through Go's TLS client, which
+implements none of them, so a server still accepting SSL 3.0 was reported as
+refusing every version and graded nothing. That was the flattering direction on
+exactly the servers that most need the finding. A server accepting any of them
+now comes back `insecure`. Nothing about such a server moved; its acceptance
+became visible. No rule identifier and no verdict changed.
+
+Each is one hand-written ClientHello: SSL 3.0 offering the suites a server of
+that era would choose among, and a TLS 1.2 hello offering every export suite
+and, separately, every NULL suite. No handshake is completed, no certificate is
+read, and at most seventy-eight bytes of the reply are parsed. What is
+established is whether *any* of each is accepted, not every one that is, and
+the standing limit says so.
+
+Only an alert is a refusal. A server that closes the connection instead is
+reported as not measured, because a firewall does the same thing and neither is
+the server declining (R4). And the hellos are sent only where an ordinary
+handshake was answered: a name that did not resolve costs nobody four more
+connections.
+
+**Whether a downgraded hello is refused is reported, and not graded.** Where a
+server accepts more than one version, a hello claiming the older one and
+carrying `TLS_FALLBACK_SCSV` is sent. RFC 7507 asks a server that speaks
+something newer to refuse it. Whether it did is described; no verdict moves,
+because what a downgrade costs depends on the version it lands on, and that
+version is graded on its own.
+
 **A revocation list can now raise the `cert.revoked` finding.** Until this version a
 certificate was reported as revoked only when the server stapled a status
 response that verified against the issuing authority and said so. That path has

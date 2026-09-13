@@ -394,9 +394,68 @@ function versions(tls) {
 
     body.appendChild(row);
   }
+
+  // SSL 3.0, asked with a hand-written hello because Go's client cannot speak
+  // it. Beside the other versions and in the same three words, so a reader
+  // scanning the list for the obsolete one finds it where they look — and
+  // "refused" only where the server said no (R4).
+  const ssl3 = tls.legacy && tls.legacy.asked ? tls.legacy.ssl3 : null;
+  if (ssl3) {
+    const row = el("tr");
+    row.appendChild(el("td", null, "SSL 3.0"));
+    row.appendChild(outcomeCell({ supported: ssl3.accepted, refused: ssl3.refused, error: ssl3.reason }));
+    const grade = ssl3.accepted && ssl3.versionGrade ? ssl3.versionGrade.verdict : "";
+    row.appendChild(el("td", markClass(grade), grade || "—"));
+    body.appendChild(row);
+  }
+
   table.appendChild(body);
   frag.appendChild(table);
 
+  return frag;
+}
+
+// What the hand-written hellos were answered with.
+//
+// The same rows the terminal prints, in the same order and words (R16). Titled
+// as asked by hand, because these are not an enumeration: each is one hello
+// offering every suite of a family at once, and "export: refused" means none of
+// them was accepted by that hello, not that each was tried.
+function legacy(tls) {
+  const l = tls && tls.legacy;
+  if (!l || !l.asked) return document.createDocumentFragment();
+
+  const frag = document.createDocumentFragment();
+  frag.appendChild(sectionTitle("Asked with a hand-written hello"));
+
+  const table = el("table", "rows");
+  const body = el("tbody");
+
+  const answer = (label, a) => {
+    const row = el("tr");
+    row.appendChild(el("td", null, label));
+    row.appendChild(outcomeCell({ supported: a.accepted, refused: a.refused, error: a.reason }));
+    const suite = a.accepted && a.suite ? a.suite : null;
+    row.appendChild(el("td", markClass(suite ? suite.verdict : ""),
+      suite ? suite.verdict + "  ·  " + suite.name + " at " + a.version : "—"));
+    body.appendChild(row);
+  };
+  answer("SSL 3.0", l.ssl3);
+  answer("export", l.export);
+  answer("NULL", l.null);
+
+  const f = l.fallback;
+  const row = el("tr");
+  row.appendChild(el("td", null, "fallback"));
+  row.appendChild(el("td", f.measured ? null : "mark-faint",
+    f.measured ? (f.honoured ? "honoured" : "not honoured") : "not measured"));
+  row.appendChild(el("td", null, f.measured
+    ? "a hello claiming only " + f.asked + (f.honoured ? " was refused" : " was answered")
+    : f.reason));
+  body.appendChild(row);
+
+  table.appendChild(body);
+  frag.appendChild(table);
   return frag;
 }
 
@@ -786,6 +845,7 @@ function buildTLS(data) {
   frag.appendChild(findings(data.findings, verdict));
   frag.appendChild(versions(data.tls));
   frag.appendChild(ciphers(data.tls, data));
+  frag.appendChild(legacy(data.tls));
   frag.appendChild(certificate(data.certificate, data.tls, data.issuance, data.stapling, data));
   frag.appendChild(notes(data.notes, verdict));
   return frag;
