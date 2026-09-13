@@ -1,0 +1,98 @@
+name: CT log list
+
+# Compares the certificate transparency logs internal/ctlogs carries with the
+# list Chrome publishes, and opens an issue when the logs have changed.
+#
+# It does not update the list, and that is the design rather than a gap. Every
+# commit on a pull request must be signed by a key in .github/commit-signers
+# (S6), and a workflow able to open a pull request that passes that check would
+# be a machine this project does not control holding the maintainer's signing
+# key. So this job can read the repository and write issues, and nothing else;
+# a person runs the refresh, reads the diff, and commits it signed.
+#
+# The comparison is of the logs — identifier and state — and not of the file,
+# which Google regenerates often with a new version and no change to any log.
+
+on:
+  schedule:
+    # Tuesday morning, off the hour, the day after the security watch.
+    - cron: "41 5 * * 2"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ct-log-list
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    name: Carried logs match the published list
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Check out the default branch
+        run: |
+          git init -q
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch -q --depth 1 origin "${GITHUB_REF_NAME}"
+          git checkout -q FETCH_HEAD
+
+      - name: Compare the carried logs with the published list
+        id: compare
+        run: |
+          set +e
+          go run ./internal/ctlogs/refresh -check > compare.txt 2>&1
+          code=$?
+          cat compare.txt
+          echo "code=${code}" >> "${GITHUB_OUTPUT}"
+          exit 0
+
+      - name: Open or update an issue when the logs changed
+        if: steps.compare.outputs.code == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          title="The carried CT log list is out of date"
+
+          {
+            echo "The list Chrome publishes names logs, or log states, that the copy in"
+            echo "internal/ctlogs does not. Receipts from those logs are reported as"
+            echo "unverifiable against the carried list until it is refreshed."
+            echo
+            echo "Refresh it on a machine that can sign the commit:"
+            echo
+            echo "    go run ./internal/ctlogs/refresh"
+            echo
+            echo "Read the diff, commit it signed, and open a pull request. This job"
+            echo "cannot write code, deliberately: a workflow that could would need a"
+            echo "signing key (S6)."
+            echo
+            echo "What changed:"
+            echo
+            echo '```'
+            cat compare.txt
+            echo '```'
+          } > body.md
+
+          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open \
+            --search "\"${title}\" in:title" --json number --jq '.[0].number // empty')"
+
+          if [ -n "${existing}" ]; then
+            gh issue comment "${existing}" --repo "${GITHUB_REPOSITORY}" --body-file body.md
+          else
+            gh issue create --repo "${GITHUB_REPOSITORY}" --title "${title}" --body-file body.md
+          fi
+
+      - name: Fail when the comparison could not be made
+        if: steps.compare.outputs.code != '0' && steps.compare.outputs.code != '1'
+        run: |
+          echo "The comparison did not run to an answer: a fetch failed, or a list"
+          echo "did not verify against Google's key. A list that does not verify is"
+          echo "not Google's list, and is never written."
+          exit 1

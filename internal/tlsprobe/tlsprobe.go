@@ -213,6 +213,12 @@ type Report struct {
 	// one log twice.
 	SCTLogIDs []string `json:"sctLogIds,omitempty"`
 
+	// SCTs are the handshake timestamps as sent, so internal/ctlogs can check
+	// each one's signature. Not serialised: they are input to a check rather
+	// than a fact about the server, and the check's result is what a reader
+	// needs — the same reasoning as OCSPResponse.
+	SCTs [][]byte `json:"-"`
+
 	// Duration is the wall time the probe took, for Go callers.
 	//
 	// It is not serialised directly: time.Duration marshals as nanoseconds,
@@ -416,6 +422,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 		report.OCSPStapled = len(state.OCSPResponse) > 0
 		report.OCSPResponse = state.OCSPResponse
 		report.SCTCount = len(state.SignedCertificateTimestamps)
+		report.SCTs = state.SignedCertificateTimestamps
 		var unreadable int
 		report.SCTLogIDs, unreadable = handshakeLogIDs(state.SignedCertificateTimestamps)
 		if unreadable > 0 {

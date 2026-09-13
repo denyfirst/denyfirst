@@ -75,6 +75,10 @@ jobs:
           # choice of them makes it read further than an answer needs.
           - package: ./internal/rawhello
             target: FuzzReadReply
+          # Receipts inside a certificate: every length in them is chosen by
+          # whoever issued the certificate being scanned.
+          - package: ./internal/ctlogs
+            target: FuzzReadReceipts
           # Both of these read what the scanned server sends. The first
           # decides where this program connects next, which makes it the only
           # place in the web probe where a hostile string chooses an action

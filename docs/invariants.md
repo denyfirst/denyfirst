@@ -1994,7 +1994,7 @@ identifier, and a test requires the page to read them.
 `TestTheIssuerIsFoundWhereverItSitsInTheChain`,
 `TestTheRevocationLineSaysWhetherTheResponseWasVerified`, `FuzzCheck`
 
-### R3c — Transparency receipts are counted, not believed
+### R3c — Transparency receipts are counted, and checked against a list that names its date
 
 A publicly trusted certificate has to be recorded in append-only logs, and each
 log answers with a signed receipt. Those receipts reach a client three ways:
@@ -2017,10 +2017,27 @@ behind its own receipts, and the usual arrangement is that both name the same
 ones; adding two counts reports a log twice, which is how a certificate logged
 in two places comes to be described as logged in four.
 
-Nothing is verified. Checking a receipt needs the issuing log's public key, and
-the set of qualified logs is a list browsers ship and revise; carrying a copy
-would be a dependency on somebody else's judgement that goes stale between
-releases. The report says the receipts were counted and not checked.
+Each receipt is checked, offline. This said for a long time that nothing was
+verified, because checking needs the issuing log's key and carrying a copy of
+the list would be a dependency on somebody else's judgement that goes stale
+between releases. Both halves are answered rather than ignored. **The judgement
+is not edited:** `internal/ctlogs` carries Google's published list byte for
+byte, and believes it only if Google's signature verifies against a key
+written into the source rather than fetched beside the list; a test checks the
+carried copy on every build, so a list changed by hand fails. **Staleness is
+said, not hidden:** every report names the list's date and version; a receipt
+from a log the list does not name is unsettled, never false, because a newer
+log looks exactly like that; and a weekly job compares the carried logs with
+the published ones and opens an issue when they differ. It cannot update the
+list itself: that would need a signing key on a machine this project does not
+control (S6), so a person refreshes it and signs the commit.
+
+Four outcomes are kept apart: verified; a signature that fails, which vouches
+for nothing; a log the list does not name; and a receipt that could not be
+checked at all, usually for want of the issuer. The embedded receipt is
+checked against the precertificate RFC 6962 says the log signed — the
+certificate with the receipt list and poison extension removed, re-encoded —
+and against the issuer found in the chain the server sent.
 
 Nothing is graded either, for the same reason as R3b. The third delivery
 channel is not read, so a certificate showing none by the first two may still
@@ -2039,20 +2056,43 @@ whatever host was named in the request — so every declared length is checked
 against what remains rather than trusted, and a mismatch ends the parse rather
 than being clamped to fit. There is a fuzz target.
 
-The count sits on a line of the report and the caveat sits in the note, which
-is not an accident of layout. The count is something this service measured and
-measured exactly; that the receipts went unchecked against the issuing log's
-key is something it did not do. On the same line the second reads as though
-the first were uncertain.
+The count sits on a line of the report and the caveats sit in the notes, which
+is not an accident of layout. The line adds only the measured fact of how many
+signatures verified, and nothing when none were checked; why a receipt could
+not be checked needs room the line does not have, and on the line it would read
+as though the count itself were uncertain.
 
 *Enforced in:* `internal/certinfo.embeddedSCTs` for the count,
+`internal/ctlogs.Parse` and `internal/ctlogs.CheckEmbedded` for the check,
 `internal/policy.DescribeTransparency` for what it means, joined in
-`internal/scan.Scan`
+`internal/scan.checkReceipts`
 *Guarded by:* `TestParseSCTListCountsTimestampsAndLogs`,
 `TestParseSCTListRefusesMalformedInput`, `FuzzParseSCTList`,
 `TestDescribeTransparencySeparatesTheFourSituations`,
 `TestLoggedNoteDoesNotClaimTheReceiptsWereVerified`,
-`TestBothCountsAreReported`, `TestTransparencyReachesThePage`
+`TestBothCountsAreReported`, `TestTransparencyReachesThePage`,
+`TestTheCarriedListIsGooglesSigned`, `TestAListGoogleDidNotSignIsRefused`,
+`TestALogWhoseIdentifierIsNotItsKeyIsRefused`,
+`TestTheReceiptsInARealCertificateVerify`,
+`TestReceiptsCheckedAgainstTheWrongIssuerDoNotVerify`,
+`TestWithoutTheIssuerNothingIsVerified`,
+`TestAReceiptFromALogNotInTheListIsUnknownRatherThanFalse`,
+`TestThePrecertificateHasNoReceiptList`,
+`TestAHandshakeReceiptSignsTheCertificateItself`,
+`TestAMalformedReceiptIsUnreadable`, `TestDifferenceSeesWhatChanged`,
+`FuzzReadReceipts`, `TestVerifiedReceiptsNameTheListTheyWereCheckedAgainst`,
+`TestUncheckedReceiptsAreSaidNotToBeVerified`,
+`TestABadSignatureIsSaidAndNotGraded`,
+`TestAReceiptFromAnUnlistedLogIsUnsettledNotFalse`,
+`TestAnUnreadableReceiptIsUnsettled`,
+`TestTheTransparencyLineSaysHowManySignaturesVerified`,
+`TestCoverageSaysVerifiedOnlyWhenEveryReceiptWas`,
+`TestTheReceiptsLimitNamesTheListAndNoPolicy`,
+`TestAScanChecksTheReceiptsItCounts`, `TestAChainWithoutItsIssuerVerifiesNothing`,
+`TestNoCertificateMeansNothingChecked`, `TestAHandshakeReceiptIsCheckedToo`,
+`TestTheTransparencyJoinChecksTheReceipts`, `TestAListNamingTooManyLogsIsRefused`,
+`TestThePoisonExtensionIsRemovedToo`, `TestAReceiptNamingAnotherHashIsUnsupported`,
+`TestCheckExitsOneWhenTheLogsChanged`
 
 ### R3d — A limit of this scanner's network is not a fault of the server
 

@@ -281,6 +281,18 @@ is said by the report that read it.
 
 Unreleased.
 
+**Transparency receipts are now checked, not only counted.** Each receipt a
+certificate or handshake carries is checked against the key Chrome's log list
+gives its log, offline. The list is Google's published file, carried byte for
+byte in `internal/ctlogs` and believed only when Google's signature over it
+verifies against a key written into the source. A report names the list's
+date and version, says how many signatures verified, and keeps apart a
+signature that fails, a log the list does not name, and a receipt that could
+not be checked. **No verdict moved:** transparency is described, never graded,
+because how many receipts a certificate needs is each browser's policy (R21).
+A weekly workflow opens an issue when the published logs change; a person
+refreshes the list with `go run ./internal/ctlogs/refresh` and signs the commit.
+
 **SSL 3.0, the export-grade suites and the NULL suites are now asked about.**
 The rules `version.ssl3`, `cipher.export` and `cipher.null` existed in every
 version and could not fire: this scanner measured through Go's TLS client, which
