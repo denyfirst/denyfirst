@@ -517,7 +517,7 @@ func TestScanTakesADomainAndNothingElse(t *testing.T) {
 }
 
 // Every mail report carries the standing limit, whatever the domain looks like.
-func TestEveryReportSaysItOnlyReadDNS(t *testing.T) {
+func TestEveryReportCarriesTheMailLimit(t *testing.T) {
 	skipUnderDemo(t)
 	z := &zone{records: map[string][]string{
 		"example.com":        {"v=spf1 -all"},
@@ -531,8 +531,8 @@ func TestEveryReportSaysItOnlyReadDNS(t *testing.T) {
 
 	standing := policy.NotesOfKind(got.Notes, policy.KindStanding)
 	if len(standing) == 0 {
-		t.Fatal("a report that read only DNS does not say so, so it reads as a complete picture " +
-			"of the domain's mail rather than of its DNS")
+		t.Fatal("a report carries no standing limit, so it reads as a complete picture " +
+			"of the domain's mail rather than of what this scan could see")
 	}
 }
 

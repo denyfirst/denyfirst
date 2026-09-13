@@ -1,6 +1,10 @@
 package policy
 
-import "strconv"
+import (
+	"slices"
+	"strconv"
+	"strings"
+)
 
 // The rules for a domain's mail policy.
 //
@@ -214,6 +218,49 @@ type MailFacts struct {
 
 	// DKIMKeys is one entry per selector asked about.
 	DKIMKeys []DKIMKey `json:"dkimKeys,omitempty"`
+
+	// The exchangers themselves
+
+	// ExchangersContacted is true when the exchangers were spoken to at all.
+	// Without it an empty Exchangers is silence rather than a domain whose
+	// exchangers offer nothing (R4).
+	ExchangersContacted bool `json:"exchangersContacted"`
+
+	// ExchangersReason says why they were not: a deployment that does not
+	// contact mail servers is a limit of the installation, and says so.
+	ExchangersReason string `json:"exchangersReason,omitempty"`
+
+	// ExchangersPartial is true when the domain publishes more exchangers than
+	// were contacted, so what is said below covers only the first few.
+	ExchangersPartial bool `json:"exchangersPartial,omitempty"`
+
+	// Exchangers is what each one answered.
+	Exchangers []ExchangerTLS `json:"exchangers,omitempty"`
+}
+
+// ExchangerTLS is what one mail exchanger answered when asked for encryption.
+//
+// Reduced to what a report says, and filled from internal/smtptls where it was
+// measured; this package does not import that one, for the reason every other
+// fact type here is its own: a rule is readable without reading a network
+// client.
+type ExchangerTLS struct {
+	Host string `json:"host"`
+
+	Connected bool `json:"connected"`
+	Measured  bool `json:"measured"`
+	Offered   bool `json:"offered"`
+	Upgraded  bool `json:"upgraded"`
+
+	Version string `json:"version,omitempty"`
+	Suite   string `json:"suite,omitempty"`
+
+	Trusted           bool   `json:"trusted"`
+	NameMatches       bool   `json:"nameMatches"`
+	CertificateReason string `json:"certificateReason,omitempty"`
+
+	Reason          string `json:"reason,omitempty"`
+	ConnectTimedOut bool   `json:"connectTimedOut,omitempty"`
 }
 
 // MailFinding is the graded result.
@@ -367,6 +414,51 @@ func GradeMail(f MailFacts) MailFinding {
 			rfc8461)
 	}
 
+	// An exchanger the enforcing policy covers, and cannot satisfy.
+	//
+	// RFC 8461 asks two things of an exchanger under a policy in enforce mode:
+	// that it offer STARTTLS, and that the certificate it presents validate for
+	// its own name. A sending server that finds either missing must not
+	// deliver. So this is the same break as the uncovered exchanger above,
+	// found a step later — the policy names the host and the host cannot keep
+	// the promise — and it is graded the same, weak, for the same reason: it
+	// fails closed.
+	//
+	// Only what was measured. An exchanger that advertised STARTTLS and could
+	// not negotiate with this client is not graded, because a TLS stack that
+	// shares nothing with Go's is a limit of this client before it is a fault
+	// of the server (R4). And an exchanger the policy does not cover is already
+	// the finding above, so it is not raised twice.
+	if f.MTASTSPolicyRead && f.MTASTSMode == "enforce" {
+		for _, x := range f.Exchangers {
+			if !x.Measured || slices.Contains(f.MTASTSUncovered, x.Host) {
+				continue
+			}
+
+			var fails string
+			switch {
+			case !x.Offered:
+				fails = "does not offer STARTTLS"
+			case !x.Upgraded:
+				continue
+			case !x.Trusted:
+				fails = "presents a certificate that does not verify: " + x.CertificateReason
+			case !x.NameMatches:
+				fails = "presents a certificate that does not name it"
+			default:
+				continue
+			}
+
+			add("mail.mta-sts-exchanger-fails-policy", Weak,
+				"An exchanger the enforcing MTA-STS policy covers cannot satisfy it",
+				x.Host+" "+fails+". The domain's MTA-STS policy is in enforce mode, and RFC 8461 says a "+
+					"sending server applying it must not deliver to an exchanger that does not offer "+
+					"STARTTLS with a certificate valid for its own name — so mail routed there is refused "+
+					"by every sender that honours MTA-STS rather than delivered.",
+				rfc8461)
+		}
+	}
+
 	// A signing key a receiver is entitled to ignore.
 	//
 	// Graded, and it is the only thing about DKIM that is. RFC 8301 raised the
@@ -480,6 +572,7 @@ func describeMail(f MailFacts) []Note {
 	}
 
 	out = append(out, describeMailPath(f)...)
+	out = append(out, describeExchangers(f)...)
 
 	// The limits of the method, from the one place that declares them. A
 	// report that wrote its own would drift from the page explaining them, and
@@ -514,16 +607,20 @@ func includeList(includes []string) string {
 	return out + "."
 }
 
-// LimitMailIsDNSOnly is what a mail report cannot see, and it is true of every
-// one of them.
+// LimitMailSendsNothing is what a mail report cannot see and did not do, and it
+// is true of every one of them.
 //
 // Stated as a limit rather than left out, for the reason R4 gives about every
 // other silence: a report that lists what a domain publishes and says nothing
-// about the rest reads as a complete picture of the domain's mail. It is a
-// complete picture of the domain's *DNS*, which is a different thing.
-var LimitMailIsDNSOnly = StandingLimit{
-	ID:    "mail-is-dns-only",
-	Title: "No mail server was contacted",
+// about the rest reads as a complete picture of the domain's mail.
+//
+// It was LimitMailIsDNSOnly, titled "No mail server was contacted", until the
+// exchangers could be asked for encryption. That sentence is no longer true of
+// every deployment, so it went — see the note inside for the same move made
+// once before, when the MTA-STS policy became readable.
+var LimitMailSendsNothing = StandingLimit{
+	ID:    "mail-sends-nothing",
+	Title: "No message was sent",
 
 	// This said "Everything here was read from DNS" and carried a sentence
 	// about the MTA-STS policy not being read, until the policy could be read.
@@ -538,19 +635,17 @@ var LimitMailIsDNSOnly = StandingLimit{
 	// So what is true of every mail scan stays here, and what this particular
 	// scan read about the policy is said by the report that read it. describeSTS
 	// names the reason where there is one.
-	Text: "No mail server was contacted, no message was composed or sent, and nothing that would " +
-		"change state at the other end was attempted. Whether this domain's mail servers actually " +
-		"accept encrypted connections, and what certificates they present, was not measured — " +
-		"that needs a connection on the mail path. Where DANE is published, that the binding is " +
-		"correct was not checked, which needs a certificate from the host. And a DKIM signing key " +
-		"is read only under a selector this scan was told to look under: DNS cannot list what is " +
-		"beneath a name, so which selectors were tried — if any — is said in the report itself " +
-		"rather than here.",
+	Text: "No message was composed or sent, and nothing that would change state at the other end " +
+		"was attempted. Where a mail exchanger was contacted, the conversation ended once encryption " +
+		"had been negotiated or declined: no sender, recipient or message was ever named. Where DANE " +
+		"is published, that the binding is correct was not checked. And a DKIM signing key is read " +
+		"only under a selector this scan was told to look under: DNS cannot list what is beneath a " +
+		"name, so which selectors were tried — if any — is said in the report itself rather than here.",
 }
 
 // MailStandingLimits are true of every mail check this program runs.
 func MailStandingLimits() []StandingLimit {
-	return []StandingLimit{LimitMailIsDNSOnly}
+	return []StandingLimit{LimitMailSendsNothing}
 }
 
 // describeMailPath says what the domain publishes about where its mail goes and
@@ -781,6 +876,99 @@ func plainCount(n int, noun string) string {
 		return "one " + noun
 	}
 	return strconv.Itoa(n) + " " + noun + "s"
+}
+
+// describeExchangers says what the exchangers answered when asked for
+// encryption, and what could not be established.
+//
+// Almost nothing here is graded. RFC 3207 makes STARTTLS optional, and a sender
+// delivering opportunistically encrypts without checking the certificate, so an
+// exchanger offering no STARTTLS or a certificate that does not verify is a fact
+// a reader needs rather than an error a document names (R21). Where a document
+// does make it one — an enforcing MTA-STS policy — GradeMail grades it.
+func describeExchangers(f MailFacts) []Note {
+	var out []Note
+	if !f.MXRead || f.MXReason != "" || f.NullMX || len(f.MXHosts) == 0 {
+		return out
+	}
+
+	if !f.ExchangersContacted {
+		reason := f.ExchangersReason
+		if reason == "" {
+			reason = "this scan did not contact them"
+		}
+		return append(out, Unsettled("Whether the mail exchangers accept encrypted connections was not "+
+			"measured: "+reason+". That needs a conversation with each of them on port 25, and DNS cannot "+
+			"answer it."))
+	}
+
+	var (
+		verified, plain, badCertificate, unmeasured []string
+		timedOut                                    int
+	)
+	for _, x := range f.Exchangers {
+		switch {
+		case !x.Measured || (x.Offered && !x.Upgraded):
+			unmeasured = append(unmeasured, x.Host+": "+x.Reason)
+			if x.ConnectTimedOut {
+				timedOut++
+			}
+		case !x.Offered:
+			plain = append(plain, x.Host)
+		case !x.Trusted:
+			badCertificate = append(badCertificate, x.Host+" ("+x.CertificateReason+")")
+		case !x.NameMatches:
+			badCertificate = append(badCertificate, x.Host+" (it does not name that exchanger)")
+		default:
+			verified = append(verified, x.Host)
+		}
+	}
+
+	if len(verified) > 0 {
+		out = append(out, Observed("STARTTLS is offered by "+namedHosts(verified)+", and the certificate "+
+			"presented verifies for the exchanger's own name against this deployment's trust store."))
+	}
+
+	if len(plain) > 0 {
+		verb := "does"
+		if len(plain) > 1 {
+			verb = "do"
+		}
+		out = append(out, Observed(namedHosts(plain)+" "+verb+" not offer STARTTLS, so mail delivered to "+
+			thatHost(len(plain))+" crosses the network unencrypted. RFC 3207 makes STARTTLS optional, so "+
+			"this is named rather than graded; an MTA-STS policy in enforce mode refuses delivery to an "+
+			"exchanger like this, and so does DANE."))
+	}
+
+	if len(badCertificate) > 0 {
+		out = append(out, Observed("The certificate presented after STARTTLS does not verify for "+
+			strings.Join(badCertificate, "; ")+". A sender delivering opportunistically still encrypts and "+
+			"does not check the certificate, so this is not graded on its own; it is what makes MTA-STS and "+
+			"DANE fail for "+thatHost(len(badCertificate))+"."))
+	}
+
+	switch {
+	case len(unmeasured) > 0 && timedOut == len(f.Exchangers):
+		// Every exchanger, and every one of them the same way: this is the
+		// shape a network blocking outbound port 25 produces, and it is said as
+		// a likely fact about where the scan ran rather than about the servers
+		// (R3d).
+		out = append(out, Unsettled("No mail exchanger could be reached on port 25 before the time ran out. "+
+			"Many networks, residential connections and hosting providers among them, block outbound port "+
+			"25, so this most likely describes where this scan ran rather than the exchangers. Run it from a "+
+			"network that allows port 25 to have them measured."))
+	case len(unmeasured) > 0:
+		out = append(out, Unsettled("For "+plainCount(len(unmeasured), "exchanger")+", whether encrypted "+
+			"connections are accepted was not established — "+strings.Join(unmeasured, "; ")+". None of that "+
+			"is a refusal."))
+	}
+
+	if f.ExchangersPartial {
+		out = append(out, Unsettled("The domain publishes more mail exchangers than this scan contacts, so "+
+			"only the first few were asked about encryption."))
+	}
+
+	return out
 }
 
 // thatHost agrees with a count that has already been written out.

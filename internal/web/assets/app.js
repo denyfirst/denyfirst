@@ -1100,11 +1100,38 @@ function zone(facts) {
     if (facts.daneUnread) {
       row("DANE", facts.daneUnread + " could not be read");
     }
+
+    // What each exchanger answered when asked for encryption, in the words
+    // the terminal uses (R16).
+    if (hosts.length) {
+      if (facts.exchangersContacted) {
+        for (const x of facts.exchangers || []) {
+          row("STARTTLS", x.host + ": " + exchangerSays(x));
+        }
+      } else if (facts.exchangersReason) {
+        row("STARTTLS", "not measured: " + facts.exchangersReason);
+      }
+    }
   }
 
   table.appendChild(body);
   frag.appendChild(table);
   return frag;
+}
+
+// What one exchanger's STARTTLS row says.
+//
+// The same five states and the same words as exchangerLine in the command line,
+// because a reader comparing the two faces of one report should find one set of
+// facts (R16).
+function exchangerSays(x) {
+  if (!x.measured && x.connectTimedOut) return "not measured: port 25 could not be reached from here";
+  if (!x.measured) return "not measured: " + x.reason;
+  if (!x.offered) return "not offered";
+  if (!x.upgraded) return "offered, not negotiated: " + x.reason;
+  if (!x.trusted) return x.version + " " + x.suite + ", certificate does not verify: " + x.certificateReason;
+  if (!x.nameMatches) return x.version + " " + x.suite + ", certificate does not name this exchanger";
+  return x.version + " " + x.suite + ", certificate verifies";
 }
 
 // What the MTA-STS row says.

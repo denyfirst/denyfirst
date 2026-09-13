@@ -193,7 +193,7 @@ func TestAPolicyWithNoAllIsNotPrintedAsHavingOne(t *testing.T) {
 // to nothing — which has happened twice in this repository, and which a sabotage
 // found again by turning ReadMarkup off here and watching every test pass.
 func TestTheCommandLineReadsTheSTSPolicy(t *testing.T) {
-	s := mailScanner(5*time.Second, nil)
+	s := mailScanner(5*time.Second, nil, "")
 
 	if !s.ReadSTSPolicy {
 		t.Error("the command line does not read the MTA-STS policy. It runs on the operator's " +

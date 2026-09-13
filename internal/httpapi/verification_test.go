@@ -515,3 +515,22 @@ func TestTheTrustStoreReachesTheMailCheck(t *testing.T) {
 			"certificates an MTA-STS policy may be read over depends on the platform")
 	}
 }
+
+// The service asks exchangers only where it required proof of control.
+//
+// The same hole as page reading and the MTA-STS policy, one check later: a
+// service configured with no scope is scanning names nobody proved anything
+// about, and it does not also hold conversations with their mail servers.
+func TestTheServiceAsksExchangersOnlyWhereItRequiredProof(t *testing.T) {
+	withProof := New(&scan.Scanner{Verify: &verify.Scope{Secret: []byte("a deployment secret")}}, Limits{}, nil)
+	if !withProof.mail.ReadExchangers {
+		t.Error("a service that requires proof of control does not ask the exchangers, so its mail " +
+			"reports can never say whether an enforcing MTA-STS policy is kept")
+	}
+
+	withoutProof := New(&scan.Scanner{}, Limits{}, nil)
+	if withoutProof.mail.ReadExchangers {
+		t.Error("a service configured with no scope holds conversations with the mail servers of " +
+			"names nobody proved anything about")
+	}
+}

@@ -244,6 +244,11 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 			Verify:        scanner.Verify,
 			Roots:         scanner.Roots,
 			ReadSTSPolicy: scanner.Verify != nil,
+
+			// The exchangers are asked on the same condition and for the same
+			// argument: the MX hosts of a domain somebody has shown is theirs.
+			ReadExchangers: scanner.Verify != nil,
+
 			DKIMSelectors: dkim.DocumentedSelectors(),
 		},
 		limits:  limits,

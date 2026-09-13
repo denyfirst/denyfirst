@@ -92,6 +92,16 @@ Eight ports, all implicit-TLS: 443, 8443, 465, 636, 990, 993, 995 and 5061.
 STARTTLS ports are deliberately absent — the probe speaks TLS from the first
 byte, so 25 or 587 would fail in a way that reads as a fault of the server.
 
+**One exception, and it is not a target a person names.** The mail check asks
+each of a domain's exchangers for STARTTLS on port 25 (`internal/smtptls`). It
+is not the TLS check reaching a port somebody typed: the hosts are the ones the
+domain's own MX records name, the port is the one mail is delivered on, the
+dialler is `safedial` with port 25 as its whole allow list, and it runs only
+where the command line runs it or a service has proof of control of the
+domain. The conversation is a greeting, EHLO, STARTTLS and QUIT — no sender,
+recipient or message. Nothing about the TLS check's list changes: `scan.Scan`
+still refuses 25 for every target a caller gives it.
+
 **Two locks, on different doors.** `Scanner.Scan` refuses the port for every
 caller, which is why the check is there and not in the HTTP handler; and the
 list is handed down to the dialer, so a prober reached without passing `Scan`
@@ -110,7 +120,10 @@ project is worth what the code says, and the code is here.
 *Lifted by:* the command line only
 *Guarded by:* `TestScannerEnforcesPortsByDefault`, `TestCheckPort`,
 `TestAllowedPortsAreImplicitTLS`, `TestThePortAllowListReachesTheDialer`,
-`TestTheAllowListReachesTheDialer`
+`TestTheAllowListReachesTheDialer`,
+`TestTheDefaultDiallerReachesOnlyPort25OnPublicAddresses`,
+`TestOnlyTheExchangersTheDomainNamesAreAsked`,
+`TestTheServiceAsksExchangersOnlyWhereItRequiredProof`
 
 ### N4 — Every network operation is bounded
 
@@ -126,6 +139,9 @@ an answer needs)
 *Guarded by:* `TestCallerDeadlineWins`, `TestTotalTimeoutBoundsTheOperation`,
 `TestAskStopsWhenTheContextDoes`, `TestNoMoreIsReadThanTheAnswerNeeds`,
 `TestAskStopsWhenTheContextIsCancelledWithoutADeadline`,
+`TestASilentExchangerIsBounded`,
+`TestAnEnormousLineIsNotReadToItsEnd`,
+`TestAReplyThatNeverEndsIsBounded`,
 `TestARecordFromAnotherProtocolVersionIsNotBelieved`,
 `TestAnOversizedRecordIsNotBelievedWhateverFollows`,
 `TestOnlyAServerHelloIsAnAcceptance`,
@@ -1038,9 +1054,10 @@ Silence there would let a clean answer read as a clean estate.
 
 The mail check reads three names — the domain, `_dmarc.` under it, and
 `_smtp._tls.` under it — and whatever the domain's own sender policy points at.
-It opens one connection, to one address, under conditions set out below — and
-none to a mail server. No mail server is contacted, no message is composed,
-nothing is sent, and nothing that would change state at the other end is
+It opens two kinds of connection, under conditions set out below: one to the
+MTA-STS policy file a zone announces, and one short conversation with each
+exchanger the zone names. No message is composed or sent, no sender or
+recipient is named, and nothing that would change state at the other end is
 attempted.
 
 That is not restraint applied to the check. It is what these records are: a
@@ -1121,8 +1138,22 @@ fenced four ways, and each is a test:
   refuses private and reserved destinations (N1), no redirect followed, no
   proxy, a bounded body, and a certificate that must verify for the policy host
   against the deployment's own trust store (R7).
-- **Not a mail server.** The policy host is a web host; the claim that nothing
-  on the mail path is contacted survives.
+- **Not a mail server.** The policy host is a web host, and one GET is all it
+  is sent.
+
+**An exchanger is asked for encryption, and for nothing else.** Whether an MX
+offers STARTTLS, and what certificate it presents, is the fact an enforcing
+MTA-STS policy and a DANE record both depend on, and only the exchanger can
+answer it. So each exchanger the zone names — at most eight, the list being
+written by whoever is measured — is asked on port 25: greeting, EHLO, STARTTLS,
+the handshake, QUIT. There is no MAIL FROM, no RCPT TO and no DATA, so nothing
+is delivered and nothing is asked about a person. The EHLO name is the client's
+own, as RFC 5321 says, not a name invented to hide who asked. Replies are
+bounded before they are believed, bytes sent before encryption begins end the
+conversation (RFC 3207), and the certificate is judged against the deployment's
+own store (R7). A connection that never opens is reported as what a network
+blocking outbound port 25 produces, not as a fault of the exchanger (R3d). It
+runs where the command line runs it, or a service has proof of control.
 
 Where the policy is not read — the deployment does not read it, or the fetch
 failed — the report says so with the reason, and nothing about the policy is
@@ -1143,15 +1174,16 @@ at the last `@`, at the edge, before anything can log, count or report it. A
 local part is a person's identity and every question here is about the zone, so
 there is nowhere for it to go rather than a rule about not putting it there.
 
-**And every report says no mail server was contacted.** Whether the domain's
-mail servers accept encrypted connections, and what certificates they present,
-was not measured. A DKIM key is read only under a selector the scan was told to
-look under — selectors cannot be listed from DNS — and the report names every
-one it tried, so "these names hold nothing" is never rendered as "this domain
-publishes no key" (R4). The standing limit said "everything here was read from
-DNS" until the policy file could be read, and it had to lose that sentence
-rather than reword it: whether the policy is read differs by deployment, and a
-standing limit is the same sentence on every report.
+**And every report says no message was sent.** No sender, recipient or message
+was ever named, and a DANE binding's correctness was not checked. A DKIM key is
+read only under a selector the scan was told to look under — selectors cannot
+be listed from DNS — and the report names every one it tried, so "these names
+hold nothing" is never rendered as "this domain publishes no key" (R4). The
+standing limit said "everything here was read from DNS" until the policy file
+could be read, and "no mail server was contacted" until the exchangers could be
+asked; each sentence went rather than being reworded, because what a scan
+contacted differs by deployment and a standing limit is the same sentence on
+every report.
 
 *Enforced in:* `internal/mailscan`, `internal/spf`, `internal/mtasts`,
 `internal/policy.GradeMail`, `internal/policy.MailStandingLimits`,
@@ -1167,7 +1199,7 @@ standing limit is the same sentence on every report.
 `TestOnlyARecordThatAnnouncesItselfIsDMARC`,
 `TestTheDefaultPercentIsTheOneRFC7489Specifies`,
 `TestAnEnormousTagDoesNotTravel`,
-`TestEveryReportSaysItOnlyReadDNS`,
+`TestEveryReportCarriesTheMailLimit`,
 `TestTheDurationIsMeasuredRatherThanAssumed`,
 `TestAPolicyThatIncludesItselfStops`,
 `TestTheCountFollowsEveryInclude`,
@@ -1186,7 +1218,7 @@ standing limit is the same sentence on every report.
 `TestTheLookupCountIsReportedBeforeItIsAFault`,
 `TestOverTheLimitTheCountIsNotAlsoReportedAsFine`,
 `TestNotReadIsDistinguishableFromNotPublished`,
-`TestEveryMailReportSaysItOnlyReadDNS`,
+`TestEveryMailReportCarriesTheStandingLimit`,
 `TestTheMailLimitIsTheDeclaredOne`,
 `TestMailFindingsNameTheMailRuleSet`,
 `TestTheMailExchangersAreRead`,
@@ -1259,7 +1291,27 @@ standing limit is the same sentence on every report.
 `TestTheCommandLineReadsTheSTSPolicy`,
 `TestTheMTASTSRowSaysWhatWasRead`,
 `TestTheServiceFetchesTheSTSPolicyOnlyWhereItRequiredProof`,
-`TestTheTrustStoreReachesTheMailCheck`
+`TestTheTrustStoreReachesTheMailCheck`,
+`TestNoSenderRecipientOrMessageIsEverNamed`,
+`TestAnExchangerOfferingSTARTTLSIsUpgradedAndJudged`,
+`TestAnExchangerWithoutSTARTTLSIsMeasuredAsNotOffering`,
+`TestTheCertificateIsJudgedOnTrustAndNameSeparately`,
+`TestDataBeforeEncryptionStopsTheConversation`,
+`TestTheEHLONameCannotCarryACommand`,
+`TestTheEHLONameIsTheClientsOwn`,
+`TestExchangersAreAskedOnlyWhereTheDeploymentAllows`,
+`TestANullMXIsNeverContacted`,
+`TestTheExchangersAskedAreBounded`,
+`TestWhatAnExchangerAnsweredReachesTheReport`,
+`TestTheDefaultExchangerProberCarriesTheStoreAndTheName`,
+`TestAnEnforcingPolicyGradesAnExchangerThatCannotSatisfyIt`,
+`TestAnExchangerSatisfyingTheEnforcingPolicyIsNotAFinding`,
+`TestATestingPolicyDoesNotGradeTheExchanger`,
+`TestAnUncoveredExchangerIsNotGradedTwice`,
+`TestAnEnforcingPolicyAndAFailingExchangerAreGradedTogether`,
+`TestTheMailLimitIsTrueWhenExchangersWereContacted`,
+`TestTheCommandLineAsksTheExchangersWithItsName`,
+`TestEveryFlagIsReadSomewhere`
 
 ## Input
 
@@ -2032,7 +2084,9 @@ written on.
 `internal/safedial.soleFamily`, `internal/tlsprobe.classifyHandshakeError`
 *Guarded by:* `TestASingleFamilyIsNamedAndAMixedOneIsNot`,
 `TestTheFamilyWrapperHidesNothing`,
-`TestAnUnreachableHostSaysWhichFamilyWasTried`
+`TestAnUnreachableHostSaysWhichFamilyWasTried`,
+`TestAConnectTimeoutSaysPort25MayBeBlocked`,
+`TestEveryExchangerTimingOutSaysPort25MayBeBlockedHere`
 
 ### R4 — Nothing measured is not the same as passing, or as failing
 
@@ -2061,7 +2115,11 @@ while the server that offered it was called strong.
 `TestAClosedConnectionIsNotARefusal`,
 `TestSilenceIsNotARefusal`,
 `TestOnlyAFatalAlertIsARefusal`,
-`TestLegacyNeverTurnsNoVerdictIntoStrong`
+`TestLegacyNeverTurnsNoVerdictIntoStrong`,
+`TestAnExchangerThisClientCouldNotNegotiateWithIsNotGraded`,
+`TestExchangersNotContactedAreSaidNotToHaveBeen`,
+`TestAnUnmeasuredExchangerIsNotGradedUnderAnEnforcingPolicy`,
+`TestARefusedGreetingIsNotMeasured`
 
 ### R4a — A verdict's stated reason is true of the thing it grades
 
@@ -2691,7 +2749,10 @@ reached a reader of the JSON and no one else. They are collected now.
 `TestThePageReadsTheLegacyFieldsTheAPISends`,
 `TestSSL3IsAVersionRowInTheSameWords`,
 `TestTheHandWrittenHellosArePrintedWithWhatTheyFound`,
-`TestNothingIsPrintedForAQuestionNotAsked`
+`TestNothingIsPrintedForAQuestionNotAsked`,
+`TestThePageReadsTheExchangerFieldsTheAPISends`,
+`TestEachExchangerIsARowInThePagesWords`,
+`TestExchangersNotContactedAreARowSayingWhy`
 
 ### R17 — A finding claims what was measured, not what it implies
 
@@ -3094,6 +3155,8 @@ what a downgrade costs is the grade of the version it lands on)
 *Guarded by:* `TestAShortMaxAgeIsDescribedAndNotGraded`,
 `TestTheFallbackSignalIsReadInAllThreeWays`,
 `TestTheFallbackIsNotAskedOfASingleVersion`,
+`TestAnExchangerWithoutSTARTTLSIsDescribedAndNotGraded`,
+`TestAnExchangerCertificateThatFailsIsDescribedAndNotGraded`,
 `TestIncludeSubDomainsIsDescribedAndNotGraded`,
 `TestATemporaryRedirectIsDescribedNotGraded`,
 `TestAPermanentRedirectIsNotCalledTemporary`,
