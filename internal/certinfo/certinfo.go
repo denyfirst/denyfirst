@@ -123,6 +123,15 @@ type Report struct {
 	// matters more than the boolean.
 	VerifyError string `json:"verifyError,omitempty"`
 
+	// Stores is what the carried root stores of Mozilla, Chrome, Microsoft and
+	// Apple make of the chain. Said beside Trusted and never instead of it:
+	// the verdict rests on the deployment's own store (R7). See
+	// internal/rootstores.
+	Stores *policy.StoreFacts `json:"stores,omitempty"`
+
+	// StoresLine is the sentence both faces of a report print for it (R16).
+	StoresLine string `json:"storesLine,omitempty"`
+
 	// CheckedAt is the moment the validity window was judged against.
 	CheckedAt time.Time `json:"checkedAt"`
 
@@ -774,6 +783,12 @@ func Analyse(chain []*x509.Certificate, hostname string, now time.Time, roots *x
 	// Raised wherever a chain was checked, which is wherever there is a leaf:
 	// the word appears on the report either way, and a reader of "untrusted"
 	// needs the caveat as much as a reader of "trusted".
+	// And what four clients' stores make of it, beside the verdict.
+	stores := judgeStores(chain, now)
+	report.Stores = &stores
+	report.StoresLine = policy.StoresLine(stores)
+	report.Notes = append(report.Notes, policy.DescribeStores(stores)...)
+
 	report.standing(policy.LimitOneTrustStore)
 
 	if !facts.ChainComplete {
