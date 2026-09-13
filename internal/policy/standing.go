@@ -113,11 +113,18 @@ var (
 			"withdrawn.",
 	}
 
+	// "Transparency receipts are counted and not verified ... this service
+	// carries no copy of that list" until a copy was carried. It is now
+	// Google's signed file, verified against a key in the source, and the
+	// report names its date; see internal/ctlogs for why that answers the old
+	// objection rather than ignoring it.
 	LimitTransparencyReceipts = StandingLimit{
 		ID:    "transparency-receipts",
-		Title: "Transparency receipts are counted, not verified",
-		Text: "Transparency receipts are counted and not verified: checking one needs the log's " +
-			"public key, and this service carries no copy of that list.",
+		Title: "Transparency receipts are checked against one browser's log list",
+		Text: "A receipt is checked against the key Chrome's log list gives its log, as that list " +
+			"stood on the date the report names. A receipt from a log the list does not name has no " +
+			"key to be checked against, and nothing here decides how many receipts, or from which " +
+			"logs, a particular browser requires.",
 	}
 )
 

@@ -132,6 +132,11 @@ type Result struct {
 	RevocationLine   string `json:"revocationLine,omitempty"`
 	TransparencyLine string `json:"transparencyLine,omitempty"`
 
+	// transparencyVerified is whether every receipt counted was also checked
+	// and verified, for the coverage line. Unexported: the notes and the line
+	// above are what a reader is given.
+	transparencyVerified bool
+
 	// LoggedLine and Logged are what the public certificate logs hold for this
 	// name, where a deployment searched them.
 	//
@@ -486,13 +491,16 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 		// handshake, and whether a response was stapled that might carry the
 		// rest. The sentence belongs with the certificate, which is what a
 		// reader is looking at when the question occurs to them.
-		transparency := policy.TransparencyFacts{
-			Embedded:    certReport.Transparency.EmbeddedCount,
-			InHandshake: tlsReport.SCTCount,
-			FromLogs:    distinctLogs(certReport.Transparency.LogIDs, tlsReport.SCTLogIDs),
-			Stapled:     tlsReport.OCSPStapled,
-			Trusted:     certReport.Trusted,
-		}
+		transparency, verified := transparencyFor(certReport, tlsReport)
+
+		// The coverage line reads this. A sabotage setting it to false here
+		// escaped every test on 2026-09-14, and it is not a missing test in
+		// the usual sense: every receipt verifying needs a real log's
+		// signature over the certificate a scan is handed, which no local
+		// test server can present. transparencyFor, which decides the value,
+		// is tested against a real certificate; this line only carries it.
+		out.transparencyVerified = verified
+
 		certReport.Notes = append(certReport.Notes, policy.DescribeTransparency(transparency)...)
 		out.TransparencyLine = policy.TransparencyLine(transparency)
 
@@ -580,6 +588,7 @@ func coverageFacts(r *Result) policy.CoverageFacts {
 		f.ChainRead = true
 		f.TransparencyRead = r.Certificate.Transparency.EmbeddedCount > 0 ||
 			(r.TLS != nil && r.TLS.SCTCount > 0)
+		f.TransparencyVerified = f.TransparencyRead && r.transparencyVerified
 	}
 
 	// Read means verified. Bytes that established nothing were not a

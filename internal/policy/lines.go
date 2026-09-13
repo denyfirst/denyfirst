@@ -148,16 +148,29 @@ func TransparencyLine(f TransparencyFacts) string {
 		from = "1 log"
 	}
 
-	// The caveat about verification lives in the note, not here. A count of
-	// receipts is something this service measured accurately; that they were
-	// not checked against the issuing log's key is something it did not do,
-	// and putting the second on the same line as the first reads as though
-	// the count itself were uncertain, which it is not.
+	// Caveats live in the notes, not here. A count of receipts is something
+	// this service measured accurately, and a line that hedged it read as
+	// though the count itself were uncertain.
+	//
+	// What checking found is added only as the measured fact it is — how
+	// many signatures verified — and only when something was checked. A
+	// receipt that could not be checked is explained in the notes, where
+	// there is room to say why, rather than written here as a number that
+	// looks like a failure.
+	line := stamps + " from " + from
 	if f.InHandshake > 0 && f.Embedded > 0 {
-		return fmt.Sprintf("%s from %s (%d embedded, %d in the handshake)",
+		line = fmt.Sprintf("%s from %s (%d embedded, %d in the handshake)",
 			stamps, from, f.Embedded, f.InHandshake)
 	}
-	return stamps + " from " + from
+
+	switch {
+	case !f.Checked || f.Verified == 0:
+	case f.Verified == total:
+		line += ", all signatures verified"
+	default:
+		line += fmt.Sprintf(", %d of the %d signatures verified", f.Verified, total)
+	}
+	return line
 }
 
 // PostQuantumFacts is what one extra handshake established about the key

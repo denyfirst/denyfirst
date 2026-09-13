@@ -57,6 +57,10 @@ type CoverageFacts struct {
 
 	TransparencyRead bool
 
+	// TransparencyVerified is true when every receipt counted was also checked
+	// and verified against the carried log list.
+	TransparencyVerified bool
+
 	// IssuanceAnswered is true when the CAA walk produced an answer, which
 	// includes an answer of "no record anywhere". Not whether it restricts.
 	IssuanceAnswered bool
@@ -77,7 +81,14 @@ func Coverage(f CoverageFacts) string {
 		reached = append(reached, "revocation was read from a stapled response")
 	}
 	if f.TransparencyRead {
-		reached = append(reached, "transparency receipts were counted")
+		// Verified only when every receipt was. A clause saying "verified"
+		// over a certificate where one of three was checked would be the
+		// summary claiming more than the notes below it.
+		if f.TransparencyVerified {
+			reached = append(reached, "transparency receipts were verified")
+		} else {
+			reached = append(reached, "transparency receipts were counted")
+		}
 	}
 	// "The CAA lookup completed" and not "issuance policy was answered".
 	//

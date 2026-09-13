@@ -148,12 +148,12 @@ type Report struct {
 // certificate that arrives without enough of those receipts, which is what
 // makes the count worth reporting rather than a curiosity.
 //
-// Counted and not verified. Checking a receipt's signature needs the log's
-// public key, and the set of qualified logs is a list that browsers ship and
-// revise; carrying a copy of it would be a dependency on somebody else's
-// judgement that could go stale between releases. The count and the number of
-// distinct logs are read from the certificate itself and need nothing external,
-// which is the part that can be stated without qualification.
+// Counted here, and checked elsewhere. The count and the number of distinct
+// logs are read from the certificate itself and need nothing external, which
+// is the part this package can state without qualification. Whether each
+// receipt is genuine needs the issuing log's key, which internal/ctlogs carries
+// as Google's signed list and checks in internal/scan, where the issuer and the
+// handshake's receipts are also to hand.
 type Transparency struct {
 	// EmbeddedCount is how many timestamps the leaf carries.
 	EmbeddedCount int `json:"embeddedCount"`
@@ -1175,9 +1175,9 @@ func embeddedSCTs(leaf *x509.Certificate) (count int, logIDs []string, malformed
 // divided by 45. There is no counter to get wrong.
 //
 // Only the version and the log identifier are read. The timestamp and the
-// signature are skipped over rather than interpreted, because nothing here
-// verifies a signature and a timestamp nobody checked is a number with a date
-// painted on it.
+// signature are skipped over rather than interpreted: this package counts, and
+// internal/ctlogs is where a signature is checked — a timestamp read here, before
+// that, would be a number with a date painted on it.
 func parseSCTList(list []byte) (count int, logIDs []string, malformed bool) {
 	if len(list) < 2 {
 		return 0, nil, true

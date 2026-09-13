@@ -49,6 +49,27 @@ type TransparencyFacts struct {
 	// authority — is under no obligation to be logged at all, and saying
 	// nothing was found would read as a fault where there is none.
 	Trusted bool
+
+	// Checked is true when the receipts were checked against a log list
+	// whose own signature verified. Without it the counts below are silence
+	// rather than receipts that failed (R4).
+	Checked bool
+
+	// ListReason says why they were not checked.
+	ListReason string
+
+	// ListVersion and ListDate name the list they were checked against, so a
+	// reader can see how old the judgement is.
+	ListVersion string
+	ListDate    string
+
+	// What checking found, one count per receipt: its log signed this
+	// certificate; the log's key does not verify it; the list names no such
+	// log; or it could not be checked at all.
+	Verified     int
+	BadSignature int
+	UnknownLog   int
+	Unreadable   int
 }
 
 // DescribeTransparency returns the sentences a report should carry.
@@ -69,11 +90,13 @@ func DescribeTransparency(f TransparencyFacts) []Note {
 				f.Embedded, f.InHandshake)
 		}
 
-		// Two sentences, two claims. How many receipts arrived is a fact
-		// about this certificate; that none of them was verified is true of
-		// every scan this program runs, and joining them made the second read
-		// as though it were a limit of this one.
-		return []Note{Observed(note), LimitTransparencyReceipts.Note()}
+		// Separate sentences, separate claims. How many receipts arrived is a
+		// fact about this certificate; what checking them found is another;
+		// and which list they can be checked against is true of every scan,
+		// so it is the standing limit rather than part of either.
+		out := []Note{Observed(note)}
+		out = append(out, describeReceipts(f, total)...)
+		return append(out, LimitTransparencyReceipts.Note())
 	}
 
 	if !f.Trusted {
@@ -98,6 +121,60 @@ func DescribeTransparency(f TransparencyFacts) []Note {
 			"response was stapled that might have carried them. A publicly trusted certificate is " +
 			"expected to be logged, and browsers refuse one that is not, so a client may well decline " +
 			"this connection where this report does not.")}
+}
+
+// describeReceipts says what checking the receipts found.
+//
+// Nothing here is graded, for the reason nothing above is: how many receipts a
+// certificate needs, and from which logs, is each browser's policy (R21). What
+// checking adds is the difference between a receipt that is present and one that
+// is genuine.
+//
+// The four outcomes are kept apart because they send a reader to different
+// places. A receipt that does not verify vouches for nothing. A receipt from a
+// log the carried list does not name is not false — a log newer than the list, or
+// one another browser trusts, looks exactly like that — and saying otherwise
+// would accuse a certificate on the strength of an old list.
+func describeReceipts(f TransparencyFacts, total int) []Note {
+	if !f.Checked {
+		reason := f.ListReason
+		if reason == "" {
+			reason = "this scan did not check them"
+		}
+		return []Note{Unsettled("The receipts were not verified: " + reason + ". An unchecked receipt is a " +
+			"claim that a log recorded this certificate, not proof of it.")}
+	}
+
+	list := "Chrome's log list of " + f.ListDate
+	if f.ListVersion != "" {
+		list += " (version " + f.ListVersion + ")"
+	}
+
+	var out []Note
+	switch {
+	case f.Verified == total:
+		out = append(out, Observed("Every receipt was checked against the key "+list+" gives its log, and "+
+			"every signature verifies: the logs named really did record this certificate."))
+	case f.Verified > 0:
+		out = append(out, Observed(fmt.Sprintf("%s of the %d verify against the key %s gives its log.",
+			plural(f.Verified, "receipt"), total, list)))
+	}
+
+	if f.BadSignature > 0 {
+		out = append(out, Observed(fmt.Sprintf("%s did not verify against the key %s gives its log, so it "+
+			"vouches for nothing about this certificate. A browser checking receipts discounts one like this.",
+			plural(f.BadSignature, "receipt"), list)))
+	}
+	if f.UnknownLog > 0 {
+		out = append(out, Unsettled(fmt.Sprintf("%s came from a log %s does not name, so there was no key to "+
+			"check against. A log newer than the list, or one another browser trusts, looks exactly like "+
+			"this, so it is not established that the receipt is false.", plural(f.UnknownLog, "receipt"), list)))
+	}
+	if f.Unreadable > 0 {
+		out = append(out, Unsettled(fmt.Sprintf("%s could not be checked: the receipt could not be read, or the "+
+			"certificate that issued this one was not in the chain to check against.", plural(f.Unreadable, "receipt"))))
+	}
+	return out
 }
 
 // plural writes a count with its noun, so a report does not say "1 logs".
