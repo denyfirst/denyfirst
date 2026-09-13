@@ -24,9 +24,13 @@ import (
 // reports cannot be asserted on, and a sabotage turning the policy fetch off
 // would otherwise escape every test in this package — which is exactly what
 // happened to ReadMarkup on 2026-09-11.
-func mailScanner(timeout time.Duration, selectors []dkim.Selector) *mailscan.Scanner {
+func mailScanner(timeout time.Duration, selectors []dkim.Selector, heloName string) *mailscan.Scanner {
 	return &mailscan.Scanner{
 		DKIMSelectors: selectors,
+
+		// The name given with EHLO, from -helo. Empty lets internal/smtptls
+		// choose this machine's own, the way RFC 5321 says.
+		HeloName: heloName,
 
 		// The command line reads the policy. It runs on the operator's own
 		// machine, from their own address, and the report goes to whoever ran
@@ -35,6 +39,10 @@ func mailScanner(timeout time.Duration, selectors []dkim.Selector) *mailscan.Sca
 		ReadSTSPolicy: true,
 
 		STS: &mtasts.Fetcher{Timeout: timeout},
+
+		// And asks the exchangers, for the same reason: the operator's own
+		// machine, their own address, and a report that goes to them.
+		ReadExchangers: true,
 	}
 }
 
@@ -47,13 +55,13 @@ type mailResult struct {
 
 // runMail reads what each domain publishes about its mail.
 //
-// No -allow-private here and none to add. The one connection this check makes
-// is to mta-sts.<domain> over HTTPS, and a policy host on a private address is
-// not a case an operator is asking about: MTA-STS exists so that senders on the
-// public internet can find the policy, so a policy only this machine can reach
-// is one no sender would ever read.
-func runMail(ctx context.Context, domains []string, timeout time.Duration, resolver string, asJSON bool, store *results.Store, selectors []dkim.Selector) int {
-	scanner := mailScanner(timeout, selectors)
+// No -allow-private here and none to add. The connections this check makes are
+// to mta-sts.<domain> over HTTPS and to the exchangers on port 25, and a
+// private address is not a case an operator is asking about in either: both
+// exist so that senders on the public internet can reach them, so one only this
+// machine can reach is one no sender ever would.
+func runMail(ctx context.Context, domains []string, timeout time.Duration, resolver string, asJSON bool, store *results.Store, selectors []dkim.Selector, heloName string) int {
+	scanner := mailScanner(timeout, selectors, heloName)
 	if resolver != "" {
 		scanner.Resolver = &dnsclient.Client{Server: resolver, Timeout: timeout}
 	}
@@ -224,6 +232,8 @@ func printMailPath(w io.Writer, f *policy.MailFacts) {
 	if f.DANEUnread > 0 {
 		fmt.Fprintf(w, "               %d could not be read\n", f.DANEUnread)
 	}
+
+	printExchangers(w, f)
 }
 
 // stsLine writes the MTA-STS summary row.

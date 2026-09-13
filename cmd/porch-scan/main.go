@@ -213,6 +213,10 @@ func run() int {
 		// cannot list what is beneath a name, so there is no set to discover.
 		// A selector is either one the operator names here or one a provider
 		// documents, and a scan given neither has looked nowhere and says so.
+		heloName = flag.String("helo", "",
+			"with -check mail: the name given to each mail exchanger with EHLO. Empty means this "+
+				"machine's own fully qualified host name, or its address, as RFC 5321 says")
+
 		dkimSelectors = flag.String("dkim-selector", "",
 			"comma-separated `selectors` to look for DKIM keys under, such as\n"+
 				"\ts1,google. You know yours; DNS cannot be asked what they are")
@@ -290,7 +294,7 @@ func run() int {
 		return runWeb(ctx, targets, *timeout, *allowPrivate, *asJSON, store)
 	case checkMail:
 		return runMail(ctx, targets, *timeout, *resolver, *asJSON, store,
-			selectorsFrom(*dkimSelectors, *dkimCommon))
+			selectorsFrom(*dkimSelectors, *dkimCommon), *heloName)
 	}
 
 	scanner := tlsScanner(*timeout, *allowPrivate, *resolver, *searchLogs)

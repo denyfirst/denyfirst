@@ -3,9 +3,9 @@
 // Almost everything here comes out of a DNS lookup: the sender policy and what
 // it costs a receiver to evaluate, the DMARC instruction, whether the domain
 // asks for reports when transport security fails, which hosts accept its mail,
-// and what those hosts publish about protecting it in transit. No mail server is
-// contacted, no message is composed, nothing is sent, and nothing that would
-// change state at the other end is attempted. That is a property of what these
+// and what those hosts publish about protecting it in transit. No message is
+// composed or sent, and nothing that would change state at the other end is
+// attempted. That is a property of what these
 // records are rather than a restraint applied to them: the queries go to the
 // resolver this machine already asks about every target, and the domain being
 // examined learns nothing at all.
@@ -32,19 +32,22 @@
 //     a host in an estate the person asking has shown is theirs.
 //   - **One address, fixed by RFC 8461.** No path is constructed, no redirect
 //     is followed, and the certificate must verify.
-//   - **Not a mail server.** mta-sts.<domain> on port 443 is a web host. The
-//     claim that nothing on the mail path is contacted survives intact.
+//   - **Not a mail server.** mta-sts.<domain> on port 443 is a web host, and
+//     nothing is sent to it but one GET.
 //
 // See internal/mtasts, and N13 for the argument.
 //
-// # What is deliberately not here
+// # The exchangers themselves
 //
-// **The mail servers themselves.** Whether an MX accepts STARTTLS, and what
-// certificate it presents, needs a connection to port 25. That is one ordinary
-// SMTP conversation and would not break anything — but it is a connection on
-// the mail path, which is the claim above, and outbound port 25 is blocked by
-// most hosting providers, so the check would fail for a large share of the
-// deployments that would run it. A separate decision, deliberately.
+// Whether an exchanger accepts STARTTLS, and what certificate it presents, is
+// asked in one SMTP conversation with each: the greeting, EHLO, STARTTLS, the TLS
+// handshake, QUIT. No sender, recipient or message is ever named, so nothing is
+// delivered and nothing at the other end changes. ReadExchangers is off until a
+// caller sets it — the command line does, and a service does exactly where it
+// requires proof of control — and only the exchangers the domain's own MX
+// records name are asked, at most maxExchangers of them. See internal/smtptls.
+//
+// # What is deliberately not here
 //
 // **Discovering a DKIM selector.** A key lives at <selector>._domainkey.<domain>
 // and DNS offers no query for what is beneath a name, so there is no set to
@@ -72,6 +75,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/demo"
@@ -80,6 +84,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/exclusion"
 	"github.com/denyfirst/denyfirst/internal/mtasts"
 	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/denyfirst/internal/smtptls"
 	"github.com/denyfirst/denyfirst/internal/spf"
 	"github.com/denyfirst/denyfirst/internal/verify"
 )
@@ -138,6 +143,15 @@ type PolicyFetcher interface {
 	Fetch(ctx context.Context, domain string) mtasts.Policy
 }
 
+// ExchangerProber holds one conversation with one exchanger.
+//
+// No error in the signature, for the reason PolicyFetcher has none: an
+// exchanger that could not be measured and one that offers no encryption are
+// different answers, and the reason travels inside.
+type ExchangerProber interface {
+	Probe(ctx context.Context, host string) smtptls.Result
+}
+
 // Scanner measures one domain's mail policy. The zero value is usable.
 type Scanner struct {
 	// Resolver asks the questions. Nil means one reading this machine's own
@@ -185,6 +199,28 @@ type Scanner struct {
 	// resolved — the field the web check was missing for a while, for the same
 	// reason and with the same consequence.
 	Roots *x509.CertPool
+
+	// ReadExchangers asks each exchanger the domain names whether it accepts an
+	// encrypted connection, and what certificate it presents.
+	//
+	// False by default, for the reason ReadSTSPolicy is. What a true here buys
+	// is the fact the rest of the mail path depends on: an MTA-STS policy in
+	// enforce mode and a DANE record both promise that delivery is encrypted,
+	// and only the exchanger can say whether it keeps the promise. What it
+	// costs is one short SMTP conversation per exchanger on port 25 — a hello,
+	// a request for encryption, a goodbye, and no sender, recipient or message.
+	//
+	// The command line sets it; a service sets it where control of the domain
+	// has been proven. See internal/smtptls.
+	ReadExchangers bool
+
+	// Exchangers asks them. Nil means internal/smtptls, judging certificates
+	// against Roots and giving HeloName.
+	Exchangers ExchangerProber
+
+	// HeloName is the name given to an exchanger with EHLO. Empty means this
+	// machine's own, chosen the way RFC 5321 says; see internal/smtptls.
+	HeloName string
 
 	// DKIMSelectors are the names to look for signing keys under.
 	//
@@ -269,6 +305,7 @@ func (s *Scanner) Scan(ctx context.Context, domain string) (*Result, error) {
 	s.readTLSReporting(ctx, resolver, domain, &facts)
 	s.readExchangers(ctx, resolver, domain, &facts)
 	s.readTransportSecurity(ctx, resolver, domain, &facts)
+	s.readExchangerTLS(ctx, &facts)
 	s.readDKIM(ctx, resolver, domain, &facts)
 
 	graded := policy.GradeMail(facts)
@@ -712,4 +749,82 @@ func (s *Scanner) readDKIM(ctx context.Context, r Resolver, domain string, facts
 			Weak:      k.Weak(),
 		})
 	}
+}
+
+// readExchangerTLS asks each exchanger the domain names whether it accepts an
+// encrypted connection.
+//
+// Only exchangers the domain's own MX records name, for the argument N13 makes
+// about DANE: an MX record is the domain saying "this host takes my mail", so
+// asking that host how it takes it is reading the domain's own answer rather
+// than wandering off it. Bounded, because the list is written by whoever is
+// being measured, and asked in parallel, because a domain's exchangers are
+// independent and eight sequential twenty-second timeouts would be a scan
+// nobody waits for.
+func (s *Scanner) readExchangerTLS(ctx context.Context, facts *policy.MailFacts) {
+	// NullMX is checked by name although, today, a null MX already leaves
+	// MXHosts empty: readExchangers skips the "." record rather than keeping
+	// it. A sabotage removing the NullMX test escaped every test on 2026-09-13
+	// for that reason, and it is not a missing test. It is here so that the
+	// day readExchangers keeps "." in the list, a domain stating it takes no
+	// mail is still not sent a conversation on port 25 — which
+	// TestANullMXIsNeverContacted will then be the test that notices.
+	if !facts.MXRead || facts.MXReason != "" || facts.NullMX || len(facts.MXHosts) == 0 {
+		return
+	}
+	if !s.ReadExchangers {
+		// Said rather than left blank, for the reason readSTSPolicy says it:
+		// an empty list with no reason reads as exchangers offering nothing.
+		facts.ExchangersReason = "this deployment does not contact mail servers"
+		return
+	}
+
+	hosts := facts.MXHosts
+	if len(hosts) > maxExchangers {
+		hosts = hosts[:maxExchangers]
+		facts.ExchangersPartial = true
+	}
+
+	prober := s.exchangerProber()
+	results := make([]smtptls.Result, len(hosts))
+
+	var wg sync.WaitGroup
+	for i, host := range hosts {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i] = prober.Probe(ctx, host)
+		}()
+	}
+	wg.Wait()
+
+	facts.ExchangersContacted = true
+	for _, r := range results {
+		facts.Exchangers = append(facts.Exchangers, policy.ExchangerTLS{
+			Host:              r.Host,
+			Connected:         r.Connected,
+			Measured:          r.Measured,
+			Offered:           r.Offered,
+			Upgraded:          r.Upgraded,
+			Version:           r.Version,
+			Suite:             r.Suite,
+			Trusted:           r.Trusted,
+			NameMatches:       r.NameMatches,
+			CertificateReason: r.CertificateReason,
+			Reason:            r.Reason,
+			ConnectTimedOut:   r.ConnectTimedOut,
+		})
+	}
+}
+
+// exchangerProber is the one this scan asks with.
+//
+// A method for the reason stsFetcher is one: the lines handing over the trust
+// store and the EHLO name are where they could quietly be dropped, and a method
+// is something a test can call.
+func (s *Scanner) exchangerProber() ExchangerProber {
+	if s.Exchangers != nil {
+		return s.Exchangers
+	}
+	return &smtptls.Prober{Roots: s.Roots, HeloName: s.HeloName}
 }

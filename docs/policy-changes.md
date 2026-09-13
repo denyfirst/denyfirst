@@ -55,12 +55,12 @@ grades a handshake, `denyfirst-web-v3` grades an HTTP response, and this one
 grades records that are served by neither. A report carries the rule set that
 graded it, and these three are never the same one.
 
-The check connects to nothing. Every fact in a mail report came out of a DNS
-lookup the resolver this machine already uses would answer — no mail server is
-contacted, no message is composed, nothing is sent, and nothing that would
-change state at the other end is attempted. That is a property of what these
-records are rather than a restraint applied to the check, and it makes this the
-only check here whose target learns nothing at all.
+Most facts in a mail report come out of a DNS lookup the resolver this machine
+already uses would answer. Two do not, and both run only where the command line
+runs them or a service has proof of control: the MTA-STS policy file a zone
+announces, and a short conversation with each exchanger the zone names. No
+message is composed or sent, no sender or recipient is named, and nothing that
+would change state at the other end is attempted.
 
 The finding it was built around is invisible in the record. RFC 7208 allows a
 sender policy at most ten DNS-resolving terms across everything it pulls in;
@@ -83,20 +83,22 @@ usually reports this is a web form somebody types their domain into.
 | `mail.dkim-weak-key` | weak | an RSA signing key below the floor RFC 8301 sets, which a verifier may treat as insecure |
 | `mail.mta-sts-policy-invalid` | weak | an MTA-STS policy with no `mode`, or none in `enforce`/`testing` naming no `mx`, both of which RFC 8461 requires |
 | `mail.mta-sts-uncovered-exchanger` | weak | an enforcing MTA-STS policy matching none of the exchangers the domain publishes |
+| `mail.mta-sts-exchanger-fails-policy` | weak | an exchanger an enforcing MTA-STS policy covers offers no STARTTLS, or a certificate that does not verify for its name |
 
 Every one of those is a specification calling something an error, or a
 configuration authorising everybody. There is no third kind.
 
-The last of them is the one worth arguing about, and the argument is written
-into the rule. An enforcing policy that does not match the domain's own `MX` is
-a break with a consequence RFC 8461 states outright — a sending server **must
-not** deliver — so mail from every sender that honours MTA-STS is queued and
-then returned. It is graded `weak` rather than `insecure` because it fails
+The last two are the ones worth arguing about, and the argument is written
+into each rule. An enforcing policy that does not match the domain's own `MX`, or
+that covers an exchanger unable to offer STARTTLS with a certificate valid for
+its name, is a break with a consequence RFC 8461 states outright — a sending
+server **must not** deliver — so mail from every sender that honours MTA-STS is
+queued and then returned. It is graded `weak` rather than `insecure` because it fails
 *closed*: mail stops rather than crossing the network unprotected, and
 `insecure` in every other rule here means a sender or a receiver was induced to
 accept something it should not have. One word cannot mean both without making a
 report harder to read than the configuration it describes, so the severity of
-this one is carried by its sentence.
+these is carried by their sentences.
 
 ### What it deliberately does not grade
 
@@ -158,8 +160,7 @@ identical, so the file is fetched — under four conditions. Only where the doma
 announces a policy: no record, no request. Only where the deployment reads it:
 the command line does, and a service does exactly where it requires proof of
 control. One address, fixed by RFC 8461, no redirect followed, and the
-certificate must verify for the policy host. And it is a web host, not a mail
-server — no connection on the mail path is made.
+certificate must verify for the policy host. And it is a web host, sent one GET.
 
 `testing` and `none` are described and never graded: `testing` is the staging
 position on the way to `enforce`, as `p=none` is for DMARC, and `none` is a
@@ -175,8 +176,34 @@ machine's egress is blocked, and no measurement available from here tells them
 apart.
 
 DANE comes with a limit that is stated rather than implied: the records are
-read, and whether each binding is *correct* needs a certificate from the mail
-host, which needs a connection to it.
+read, and whether each binding is *correct* is not yet checked.
+
+**What each exchanger answers when asked for encryption, where the deployment
+asks.** An enforcing MTA-STS policy and a DANE record both promise that mail is
+delivered encrypted, and only the exchanger can say whether it keeps that
+promise. So each exchanger the domain's MX records name — at most eight — is
+asked on port 25: the greeting, EHLO, STARTTLS, the handshake, QUIT. No sender,
+recipient or message is ever named. The report says, per exchanger, whether it
+offers STARTTLS, what was negotiated, and whether the certificate verifies for
+its own name against the deployment's trust store.
+
+Almost none of it is graded. RFC 3207 makes STARTTLS optional, and a sender
+delivering opportunistically encrypts without checking the certificate, so an
+exchanger without STARTTLS or with a certificate that fails is described (R21).
+Where an enforcing MTA-STS policy covers the exchanger, RFC 8461 says a sender
+must not deliver to it — so there it is graded,
+`mail.mta-sts-exchanger-fails-policy`, weak for the reason the uncovered rule
+is: it fails closed. An exchanger that offered STARTTLS and could not negotiate
+with this client is not graded, because that is a limit of this client before it
+is a fault of the server (R4).
+
+Outbound port 25 is blocked by many networks, residential connections and
+hosting providers among them. Where no exchanger can be reached, the report says
+that most likely describes where the scan ran rather than the exchangers (R3d),
+and grades nothing.
+
+The EHLO name is the client's own, as RFC 5321 says: `-helo` if given, else this
+machine's fully qualified host name, else its address as a literal.
 
 DANE is asked about beneath each exchanger, which is the one place this check
 follows a name out of the target's own zone. The reasoning is the one that
@@ -232,10 +259,10 @@ something is to have nowhere for it to go.
 ### What it cannot see
 
 
-One standing limit, on every mail report: no mail server was contacted. Whether
-the domain's mail servers actually accept encrypted connections, and what
-certificates they present, was not measured — that needs a connection on the
-mail path. A DANE binding's correctness was not checked. And a DKIM key is read
+One standing limit, on every mail report: no message was sent. Where an
+exchanger was contacted, the conversation ended once encryption had been
+negotiated or declined, and no sender, recipient or message was named. A DANE
+binding's correctness was not checked. And a DKIM key is read
 only under a selector the scan was told to look under, because selectors cannot
 be listed from DNS; the report names every selector it tried, and a report
 saying DKIM was missing would be claiming something the scan did not establish

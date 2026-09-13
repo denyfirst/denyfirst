@@ -51,6 +51,11 @@ const (
 // and 110 are deliberately absent: the probe speaks TLS from the first byte,
 // so those would fail in a way that reads as a server fault rather than as a
 // missing feature.
+//
+// Port 25 is reached by one other path, and not from this list: the mail check
+// asks the exchangers a domain's MX records name for STARTTLS, through its own
+// dialler allowed port 25 alone. See internal/smtptls and N3. Nothing a caller
+// types as a target reaches port 25 through here.
 var AllowedPorts = []string{
 	"443",  // HTTPS
 	"8443", // HTTPS, alternate

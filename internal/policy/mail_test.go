@@ -265,10 +265,10 @@ func TestNotReadIsDistinguishableFromNotPublished(t *testing.T) {
 
 // Every mail report carries the limit, whatever the domain looks like.
 //
-// The check reads DNS and nothing else, so a report listing what a domain
-// publishes and saying nothing further reads as a complete picture of its mail.
-// It is a complete picture of its DNS.
-func TestEveryMailReportSaysItOnlyReadDNS(t *testing.T) {
+// A report listing what a domain publishes and saying nothing further reads as a
+// complete picture of its mail. It is a picture of what this scan could see,
+// and the limit is where that is said.
+func TestEveryMailReportCarriesTheStandingLimit(t *testing.T) {
 	for _, facts := range []MailFacts{
 		{},
 		{SPFRecords: 1, SPFAll: "-", DMARCRecords: 1, DMARCPolicy: "reject", TLSReporting: true},

@@ -128,9 +128,13 @@ established at run time.
 ### 3. Mail
 
 SPF with its ten-lookup and void-lookup limits, DMARC and alignment, MTA-STS,
-TLS-RPT, DANE on the MX hosts, DKIM under named selectors. Nothing is connected
-to on the target's mail path. The one request it makes is for the MTA-STS policy
-file the zone announces, and only behind proof of control — see N13. It comes after scope because proving control of a domain is the natural
+TLS-RPT, DANE on the MX hosts, DKIM under named selectors, and STARTTLS on the
+exchangers. Beyond DNS it makes two kinds of request — the MTA-STS policy file
+the zone announces, and a greeting, EHLO, STARTTLS and QUIT with each exchanger —
+and both only where the command line runs them or a service has proof of control.
+See N13. Still ahead on the mail path: checking that a DANE binding matches the
+certificate an exchanger presents, which the STARTTLS conversation now makes
+possible. It comes after scope because proving control of a domain is the natural
 condition for looking at its mail policy anyway.
 
 Two things about it are settled in advance, because both are easier to get
