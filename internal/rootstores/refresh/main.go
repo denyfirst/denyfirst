@@ -37,7 +37,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -103,9 +102,22 @@ func run() int {
 		fmt.Fprintf(os.Stderr, "not carried, because Go cannot parse it: %s\n", name)
 	}
 
-	path := filepath.Join(*dir, "roots.json")
+	// Opened as a root, so what is read and written stays inside that
+	// directory, through a link or otherwise.
+	//
+	// run is not unit tested: it fetches from five hosts. A wrong name or
+	// directory here fails the weekly -check on its first run, which exits 2,
+	// and gosec (G304) refuses the unscoped os.ReadFile this replaced.
+	root, err := os.OpenRoot(*dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "opening the package directory: %v\n", err)
+		return 2
+	}
+	defer root.Close()
+
+	const carriedName = "roots.json"
 	if *check {
-		raw, err := os.ReadFile(path)
+		raw, err := root.ReadFile(carriedName)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "reading the carried file: %v\n", err)
 			return 2
@@ -127,7 +139,7 @@ func run() int {
 		fmt.Fprintf(os.Stderr, "encoding: %v\n", err)
 		return 2
 	}
-	if err := os.WriteFile(path, append(out, '\n'), 0o600); err != nil {
+	if err := root.WriteFile(carriedName, append(out, '\n'), 0o600); err != nil {
 		fmt.Fprintf(os.Stderr, "writing: %v\n", err)
 		return 2
 	}
