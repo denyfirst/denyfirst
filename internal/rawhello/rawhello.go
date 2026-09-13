@@ -192,7 +192,7 @@ func (h Hello) Marshal() ([]byte, error) {
 		body = append(body, ext...)
 	}
 
-	msg := []byte{typeClientHello, byte(len(body) >> 16), byte(len(body) >> 8), byte(len(body))}
+	msg := append([]byte{typeClientHello}, u24(len(body))...)
 	msg = append(msg, body...)
 
 	record := []byte{contentHandshake}
@@ -287,6 +287,28 @@ func u16(n int) uint16 {
 		panic("rawhello: a length was not bounded before it was encoded")
 	}
 	return uint16(n) // #nosec G115 -- checked on the line above
+}
+
+// u24 encodes a handshake message's length, which the wire format gives three
+// bytes, big-endian.
+//
+// Written as `byte(len(body) >> 16), …` until gosec's G115 refused it on
+// 2026-09-13, and the refusal was right about the shape even where it was
+// wrong about the case: a body here is under a kilobyte, but three unchecked
+// conversions are three places a later change could wrap a length silently.
+// One bound, checked once, the way u16 does it — and the bytes are taken from
+// PutUint32 rather than converted, so there is no second conversion to check.
+//
+// A sabotage removing the bound changes no output for any hello this package
+// can build, for the reason u16's cannot: nothing reaches it that is near the
+// limit. It is for the change that one day does.
+func u24(n int) []byte {
+	if n < 0 || n > 1<<24-1 {
+		panic("rawhello: a length was not bounded before it was encoded")
+	}
+	var buf [4]byte
+	binary.BigEndian.PutUint32(buf[:], uint32(n)) // #nosec G115 -- checked on the line above
+	return buf[1:]
 }
 
 // Ask sends a hello over a connection that is already open and reads the answer.
