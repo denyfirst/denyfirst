@@ -1949,10 +1949,23 @@ needs the caveat as much as a reader of `trusted`.
 A chain reported as trusted reaches a root and is in date. It may still have
 been withdrawn.
 
-No connection is ever opened to a responder. Asking a certificate authority
-whether a serial is still good tells that authority which certificate somebody
-is looking at, and querying a transparency log does the same. That much has
-never changed and is true on every branch.
+No connection is opened to a responder unless an operator on the command line
+asks for one. Asking a certificate authority whether a serial is still good
+tells that authority which certificate somebody is looking at, from which
+address and when. That is why the demonstration compiles the question out and
+the service is never given it, even with proof of control — its operator did
+not choose it scan by scan.
+
+**The one exception is `porch-scan -ask-responder`, off by default.** An
+operator examining their own certificate may decide the authority learning that
+is no disclosure at all, and a revoked certificate is the most serious thing a
+scan can find. The question is built from the certificate and its issuer, posted
+under the guards N11 gives revocation lists — safedial, ports 80 and 443, http
+and https only, credentials stripped, no redirect, two responders at most, a cap
+that refuses rather than truncates — and the answer is believed only after
+`internal/ocsp` verifies it against the issuer and finds it current. A verified
+revoked raises `cert.revoked` once, whatever else said it; a question that
+established nothing is said and graded for nothing.
 
 What changed is everything after it. Until 2026-09-01 this invariant read
 *revocation is not checked, and the report says so*, and `internal/certinfo`
@@ -1981,7 +1994,21 @@ and a test enforces that it does not.
 
 *Enforced in:* `policy.GradeStapling`, in the notes
 *Guarded by:* `TestNoAuthorityIsAskedOnAnyStapleOutcome`,
-`TestThisPackageClaimsNothingAboutRevocation`
+`TestThisPackageClaimsNothingAboutRevocation`,
+`TestTheResponderIsAskedOnlyWhenAskedFor`, `TestTheServiceNeverAsksAResponder`,
+`TestAScanGivenAResponderAsksItAndReportsWhatItVerified`,
+`TestAScanGivenNoResponderAsksNone`,
+`TestTheRequestAsksAboutWhatARealResponderAnswered`,
+`TestARequestNeedsTheCertificateAndItsIssuer`,
+`TestARealResponderAnswerIsVerifiedAndRead`,
+`TestAnAnswerThatDoesNotVerifyEstablishesNothing`,
+`TestARedirectFromAResponderIsNotFollowed`, `TestAnOversizedAnswerIsRefused`,
+`TestWhatIsAskedIsBounded`, `TestCredentialsInAResponderAddressAreStripped`,
+`TestTheDefaultDiallerRefusesPrivateResponders`,
+`TestAResponderAskedDirectlyThatSaysRevokedIsGraded`,
+`TestARevocationSaidThreeWaysIsOneFinding`,
+`TestAResponderAnswerOfUnknownOrGoodIsSaidAsItIs`,
+`TestAQueryThatEstablishedNothingIsSaidAndAScanThatDidNotAskIsUnchanged`
 
 ### R3b — A stapled response is read, and what reading it cannot settle is said
 

@@ -180,9 +180,8 @@ of being able to write files.
 
 ### Later
 
-Certificate revocation fetched live (command line only — a certificate
-authority learns which certificate is being examined, and that is the
-operator's decision about their own certificate, not ours to make for them).
+Nothing scheduled. The certificate's own responder can now be asked from the
+command line with `-ask-responder` (R3a).
 
 ---
 

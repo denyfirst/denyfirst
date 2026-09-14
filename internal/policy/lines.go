@@ -63,8 +63,19 @@ func RevocationLine(f StapleFacts) string {
 	// read, is the rest of the answer — and for most certificates issued now it
 	// is the whole of it, since the authority publishes no responder for
 	// anything to be stapled from.
+	// The responder asked directly answers first where it answered: it speaks
+	// for this moment, where a list speaks for when it was published. Only on
+	// the command line, and only when the operator asked (R3a).
+	if line := queryLine(f); line != "" {
+		return line
+	}
+
 	if line := listLine(f); line != "" {
 		return line
+	}
+
+	if f.QueryReason != "" {
+		return "not stapled; the certificate's responder was asked directly and " + f.QueryReason
 	}
 
 	if f.HasResponder {
@@ -82,6 +93,27 @@ func RevocationLine(f StapleFacts) string {
 // lists — the demonstration, where the code is not compiled in — reads exactly
 // as it always did rather than acquiring a sentence about a check it does not
 // run.
+// queryLine is what the certificate's own responder said, asked directly.
+func queryLine(f StapleFacts) string {
+	switch f.QueryStatus {
+	case "revoked":
+		when := ""
+		if !f.QueryRevokedAt.IsZero() {
+			when = " on " + f.QueryRevokedAt.UTC().Format("2006-01-02")
+		}
+		return "not stapled; the certificate's responder, asked directly, says it was revoked" + when
+	case "good":
+		asOf := ""
+		if !f.QueryAsOf.IsZero() {
+			asOf = " as of " + f.QueryAsOf.UTC().Format("2006-01-02")
+		}
+		return "not stapled; the certificate's responder, asked directly, says it is not revoked" + asOf
+	case "unknown":
+		return "not stapled; the certificate's responder, asked directly, does not recognise this certificate"
+	}
+	return ""
+}
+
 func listLine(f StapleFacts) string {
 	switch f.ListStatus {
 	case "revoked":

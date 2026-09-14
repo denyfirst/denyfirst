@@ -27,6 +27,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
 	"github.com/denyfirst/denyfirst/internal/exclusion"
 	"github.com/denyfirst/denyfirst/internal/ocsp"
+	"github.com/denyfirst/denyfirst/internal/ocspquery"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
 	"github.com/denyfirst/denyfirst/internal/verify"
@@ -298,6 +299,20 @@ type Scanner struct {
 	// here (N12).
 	Logs ctsearch.Searcher
 
+	// Responder asks the certificate's own OCSP responder whether it has been
+	// revoked. Nil means it is not asked, and nil is what everything but the
+	// command line leaves it.
+	//
+	// Stricter than Logs, and the difference is what the question names. A log
+	// search names a domain whose certificates are public anyway; this names
+	// one certificate to the authority that issued it, from this address, at
+	// this moment — the query R3a says is not made. The command line makes it
+	// behind a flag, for an operator examining their own certificate who
+	// decides that is no disclosure. A service is never given one, even with
+	// proof of control, because the operator did not choose it scan by scan,
+	// and the demonstration build compiles the call out.
+	Responder *ocspquery.Fetcher
+
 	// Now supplies the current time, so certificate arithmetic is
 	// reproducible in tests. Nil means time.Now.
 	Now func() time.Time
@@ -478,6 +493,19 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 			facts.ListRevokedAt = list.RevokedAt
 			facts.ListAsOf = list.ThisUpdate
 			facts.ListReason = list.Reason
+		}
+
+		// The responder, asked directly — only where a caller set one, which
+		// only the command line does, behind a flag (R3a). Compiled out of the
+		// demonstration build with the list fetch above.
+		if !demo.Enabled && s.Responder != nil && len(tlsReport.Certificates) > 0 {
+			leaf := tlsReport.Certificates[0]
+			answer := s.Responder.Check(ctx, leaf, issuerOf(leaf, tlsReport.Certificates), s.now())
+
+			facts.QueryStatus = answer.Status
+			facts.QueryRevokedAt = answer.RevokedAt
+			facts.QueryAsOf = answer.ThisUpdate
+			facts.QueryReason = answer.Reason
 		}
 
 		stapling := policy.GradeStapling(facts)

@@ -14,7 +14,7 @@ import (
 
 // The command line lifts two restrictions the service keeps, by default.
 func TestTheCommandLineLiftsWhatOnlyAServiceNeeds(t *testing.T) {
-	s := tlsScanner(time.Second, false, "", false)
+	s := tlsScanner(time.Second, false, "", false, false)
 
 	if !s.AllowAnyPort {
 		t.Error("the port allow list is enforced on the command line; a local operator " +
@@ -28,7 +28,7 @@ func TestTheCommandLineLiftsWhatOnlyAServiceNeeds(t *testing.T) {
 
 // A named resolver reaches the scanner.
 func TestTheResolverFlagReachesTheScanner(t *testing.T) {
-	s := tlsScanner(time.Second, false, "192.0.2.9:53", false)
+	s := tlsScanner(time.Second, false, "192.0.2.9:53", false, false)
 
 	if s.Resolver == nil {
 		t.Fatal("-resolver was given and the scanner has none, so the CAA lookup will read " +
@@ -45,7 +45,7 @@ func TestTheResolverFlagReachesTheScanner(t *testing.T) {
 // quietly pointed every scan at some fixed resolver would move who learns what
 // is being scanned, which is not a decision to make on an operator's behalf.
 func TestNoResolverFlagLeavesTheMachinesOwnConfiguration(t *testing.T) {
-	s := tlsScanner(time.Second, false, "", false)
+	s := tlsScanner(time.Second, false, "", false, false)
 
 	if s.Resolver != nil {
 		t.Errorf("no -resolver was given and the scanner was built with %+v; the machine's "+
@@ -55,11 +55,11 @@ func TestNoResolverFlagLeavesTheMachinesOwnConfiguration(t *testing.T) {
 
 // The private-address guard is off until it is asked for, and then it is off.
 func TestPrivateAddressesAreReachedOnlyWhenAsked(t *testing.T) {
-	if s := tlsScanner(time.Second, false, "", false); s.Prober.Dial != nil {
+	if s := tlsScanner(time.Second, false, "", false, false); s.Prober.Dial != nil {
 		t.Error("the prober was given a dialler without -allow-private; the default has to be " +
 			"safedial, or a mistyped name can be aimed at an internal host")
 	}
-	if s := tlsScanner(time.Second, true, "", false); s.Prober.Dial == nil {
+	if s := tlsScanner(time.Second, true, "", false, false); s.Prober.Dial == nil {
 		t.Error("-allow-private was given and the prober still dials through safedial, so the " +
 			"switch does nothing and an operator scanning their own network cannot")
 	}
@@ -75,12 +75,31 @@ func TestPrivateAddressesAreReachedOnlyWhenAsked(t *testing.T) {
 // else's, and telling a third party which domain you are looking at is a
 // disclosure to make rather than one to inherit (N12).
 func TestTheLogSearchIsOffUntilItIsAskedFor(t *testing.T) {
-	if s := tlsScanner(time.Second, false, "", false); s.Logs != nil {
+	if s := tlsScanner(time.Second, false, "", false, false); s.Logs != nil {
 		t.Error("a scan would query a public monitor without -check-logs, so the name of " +
 			"whatever somebody scans is sent to a third party they did not choose")
 	}
-	if s := tlsScanner(time.Second, false, "", true); s.Logs == nil {
+	if s := tlsScanner(time.Second, false, "", true, false); s.Logs == nil {
 		t.Error("-check-logs was given and no searcher was configured, so the flag is " +
 			"documented in the usage text and does nothing")
+	}
+}
+
+// The responder is asked only when asked for.
+//
+// Stricter than the log search: the question names one certificate to the
+// authority that issued it, which R3a says this project does not do unless an
+// operator decides it for their own certificate.
+func TestTheResponderIsAskedOnlyWhenAskedFor(t *testing.T) {
+	if s := tlsScanner(time.Second, false, "", false, false); s.Responder != nil {
+		t.Error("a scan would ask the certificate's responder without -ask-responder, telling " +
+			"its authority which certificate somebody is examining")
+	}
+	if s := tlsScanner(time.Second, false, "", false, true); s.Responder == nil {
+		t.Error("-ask-responder was given and no responder fetcher was configured, so the flag " +
+			"is documented in the usage text and does nothing")
+	}
+	if s := tlsScanner(time.Second, false, "", true, false); s.Responder != nil {
+		t.Error("-check-logs switched on the responder too; the two disclosures are separate choices")
 	}
 }

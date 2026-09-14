@@ -352,6 +352,15 @@ something newer to refuse it. Whether it did is described; no verdict moves,
 because what a downgrade costs depends on the version it lands on, and that
 version is graded on its own.
 
+**The certificate's own responder can be asked, from the command line.**
+`porch-scan -ask-responder`, off by default, posts the OCSP question to the
+responder the certificate names and verifies the answer against the issuer. A
+verified revoked raises `cert.revoked` and a verified unknown raises
+`cert.revocation-unknown`, once each whatever else said the same; no rule
+identifier and no verdict of any other kind changed. Without the flag nothing
+is asked and every report reads as before. The service and the demonstration
+never ask (R3a).
+
 **Finite-field DHE and anonymous suites are now asked about.** Go's client
 implements no suite of either family, so the ordinary enumeration could never
 list one, and `cipher.ffdhe` and `cipher.anonymous` could not fire. A server
