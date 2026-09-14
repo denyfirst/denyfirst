@@ -48,6 +48,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"slices"
 	"strings"
 	"sync"
@@ -104,6 +105,10 @@ type Prober struct {
 	// Empty here means the dialer imposes nothing, which is what a test
 	// wants. Production sets it; internal/scan holds the list.
 	AllowedPorts []string
+
+	// LookupAddrs lists a name's addresses, for asking each on its own. Nil
+	// means the system resolver, which is the one the default dialler asks.
+	LookupAddrs func(ctx context.Context, host string) ([]netip.Addr, error)
 }
 
 // Report is the outcome of probing one host.
@@ -124,6 +129,12 @@ type Report struct {
 	// more than one entry the measurements in this report were not all taken
 	// from the same server.
 	AddressesReached []string `json:"addressesReached,omitempty"`
+
+	// Addresses is what each of the name's addresses answered when asked on
+	// its own, where it has more than one; see AddressAnswer.
+	// AddressesTruncated is true when it had more than a scan asks.
+	Addresses          []AddressAnswer `json:"addresses,omitempty"`
+	AddressesTruncated bool            `json:"addressesTruncated,omitempty"`
 
 	// Policy names the rule set that produced every verdict below, so a
 	// result can be reproduced after the rules move on.
@@ -541,6 +552,13 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 				"certificate above may not all describe the same machine.",
 			strings.Join(report.AddressesReached, ", ")))
 	}
+
+	// And then each address, asked on its own, so a machine the resolver did
+	// not happen to hand this scan is not missed. Not added to reached: those
+	// are the addresses the measurements above came from, and these are not.
+	report.Addresses, report.AddressesTruncated = p.eachAddress(ctx, host, port)
+	report.Addresses = sortedAddresses(report.Addresses)
+	describeAddresses(report)
 
 	// What answered, before anything about what it answered.
 	//

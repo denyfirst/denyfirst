@@ -2,6 +2,8 @@ package safedial
 
 import (
 	"net/netip"
+	"slices"
+	"strconv"
 	"testing"
 )
 
@@ -158,4 +160,28 @@ func TestInterleaveLeavesOrdinaryListsAlone(t *testing.T) {
 			t.Errorf("kept %d IPv4 addresses out of one available; the only reachable address was dropped", v4)
 		}
 	})
+}
+
+// Candidates is the ordering and the cap DialContext uses, handed to a caller
+// that asks each address on its own. The same list, or the two would describe
+// different parts of one name.
+func TestCandidatesAreTheAddressesDialContextWouldTry(t *testing.T) {
+	var list []netip.Addr
+	// One family, then the other, the way a resolver can return them: a first-n
+	// cut would take only the first family, which a sabotage doing exactly that
+	// showed on 2026-09-14 when this list was already interleaved.
+	for i := range 10 {
+		list = append(list, netip.AddrFrom4([4]byte{192, 0, 2, byte(i + 1)}))
+	}
+	for i := range 10 {
+		list = append(list, netip.MustParseAddr("2001:db8::"+strconv.Itoa(i+1)))
+	}
+	got, truncated := Candidates(list, DefaultMaxAddrs)
+	want, wantTruncated := interleaveFamilies(list, defaultMaxAddrs)
+	if !truncated || truncated != wantTruncated || !slices.Equal(got, want) {
+		t.Errorf("Candidates gives %v (truncated %v); DialContext would try %v", got, truncated, want)
+	}
+	if DefaultMaxAddrs != defaultMaxAddrs {
+		t.Errorf("DefaultMaxAddrs is %d and the dialler uses %d", DefaultMaxAddrs, defaultMaxAddrs)
+	}
 }

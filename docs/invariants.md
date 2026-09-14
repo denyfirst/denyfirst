@@ -1875,6 +1875,23 @@ about the host rather than a limit of the method, because it is established
 here: these are the addresses the handshakes reached, and this scan knows
 whether there was more than one.
 
+**And then each address is asked on its own, so a machine the resolver did not
+offer is not missed.** Recording where the handshakes landed stopped the report
+claiming one machine; it did nothing for a name with four machines behind it
+where one of four is misconfigured and no handshake happened to reach it. So
+the name's addresses are listed once, from the resolver the dialler asks, in
+the dialler's order and under its cap of eight, and each is asked one
+handshake, dialled at that address and naming the host. Through the prober's
+own dialler, so an address the dialler refuses is refused here too (N1). One
+handshake rather than a scan of each, because a scan is thirteen connections;
+the version, suite and certificate a client is given are what differ when one
+machine is behind the others. What each answered is shown, the report says
+whether they agree, and nothing is graded: no document requires a name's
+machines to match, and a migration in progress is exactly a name whose machines
+do not. An address that does not answer is not established either way, with a
+fixed reason (I6), and these handshakes are not added to the addresses the
+measurements came from.
+
 **And "trusted" is one store's opinion.** A chain verifies against the root
 store of the machine that ran the scan. Chrome, Apple and Microsoft each ship
 their own, remove authorities on their own timetables, and a packaged store
@@ -1893,6 +1910,15 @@ needs the caveat as much as a reader of `trusted`.
 `TestAReportNamesTheAddressesItReached`,
 `TestAScanThatReachedTwoMachinesSaysSo`,
 `TestTheAddressesReachedAreRecordedOnceEach`,
+`TestAddressesThatAnswerDifferentlyAreSaidToWithWhatEachAnswered`,
+`TestEachAddressIsDialledAsItselfThroughTheDialler`,
+`TestAddressesThatAnswerAlikeAreSaidToAnswerAlike`,
+`TestAnAddressThatDoesNotAnswerIsNotEstablished`,
+`TestTheAddressesAskedAreCappedAndTheReportSaysSo`, `TestOneAddressAsksNothingMore`,
+`TestAnAddressListedTwiceIsAskedOnce`, `TestCandidatesAreTheAddressesDialContextWouldTry`,
+`TestAVersionAloneIsADifference`,
+`TestEachAddressIsARowInThePagesWords`, `TestOneAddressPrintsNoAddressSection`,
+`TestThePageReadsTheAddressFieldsTheAPISends`,
 `TestTheReportSaysWhoseRootStoreDecided`
 
 ### R3a — No authority is asked, and the claim about revocation is made where the answer is known

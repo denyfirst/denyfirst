@@ -183,7 +183,7 @@ of being able to write files.
 Certificate revocation fetched live (command line only — a certificate
 authority learns which certificate is being examined, and that is the
 operator's decision about their own certificate, not ours to make for them).
-Every address a name resolves to, capped. Per-suite TLS 1.3
+Per-suite TLS 1.3
 enumeration, and finite-field DHE and anonymous suites in the ordinary
 enumeration, which the hand-written ClientHello now in `internal/rawhello` makes
 possible without a new dependency.
@@ -199,12 +199,13 @@ a running one is, so an operator can check rather than remember — but the
 default itself has not moved, and moving it would stop every deployment that
 has not published a record yet.
 
-**Every address a name resolves to is still not scanned.** The probe records
-the addresses its handshakes reached and the report says when a scan spanned
-more than one, which stops a report claiming to describe a server it may not
-have. It does not deliberately scan each address, so a name with four machines
-behind it is measured wherever the resolver happened to point — and one
-misconfigured machine of four can be missed entirely.
+**Each address of a name is asked one handshake, not scanned.** Every address
+a name resolves to — up to eight — is now asked on its own, and the report says
+whether they answered alike, so a misconfigured machine the resolver did not
+offer is no longer missed. What one handshake shows is the version, suite and
+certificate a client is given. A machine that differs only in what else it
+would accept — an old version or a weak suite behind the same preferred answer —
+looks identical from there.
 
 ---
 

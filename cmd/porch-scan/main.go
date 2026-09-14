@@ -483,6 +483,7 @@ func printReport(w io.Writer, r result) {
 
 	printVersions(w, r.TLS)
 	printCiphers(w, r.TLS)
+	printAddresses(w, r.TLS)
 
 	// A property of the transport rather than of the certificate, so it sits
 	// with the suites rather than with the chain. It is the one measurement
