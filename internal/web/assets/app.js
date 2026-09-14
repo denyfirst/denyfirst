@@ -421,6 +421,36 @@ function versions(tls) {
 // as asked by hand, because these are not an enumeration: each is one hello
 // offering every suite of a family at once, and "export: refused" means none of
 // them was accepted by that hello, not that each was tried.
+// What each of the name's addresses answered when asked on its own.
+//
+// The same rows and the same words as printAddresses in the command line (R16).
+// Whether they agree is said once, in the notes.
+function addresses(tls) {
+  const list = tls && tls.addresses;
+  if (!list || !list.length) return document.createDocumentFragment();
+
+  const frag = document.createDocumentFragment();
+  frag.appendChild(sectionTitle("Each address, asked on its own"));
+
+  const table = el("table", "rows");
+  const body = el("tbody");
+  for (const a of list) {
+    const row = el("tr");
+    row.appendChild(el("td", null, a.address));
+    row.appendChild(el("td", a.answered ? null : "mark-faint", addressSays(a)));
+    body.appendChild(row);
+  }
+  table.appendChild(body);
+  frag.appendChild(table);
+  return frag;
+}
+
+function addressSays(a) {
+  if (!a.answered) return "no answer: " + a.reason;
+  const cert = a.certificate ? a.certificate.slice(0, 16) + "…" : "none presented";
+  return a.version + " " + a.suite + ", certificate " + cert;
+}
+
 function legacy(tls) {
   const l = tls && tls.legacy;
   if (!l || !l.asked) return document.createDocumentFragment();
@@ -850,6 +880,7 @@ function buildTLS(data) {
   frag.appendChild(versions(data.tls));
   frag.appendChild(ciphers(data.tls, data));
   frag.appendChild(legacy(data.tls));
+  frag.appendChild(addresses(data.tls));
   frag.appendChild(certificate(data.certificate, data.tls, data.issuance, data.stapling, data));
   frag.appendChild(notes(data.notes, verdict));
   return frag;

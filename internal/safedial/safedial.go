@@ -299,6 +299,21 @@ func soleFamily(attempted []netip.Addr) string {
 	}
 }
 
+// DefaultMaxAddrs is how many of a name's addresses a Dialer tries unless told
+// otherwise.
+const DefaultMaxAddrs = defaultMaxAddrs
+
+// Candidates orders a name's addresses the way DialContext tries them and cuts
+// the list at limit, with both families interleaved before the cut.
+//
+// For a caller asking each address separately, which DialContext — trying them
+// until one answers — does not do. The same order and the same cap, so that a
+// name answered on eight addresses of one family and eight of the other is asked
+// on both, for the reason interleaveFamilies gives.
+func Candidates(addrs []netip.Addr, limit int) (out []netip.Addr, truncated bool) {
+	return interleaveFamilies(addrs, limit)
+}
+
 // Dial is DialContext with a background context.
 func (d *Dialer) Dial(network, address string) (net.Conn, error) {
 	return d.DialContext(context.Background(), network, address)

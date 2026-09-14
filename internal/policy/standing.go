@@ -48,7 +48,9 @@ var (
 			"this report. Where a content delivery network, a reverse proxy or a load balancer terminates " +
 			"TLS, that endpoint is the one measured: the link from it to the server behind it is not " +
 			"visible from here, and may negotiate other versions, other suites and another key exchange. " +
-			"A name that resolves to several addresses was measured at one of them.",
+			"A name that resolves to several addresses was measured at one of them; each of the others is " +
+			"asked a single handshake, which shows what a client is given there and not everything that " +
+			"machine would accept.",
 	}
 
 	LimitCipherSuitesOffered = StandingLimit{
