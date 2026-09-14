@@ -29,8 +29,11 @@
 package rawhello
 
 import (
+	"bytes"
 	"context"
+	"crypto/ecdh"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -118,9 +121,16 @@ var (
 type Result struct {
 	Answer Answer
 
-	// Version and Suite are the server's choices, when it accepted.
+	// Version and Suite are the server's choices, when it accepted. Version is
+	// what a supported_versions extension in the ServerHello names where it
+	// carries one, which is how TLS 1.3 says it, and the legacy field otherwise.
 	Version uint16
 	Suite   uint16
+
+	// RetryRequest is true when the ServerHello was a HelloRetryRequest: the
+	// server chose the suite and asked for a key share on another group. It
+	// is still the server choosing the suite.
+	RetryRequest bool
 
 	// Alert is the alert description, when it refused.
 	Alert uint8
@@ -155,6 +165,16 @@ type Hello struct {
 	// ServerName is sent when Extensions is on and it is a hostname. An
 	// address is never sent as one: RFC 6066 forbids it.
 	ServerName string
+
+	// TLS13 makes the hello a TLS 1.3 one: supported_versions naming TLS 1.3
+	// alone, and a key share on X25519, which RFC 8446 has a server need
+	// before it can answer with a ServerHello rather than an alert. It implies
+	// Extensions. ClientVersion stays what RFC 8446 calls legacy_version.
+	//
+	// The key share is a real public key, made fresh for each hello and never
+	// used: no handshake is completed, and a key that was not a valid point
+	// would be refused for a reason that has nothing to do with the suite.
+	TLS13 bool
 }
 
 // Marshal writes the hello as a record.
@@ -186,8 +206,11 @@ func (h Hello) Marshal() ([]byte, error) {
 	// CRIME, which is a different question and not one this package asks.
 	body = append(body, 1, 0)
 
-	if h.Extensions {
-		ext := extensions(h.ServerName)
+	if h.Extensions || h.TLS13 {
+		ext, err := extensions(h.ServerName, h.TLS13)
+		if err != nil {
+			return nil, err
+		}
 		body = binary.BigEndian.AppendUint16(body, u16(len(ext)))
 		body = append(body, ext...)
 	}
@@ -211,6 +234,9 @@ var signatureAlgorithms = []uint16{
 	0x0805, // rsa_pss_rsae_sha384
 	0x0501, // rsa_pkcs1_sha384
 	0x0601, // rsa_pkcs1_sha512
+	0x0807, // ed25519
+	0x0806, // rsa_pss_rsae_sha512
+	0x0603, // ecdsa_secp521r1_sha512
 	0x0203, // ecdsa_sha1
 	0x0201, // rsa_pkcs1_sha1
 }
@@ -223,7 +249,7 @@ var groups = []uint16{
 	0x0019, // secp521r1
 }
 
-func extensions(serverName string) []byte {
+func extensions(serverName string, tls13 bool) ([]byte, error) {
 	var out []byte
 	add := func(kind uint16, data []byte) {
 		out = binary.BigEndian.AppendUint16(out, kind)
@@ -243,7 +269,22 @@ func extensions(serverName string) []byte {
 	add(0x000a, uint16List(groups))
 	add(0x000b, []byte{1, 0}) // ec_point_formats: uncompressed
 	add(0x000d, uint16List(signatureAlgorithms))
-	return out
+
+	if tls13 {
+		key, err := ecdh.X25519().GenerateKey(rand.Reader)
+		if err != nil {
+			return nil, err
+		}
+		public := key.PublicKey().Bytes()
+
+		add(0x002b, []byte{2, 0x03, 0x04}) // supported_versions: TLS 1.3 alone
+
+		share := binary.BigEndian.AppendUint16(nil, 0x001d) // x25519
+		share = binary.BigEndian.AppendUint16(share, u16(len(public)))
+		share = append(share, public...)
+		add(0x0033, append(binary.BigEndian.AppendUint16(nil, u16(len(share))), share...))
+	}
+	return out, nil
 }
 
 // hostName returns what may be sent as a server name, or nothing.
@@ -429,9 +470,67 @@ func readServerHello(r io.Reader, recordLength int) Result {
 		return Result{Answer: Unanswered, Err: ErrSplit}
 	}
 
-	return Result{
-		Answer:  Accepted,
-		Version: binary.BigEndian.Uint16(fixed[0:2]),
-		Suite:   binary.BigEndian.Uint16(suite[:]),
+	out := Result{
+		Answer:       Accepted,
+		Version:      binary.BigEndian.Uint16(fixed[0:2]),
+		Suite:        binary.BigEndian.Uint16(suite[:]),
+		RetryRequest: bytes.Equal(fixed[2:34], helloRetryRandom[:]),
 	}
+
+	// What follows the suite is read only as far as supported_versions. TLS
+	// 1.3 leaves the legacy field at TLS 1.2 and names itself there, so without
+	// it a TLS 1.3 answer reads as a TLS 1.2 one.
+	//
+	// A block that does not add up is not believed, and not refused either:
+	// the answer stands at its legacy version, as it did before this was read,
+	// so no server that answered a TLS 1.2 question is recorded differently.
+	used := serverHelloFixed + sessionID + 2
+	if version, ok := supportedVersion(r, min(messageLength, recordLength-4)-used); ok {
+		out.Version = version
+	}
+	return out
+}
+
+// helloRetryRandom is the value RFC 8446 §4.1.3 puts in a HelloRetryRequest's
+// random: the SHA-256 of "HelloRetryRequest".
+var helloRetryRandom = sha256.Sum256([]byte("HelloRetryRequest"))
+
+// maxExtensions bounds how much of a ServerHello's extensions is read. A TLS
+// 1.3 ServerHello carries a key share and a version, and a HelloRetryRequest
+// perhaps a cookie; this is well above either and still a bound the server does
+// not choose.
+const maxExtensions = 512
+
+// supportedVersion reads the compression method and the extensions after it,
+// and returns the version a supported_versions extension names.
+//
+// available is how many bytes of the message remain within the first record.
+func supportedVersion(r io.Reader, available int) (uint16, bool) {
+	if available < 3 {
+		return 0, false
+	}
+	var head [3]byte // compression method, extensions length
+	if _, err := io.ReadFull(r, head[:]); err != nil {
+		return 0, false
+	}
+	total := int(binary.BigEndian.Uint16(head[1:3]))
+	if total > available-3 || total > maxExtensions {
+		return 0, false
+	}
+	block := make([]byte, total)
+	if _, err := io.ReadFull(r, block); err != nil {
+		return 0, false
+	}
+	for len(block) >= 4 {
+		kind := binary.BigEndian.Uint16(block[0:2])
+		size := int(binary.BigEndian.Uint16(block[2:4]))
+		if size > len(block)-4 {
+			return 0, false
+		}
+		if kind == 0x002b && size == 2 {
+			return binary.BigEndian.Uint16(block[4:6]), true
+		}
+		block = block[4+size:]
+	}
+	return 0, false
 }

@@ -1826,6 +1826,19 @@ Go's TLS stack offers roughly twenty-seven of the three hundred suites in the
 IANA registry, and gives no way to choose among TLS 1.3 suites. A report that
 omits this reads as exhaustive.
 
+**The TLS 1.3 half is now asked by hand, and believed only when calibrated.**
+A server was listed with the one TLS 1.3 suite it negotiated, so one also
+accepting the integrity-only suites of RFC 9150 — every record in the clear —
+was reported as strong. Each suite in the registry is now asked alone, with a
+hello carrying supported_versions and a real X25519 key share, and the
+version is read from the ServerHello's own supported_versions, bounded. A
+hello Go did not write can fail for reasons of its own, and each such failure
+would read as a suite refused, so the suite Go's handshake negotiated is asked
+too: unless it comes back accepted at TLS 1.3, none of the answers is used, the
+negotiated suite alone is listed and the report says why. Once calibrated, an
+answer at another version or with a suite not offered is not believed, and a
+suite nobody answered about leaves the list incomplete rather than refused.
+
 A limit of this scan and a limit of this program are different claims, and
 until 2026-09-01 they were printed under one heading with everything the scan
 had established. R18 is what separates them; this invariant is what requires
@@ -1910,6 +1923,16 @@ needs the caveat as much as a reader of `trusted`.
 `TestAReportNamesTheAddressesItReached`,
 `TestAScanThatReachedTwoMachinesSaysSo`,
 `TestTheAddressesReachedAreRecordedOnceEach`,
+`TestEveryRegistryTLS13SuiteIsAskedAlone`,
+`TestTheTLS13SuitesAServerAcceptsAreListedAndGraded`,
+`TestASilentTLS13SuiteLeavesTheListIncomplete`,
+`TestWithoutCalibrationOnlyTheNegotiatedSuiteIsListed`, `TestAGoServerIsEnumeratedAtTLS13`,
+`TestAProbeListsEveryTLS13SuiteTheServerAccepts`,
+`TestAProbeSaysWhyTheTLS13SuitesWereNotEnumerated`,
+`TestATLS13HelloNamesTLS13AndCarriesAKeyShare`, `TestAnOrdinaryHelloDoesNotClaimTLS13`,
+`TestTheVersionSupportedVersionsNamesIsRead`,
+`TestAnExtensionBlockThatDoesNotAddUpLeavesTheLegacyVersion`,
+`TestExtensionsPastTheBoundAreNotRead`,
 `TestAddressesThatAnswerDifferentlyAreSaidToWithWhatEachAnswered`,
 `TestEachAddressIsDialledAsItselfThroughTheDialler`,
 `TestAddressesThatAnswerAlikeAreSaidToAnswerAlike`,

@@ -67,6 +67,26 @@ var SSL3 = append([]Suite{
 	{0x0002, "TLS_RSA_WITH_NULL_SHA"},
 }, Export...)
 
+// TLS13 is every TLS 1.3 suite in the IANA registry, each asked on its own.
+//
+// Go's client offers TLS 1.3 suites it chooses and no others, so a server
+// accepting AES-CCM, the ShangMi suites, or the integrity-only suites of RFC
+// 9150 — which authenticate a record and send it in the clear — was never asked
+// about them. Registered values only: a server choosing a value outside the
+// registry is choosing one nobody can name, and nothing is offered here that a
+// report could not name back.
+var TLS13 = []Suite{
+	{0x1301, "TLS_AES_128_GCM_SHA256"},
+	{0x1302, "TLS_AES_256_GCM_SHA384"},
+	{0x1303, "TLS_CHACHA20_POLY1305_SHA256"},
+	{0x1304, "TLS_AES_128_CCM_SHA256"},
+	{0x1305, "TLS_AES_128_CCM_8_SHA256"},
+	{0x00C6, "TLS_SM4_GCM_SM3"},
+	{0x00C7, "TLS_SM4_CCM_SM3"},
+	{0xC0B4, "TLS_SHA256_SHA256"},
+	{0xC0B5, "TLS_SHA384_SHA384"},
+}
+
 // IDs is a list of suites as the values a hello carries.
 func IDs(suites []Suite) []uint16 {
 	out := make([]uint16, 0, len(suites))
@@ -82,7 +102,7 @@ func IDs(suites []Suite) []uint16 {
 // suite it was not offered, and a caller should not be given a name that makes
 // that look like an ordinary answer.
 func Name(id uint16) string {
-	for _, list := range [][]Suite{SSL3, Null} {
+	for _, list := range [][]Suite{SSL3, Null, TLS13} {
 		for _, s := range list {
 			if s.ID == id {
 				return s.Name

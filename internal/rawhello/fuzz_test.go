@@ -20,8 +20,9 @@ func FuzzReadReply(f *testing.F) {
 	f.Add([]byte("HTTP/1.1 400 Bad Request\r\n\r\n"))
 	f.Add([]byte{contentHandshake, 3, 1, 0xFF, 0xFF})
 	f.Add([]byte{})
+	f.Add(serverHelloWith(0x0303, 0x1301, make([]byte, 32), supportedTLS13))
 
-	limit := 5 + 4 + serverHelloFixed + maxSessionID + 2
+	limit := 5 + 4 + serverHelloFixed + maxSessionID + 2 + 3 + maxExtensions
 
 	f.Fuzz(func(t *testing.T, reply []byte) {
 		c := &countingReader{r: bytes.NewReader(reply)}

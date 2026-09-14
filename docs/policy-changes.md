@@ -352,6 +352,24 @@ something newer to refuse it. Whether it did is described; no verdict moves,
 because what a downgrade costs depends on the version it lands on, and that
 version is graded on its own.
 
+**The TLS 1.3 suites are now asked one at a time.** Go's client offers the TLS
+1.3 suites it chooses and no others, so a TLS 1.3 server was listed with the
+one suite it negotiated. A server also accepting AES-CCM, the ShangMi suites or
+the integrity-only suites of RFC 9150 — which send every record in the clear —
+was never asked about them, and one accepting `TLS_SHA256_SHA256` was reported
+as strong. Each suite in the registry is now asked alone with a hand-written
+hello, and a server accepting an integrity-only suite comes back `insecure`
+under `cipher.no-encryption`, a rule that existed and could not fire. Nothing
+about such a server moved; its acceptance became visible. No rule identifier
+changed.
+
+The answers are believed only when calibrated: the suite Go's own handshake
+negotiated is asked too, and unless it comes back accepted at TLS 1.3 none of
+the answers is used, only the negotiated suite is listed as before, and the
+report says why. A suite nobody answered about leaves the list incomplete, which
+leaves the verdict ungraded rather than strong, exactly as an incomplete TLS 1.2
+list does (R4).
+
 **A revocation list can now raise the `cert.revoked` finding.** Until this version a
 certificate was reported as revoked only when the server stapled a status
 response that verified against the issuing authority and said so. That path has

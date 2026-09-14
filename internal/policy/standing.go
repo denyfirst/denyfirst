@@ -71,9 +71,11 @@ var (
 
 	LimitTLS13Suites = StandingLimit{
 		ID:    "tls13-suites",
-		Title: "TLS 1.3 suites cannot be enumerated",
-		Text: "For TLS 1.3 only the negotiated suite is listed. Go gives a client no way to " +
-			"choose among TLS 1.3 suites, so the rest could not be enumerated.",
+		Title: "TLS 1.3 suites are asked from the registry",
+		Text: "TLS 1.3 suites are asked one at a time with a hand-written hello offering each suite in " +
+			"the IANA registry, because Go gives a client no way to choose among them. A suite outside " +
+			"the registry is not asked about, and where that hello is not answered the way this scan's " +
+			"own handshake was, only the negotiated suite is listed and the report says so.",
 	}
 
 	// Rewritten when the stores of four clients began to be carried. The
