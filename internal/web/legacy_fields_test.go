@@ -26,7 +26,7 @@ func TestThePageReadsTheLegacyFieldsTheAPISends(t *testing.T) {
 		Version: "SSL 3.0", VersionGrade: &grade, Suite: suite, Reason: "a reason",
 	}
 	raw, err := json.Marshal(tlsprobe.Legacy{
-		Asked: true, SSL3: answer, Export: answer, Null: answer,
+		Asked: true, SSL3: answer, Export: answer, Null: answer, FFDHE: answer, Anonymous: answer,
 		Fallback: tlsprobe.Fallback{Measured: true, Honoured: true, Asked: "TLS 1.2", Reason: "a reason"},
 	})
 	if err != nil {
@@ -58,7 +58,7 @@ func TestThePageReadsTheLegacyFieldsTheAPISends(t *testing.T) {
 		return false
 	}
 
-	for _, key := range []string{"asked", "ssl3", "export", "null", "fallback"} {
+	for _, key := range []string{"asked", "ssl3", "export", "null", "ffdhe", "anonymous", "fallback"} {
 		if _, ok := top[key]; !ok {
 			t.Errorf("the API sends no legacy.%s", key)
 		}

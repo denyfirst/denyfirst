@@ -18,19 +18,26 @@ import (
 // Legacy is what hand-written hellos established about the things Go's own
 // client cannot offer.
 //
-// Four questions, each one connection: does the server speak SSL 3.0, does it
-// accept an export-grade suite, does it accept a NULL suite, and does it refuse a
-// downgraded hello carrying TLS_FALLBACK_SCSV. None completes a handshake; see
-// internal/rawhello for exactly what is sent and read.
+// Six questions, each one connection: does the server speak SSL 3.0, does it
+// accept an export-grade suite, a NULL suite, a finite-field DHE suite or an
+// anonymous suite, and does it refuse a downgraded hello carrying
+// TLS_FALLBACK_SCSV. None completes a handshake; see internal/rawhello for
+// exactly what is sent and read.
 type Legacy struct {
 	// Asked is false when none of the ordinary handshakes was answered, so none
 	// of these was put. Renderers show nothing for a question nobody asked.
 	Asked bool `json:"asked"`
 
-	SSL3     LegacyAnswer `json:"ssl3"`
-	Export   LegacyAnswer `json:"export"`
-	Null     LegacyAnswer `json:"null"`
-	Fallback Fallback     `json:"fallback"`
+	SSL3   LegacyAnswer `json:"ssl3"`
+	Export LegacyAnswer `json:"export"`
+	Null   LegacyAnswer `json:"null"`
+
+	// FFDHE and Anonymous are the two families Go's client implements no
+	// suite of at all, so the ordinary enumeration could never list one.
+	FFDHE     LegacyAnswer `json:"ffdhe"`
+	Anonymous LegacyAnswer `json:"anonymous"`
+
+	Fallback Fallback `json:"fallback"`
 }
 
 // LegacyAnswer is one of those questions.
@@ -86,17 +93,27 @@ const notAskedNothingAnswered = "not asked: none of the ordinary handshakes was 
 func (p *Prober) legacy(ctx context.Context, host, port string, results []VersionResult, reached *addressSet) Legacy {
 	if !suiteCoverageApplies(results) {
 		return Legacy{
-			SSL3:     LegacyAnswer{Reason: notAskedNothingAnswered},
-			Export:   LegacyAnswer{Reason: notAskedNothingAnswered},
-			Null:     LegacyAnswer{Reason: notAskedNothingAnswered},
-			Fallback: Fallback{Reason: notAskedNothingAnswered},
+			SSL3:      LegacyAnswer{Reason: notAskedNothingAnswered},
+			Export:    LegacyAnswer{Reason: notAskedNothingAnswered},
+			Null:      LegacyAnswer{Reason: notAskedNothingAnswered},
+			FFDHE:     LegacyAnswer{Reason: notAskedNothingAnswered},
+			Anonymous: LegacyAnswer{Reason: notAskedNothingAnswered},
+			Fallback:  Fallback{Reason: notAskedNothingAnswered},
 		}
 	}
 
 	out := Legacy{Asked: true}
 
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(5)
+	go func() {
+		defer wg.Done()
+		out.FFDHE = p.askLegacy(ctx, host, port, modernHello(host, rawhello.FFDHE), rawhello.FFDHE, reached)
+	}()
+	go func() {
+		defer wg.Done()
+		out.Anonymous = p.askLegacy(ctx, host, port, modernHello(host, rawhello.Anonymous), rawhello.Anonymous, reached)
+	}()
 	go func() {
 		defer wg.Done()
 		out.SSL3 = p.askLegacy(ctx, host, port, rawhello.Hello{
@@ -295,7 +312,7 @@ func mergeLegacy(verdict policy.Verdict, findings []policy.Finding, l Legacy) (p
 		}
 	}
 
-	for _, a := range []LegacyAnswer{l.SSL3, l.Export, l.Null} {
+	for _, a := range []LegacyAnswer{l.SSL3, l.Export, l.Null, l.FFDHE, l.Anonymous} {
 		if !a.Accepted {
 			continue
 		}
@@ -329,6 +346,8 @@ func (r *Report) describeLegacy() {
 		{"SSL 3.0", l.SSL3},
 		{"an export-grade suite", l.Export},
 		{"a NULL suite", l.Null},
+		{"a finite-field DHE suite", l.FFDHE},
+		{"an anonymous suite", l.Anonymous},
 	} {
 		if !q.answer.Measured {
 			unmeasured = append(unmeasured, q.name)

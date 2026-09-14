@@ -473,6 +473,10 @@ function legacy(tls) {
   answer("SSL 3.0", l.ssl3);
   answer("export", l.export);
   answer("NULL", l.null);
+  // The same rows the terminal prints, in its words (R16). Older reports carry
+  // neither field, so each is drawn only where it was sent.
+  if (l.ffdhe) answer("DHE", l.ffdhe);
+  if (l.anonymous) answer("anonymous", l.anonymous);
 
   const f = l.fallback;
   const row = el("tr");

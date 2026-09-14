@@ -67,6 +67,55 @@ var SSL3 = append([]Suite{
 	{0x0002, "TLS_RSA_WITH_NULL_SHA"},
 }, Export...)
 
+// FFDHE is the finite-field Diffie-Hellman suites a TLS 1.2 server is
+// realistically configured with, each checked against the IANA registry.
+//
+// Go's client implements none of them, so a server still accepting one was
+// never asked — and RFC 10015 now says servers MUST NOT select them in TLS 1.2,
+// which this rule set grades insecure (cipher.ffdhe). The ones with DES or 3DES
+// are left to the SSL 3.0 list and to the rules for those ciphers, which grade
+// them first; this list asks about the key exchange.
+var FFDHE = []Suite{
+	{0x0033, "TLS_DHE_RSA_WITH_AES_128_CBC_SHA"},
+	{0x0039, "TLS_DHE_RSA_WITH_AES_256_CBC_SHA"},
+	{0x0067, "TLS_DHE_RSA_WITH_AES_128_CBC_SHA256"},
+	{0x006B, "TLS_DHE_RSA_WITH_AES_256_CBC_SHA256"},
+	{0x009E, "TLS_DHE_RSA_WITH_AES_128_GCM_SHA256"},
+	{0x009F, "TLS_DHE_RSA_WITH_AES_256_GCM_SHA384"},
+	{0xC09E, "TLS_DHE_RSA_WITH_AES_128_CCM"},
+	{0xC09F, "TLS_DHE_RSA_WITH_AES_256_CCM"},
+	{0xCCAA, "TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256"},
+	{0x0032, "TLS_DHE_DSS_WITH_AES_128_CBC_SHA"},
+	{0x0038, "TLS_DHE_DSS_WITH_AES_256_CBC_SHA"},
+	{0x0040, "TLS_DHE_DSS_WITH_AES_128_CBC_SHA256"},
+	{0x006A, "TLS_DHE_DSS_WITH_AES_256_CBC_SHA256"},
+	{0x00A2, "TLS_DHE_DSS_WITH_AES_128_GCM_SHA256"},
+	{0x00A3, "TLS_DHE_DSS_WITH_AES_256_GCM_SHA384"},
+}
+
+// Anonymous is the suites that authenticate nobody: the server sends no
+// certificate, so an active attacker can be the server.
+//
+// The export-grade anonymous suites are in Export and the one with no cipher
+// at all is NULL's to ask about; these are the rest a server is realistically
+// configured with. The elliptic-curve ones need supported_groups, which the
+// hello carries.
+var Anonymous = []Suite{
+	{0x0018, "TLS_DH_anon_WITH_RC4_128_MD5"},
+	{0x001A, "TLS_DH_anon_WITH_DES_CBC_SHA"},
+	{0x001B, "TLS_DH_anon_WITH_3DES_EDE_CBC_SHA"},
+	{0x0034, "TLS_DH_anon_WITH_AES_128_CBC_SHA"},
+	{0x003A, "TLS_DH_anon_WITH_AES_256_CBC_SHA"},
+	{0x006C, "TLS_DH_anon_WITH_AES_128_CBC_SHA256"},
+	{0x006D, "TLS_DH_anon_WITH_AES_256_CBC_SHA256"},
+	{0x00A6, "TLS_DH_anon_WITH_AES_128_GCM_SHA256"},
+	{0x00A7, "TLS_DH_anon_WITH_AES_256_GCM_SHA384"},
+	{0xC016, "TLS_ECDH_anon_WITH_RC4_128_SHA"},
+	{0xC017, "TLS_ECDH_anon_WITH_3DES_EDE_CBC_SHA"},
+	{0xC018, "TLS_ECDH_anon_WITH_AES_128_CBC_SHA"},
+	{0xC019, "TLS_ECDH_anon_WITH_AES_256_CBC_SHA"},
+}
+
 // TLS13 is every TLS 1.3 suite in the IANA registry, each asked on its own.
 //
 // Go's client offers TLS 1.3 suites it chooses and no others, so a server
@@ -102,7 +151,7 @@ func IDs(suites []Suite) []uint16 {
 // suite it was not offered, and a caller should not be given a name that makes
 // that look like an ordinary answer.
 func Name(id uint16) string {
-	for _, list := range [][]Suite{SSL3, Null, TLS13} {
+	for _, list := range [][]Suite{SSL3, Null, FFDHE, Anonymous, TLS13} {
 		for _, s := range list {
 			if s.ID == id {
 				return s.Name
