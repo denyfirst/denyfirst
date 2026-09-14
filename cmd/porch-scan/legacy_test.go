@@ -72,12 +72,15 @@ func TestNothingIsPrintedForAQuestionNotAsked(t *testing.T) {
 // What the hellos found is printed with the suite, the version, and the grade.
 func TestTheHandWrittenHellosArePrintedWithWhatTheyFound(t *testing.T) {
 	export := policy.GradeCipher("TLS_RSA_EXPORT_WITH_DES40_CBC_SHA")
+	anon := policy.GradeCipher("TLS_DH_anon_WITH_AES_128_CBC_SHA")
 	l := tlsprobe.Legacy{
-		Asked:    true,
-		SSL3:     tlsprobe.LegacyAnswer{Measured: true, Refused: true},
-		Export:   tlsprobe.LegacyAnswer{Measured: true, Accepted: true, Version: "TLS 1.0", Suite: &tlsprobe.CipherResult{CipherFinding: export}},
-		Null:     tlsprobe.LegacyAnswer{Reason: "the server did not answer in time"},
-		Fallback: tlsprobe.Fallback{Measured: true, Asked: "TLS 1.2"},
+		Asked:     true,
+		SSL3:      tlsprobe.LegacyAnswer{Measured: true, Refused: true},
+		Export:    tlsprobe.LegacyAnswer{Measured: true, Accepted: true, Version: "TLS 1.0", Suite: &tlsprobe.CipherResult{CipherFinding: export}},
+		Null:      tlsprobe.LegacyAnswer{Reason: "the server did not answer in time"},
+		FFDHE:     tlsprobe.LegacyAnswer{Measured: true, Refused: true},
+		Anonymous: tlsprobe.LegacyAnswer{Measured: true, Accepted: true, Version: "TLS 1.2", Suite: &tlsprobe.CipherResult{CipherFinding: anon}},
+		Fallback:  tlsprobe.Fallback{Measured: true, Asked: "TLS 1.2"},
 	}
 
 	_, suites := legacyOutput(t, l)
@@ -86,6 +89,10 @@ func TestTheHandWrittenHellosArePrintedWithWhatTheyFound(t *testing.T) {
 		"TLS_RSA_EXPORT_WITH_DES40_CBC_SHA at TLS 1.0",
 		"insecure",
 		"not measured   the server did not answer in time",
+		// A row each for the two families Go's client implements none of. A
+		// sabotage dropping the DHE row escaped on 2026-09-14, before these.
+		"    DHE       refused",
+		"    anonymous accepted       insecure  TLS_DH_anon_WITH_AES_128_CBC_SHA at TLS 1.2",
 		"not honoured",
 		"claiming only TLS 1.2",
 	} {

@@ -352,6 +352,17 @@ something newer to refuse it. Whether it did is described; no verdict moves,
 because what a downgrade costs depends on the version it lands on, and that
 version is graded on its own.
 
+**Finite-field DHE and anonymous suites are now asked about.** Go's client
+implements no suite of either family, so the ordinary enumeration could never
+list one, and `cipher.ffdhe` and `cipher.anonymous` could not fire. A server
+accepting `TLS_DHE_RSA_WITH_AES_128_GCM_SHA256` beside modern suites was
+reported strong — and RFC 10015 now says a TLS 1.2 server MUST NOT select it.
+Each family is one more hand-written hello offering only its own suites, from
+the IANA registry, alongside the export and NULL ones; a server accepting any
+comes back `insecure`. Nothing about such a server moved; its acceptance became
+visible. No rule identifier changed, and as for the others, what is established
+is whether any of each is accepted, not every one that is.
+
 **The TLS 1.3 suites are now asked one at a time.** Go's client offers the TLS
 1.3 suites it chooses and no others, so a TLS 1.3 server was listed with the
 one suite it negotiated. A server also accepting AES-CCM, the ShangMi suites or

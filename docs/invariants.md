@@ -2298,6 +2298,9 @@ answers everything else, and nothing they find can lift a verdict.
 `TestAServerSpeakingOnlySSL3IsGradedInsecure`,
 `TestAnExportSuiteAcceptedIsGraded`,
 `TestANullSuiteAcceptedIsGraded`,
+`TestAFiniteFieldOrAnonymousSuiteAcceptedIsGraded`,
+`TestAnUnansweredDHEOrAnonymousHelloIsSaidToBeUnsettled`,
+`TestNeitherFamilyIsAskedWhenNothingAnswered`,
 `TestALegacyFindingIsCountedOnce`
 
 ### R6 — Correct configuration is not penalised

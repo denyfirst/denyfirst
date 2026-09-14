@@ -422,8 +422,12 @@ func TestEveryNameGradesAsItsFamily(t *testing.T) {
 	}
 	check(Export, "EXPORT", "cipher.export")
 	check(Null, "NULL", "cipher.null")
+	check(FFDHE, "_DHE_", "cipher.ffdhe")
+	check(Anonymous, "_anon_", "cipher.anonymous")
 
-	for _, s := range append(slices.Clone(SSL3), TLS13...) {
+	all := append(slices.Clone(SSL3), FFDHE...)
+	all = append(all, Anonymous...)
+	for _, s := range append(all, TLS13...) {
 		if Name(s.ID) != s.Name {
 			t.Errorf("Name(%#04x) = %q, want %q", s.ID, Name(s.ID), s.Name)
 		}

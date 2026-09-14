@@ -183,8 +183,6 @@ of being able to write files.
 Certificate revocation fetched live (command line only — a certificate
 authority learns which certificate is being examined, and that is the
 operator's decision about their own certificate, not ours to make for them).
-Finite-field DHE and anonymous suites in the ordinary enumeration, which the hand-written ClientHello now in `internal/rawhello` makes
-possible without a new dependency.
 
 ---
 

@@ -54,6 +54,8 @@ func printLegacySuites(w io.Writer, l tlsprobe.Legacy) {
 		{"SSL 3.0", l.SSL3},
 		{"export", l.Export},
 		{"NULL", l.Null},
+		{"DHE", l.FFDHE},
+		{"anonymous", l.Anonymous},
 	} {
 		fmt.Fprintf(w, "    %-9s %s\n", q.label, legacyLine(q.answer))
 	}

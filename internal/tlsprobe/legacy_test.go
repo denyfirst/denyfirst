@@ -569,12 +569,106 @@ func TestProbeReportsAServerSpeakingOnlySSL3(t *testing.T) {
 // contradicting itself two inches apart.
 func TestTheSuitesLimitSaysWhatTheHandWrittenHelloAsks(t *testing.T) {
 	text := policy.LimitCipherSuitesOffered.Text
-	for _, want := range []string{"SSL 3.0", "export-grade", "NULL", "hand-written hello", "not every one"} {
+	for _, want := range []string{"SSL 3.0", "export-grade", "NULL", "finite-field DHE", "anonymous", "hand-written hello", "not every one"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the limit does not say %q: %q", want, text)
 		}
 	}
 	if strings.Contains(text, "SSLv3") {
 		t.Errorf("the limit still names SSLv3 as uncovered: %q", text)
+	}
+}
+
+// A server accepting a finite-field DHE or an anonymous suite is graded for it.
+//
+// Go's client implements no suite of either family, so the ordinary
+// enumeration could never list one: a server accepting TLS_DHE_RSA_WITH_AES_128_GCM_SHA256
+// beside modern suites was reported strong, and RFC 10015 now says it must not
+// select that suite at all. And each is asked with a hello offering only its
+// own family, so a server's preference for something sound cannot answer for it.
+func TestAFiniteFieldOrAnonymousSuiteAcceptedIsGraded(t *testing.T) {
+	for name, tc := range map[string]struct {
+		family []rawhello.Suite
+		pick   uint16
+		rule   string
+		answer func(Legacy) LegacyAnswer
+	}{
+		"DHE":       {rawhello.FFDHE, 0x009E, "cipher.ffdhe", func(l Legacy) LegacyAnswer { return l.FFDHE }},
+		"anonymous": {rawhello.Anonymous, 0x0034, "cipher.anonymous", func(l Legacy) LegacyAnswer { return l.Anonymous }},
+	} {
+		family := rawhello.IDs(tc.family)
+		p, _ := scriptedProber(func(h heardHello) []byte {
+			if slices.Equal(h.suites, family) {
+				return accept(tls.VersionTLS12, tc.pick)
+			}
+			return alert(40)
+		})
+
+		l := askAll(t, p, answered(tls.VersionTLS12))
+		got := tc.answer(l)
+		if !got.Accepted || got.Suite == nil || got.Suite.ID != tc.pick || got.Suite.Verdict != policy.Insecure {
+			t.Errorf("%s: the answer is %+v", name, got)
+			continue
+		}
+		verdict, findings := mergeLegacy(policy.Strong, nil, l)
+		if verdict != policy.Insecure || !slices.Contains(ruleIDs(findings), tc.rule) {
+			t.Errorf("%s: the report comes back %s with %v, want insecure with %s", name, verdict, ruleIDs(findings), tc.rule)
+		}
+		for other, a := range map[string]LegacyAnswer{"SSL 3.0": l.SSL3, "export": l.Export, "NULL": l.Null} {
+			if a.Accepted {
+				t.Errorf("%s: %s was read as accepted from a hello it was not in", name, other)
+			}
+		}
+	}
+}
+
+// A DHE or anonymous hello nobody answered is named as not established, like
+// the others — nothing reported accepted is not the same as nothing accepted.
+//
+// A sabotage leaving the DHE question out of that sentence escaped on
+// 2026-09-14: the only test of the sentence predates the two families.
+func TestAnUnansweredDHEOrAnonymousHelloIsSaidToBeUnsettled(t *testing.T) {
+	refused := LegacyAnswer{Measured: true, Refused: true}
+	r := &Report{Legacy: Legacy{
+		Asked: true, SSL3: refused, Export: refused, Null: refused,
+		FFDHE:     LegacyAnswer{Reason: "the server did not answer in time"},
+		Anonymous: LegacyAnswer{Reason: "the server did not answer in time"},
+		Fallback:  Fallback{Reason: "not asked"},
+	}}
+	r.describeLegacy()
+
+	var unsettled []string
+	for _, n := range r.Notes {
+		if n.Kind == policy.KindUnsettled {
+			unsettled = append(unsettled, n.Text)
+		}
+	}
+	text := strings.Join(unsettled, "\n")
+	for _, want := range []string{"a finite-field DHE suite", "an anonymous suite"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the unsettled notes do not name %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "SSL 3.0") {
+		t.Errorf("a question that was answered is named as unsettled:\n%s", text)
+	}
+}
+
+// Where nothing answered, neither family is asked, and each says why.
+//
+// A sabotage dropping the DHE reason escaped on 2026-09-14: an empty reason
+// renders as "not measured" and nothing more, which is a row that explains
+// nothing.
+func TestNeitherFamilyIsAskedWhenNothingAnswered(t *testing.T) {
+	p, dials := scriptedProber(func(heardHello) []byte { return alert(40) })
+	l := askAll(t, p, []VersionResult{{Version: tls.VersionTLS12, Name: "TLS 1.2"}})
+
+	if l.Asked || dials.Load() != 0 {
+		t.Fatalf("asked=%v after %d connections; nothing answered, so nothing is asked", l.Asked, dials.Load())
+	}
+	for name, a := range map[string]LegacyAnswer{"DHE": l.FFDHE, "anonymous": l.Anonymous} {
+		if a.Reason != notAskedNothingAnswered {
+			t.Errorf("%s carries reason %q, want the sentence saying why it was not asked", name, a.Reason)
+		}
 	}
 }
