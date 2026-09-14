@@ -41,6 +41,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/ctsearch"
 	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
+	"github.com/denyfirst/denyfirst/internal/ocspquery"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/results"
 	"github.com/denyfirst/denyfirst/internal/scan"
@@ -83,7 +84,7 @@ func main() {
 // added and did exactly that: -resolver was declared, documented in the usage
 // text, and never assigned, so the sabotage that removed the assignment changed
 // no test.
-func tlsScanner(timeout time.Duration, allowPrivate bool, resolver string, searchLogs bool) *scan.Scanner {
+func tlsScanner(timeout time.Duration, allowPrivate bool, resolver string, searchLogs, askResponder bool) *scan.Scanner {
 	scanner := &scan.Scanner{
 		Prober: &tlsprobe.Prober{TotalTimeout: timeout},
 
@@ -112,6 +113,12 @@ func tlsScanner(timeout time.Duration, allowPrivate bool, resolver string, searc
 		// The monitor is behind an interface, so an operator running their own
 		// is a substitution rather than a rewrite.
 		scanner.Logs = &ctsearch.CRTSh{Timeout: timeout}
+	}
+
+	if askResponder {
+		// The operator asked, which is the only way this happens anywhere. The
+		// question names the certificate to the authority that issued it (R3a).
+		scanner.Responder = &ocspquery.Fetcher{Timeout: timeout}
 	}
 
 	if allowPrivate {
@@ -187,6 +194,21 @@ func run() int {
 			"ask a public certificate transparency monitor which certificates exist for\n"+
 				"\tthe name, to find any you did not order. Off by default: the question\n"+
 				"\tnames the domain to a service this project does not run")
+
+		// Whether to ask the certificate's own responder if it has been revoked.
+		//
+		// Off by default, and more of a disclosure than -check-logs. A log
+		// search names a domain whose certificates are already public; this
+		// names one certificate — its serial and its issuer — to the authority
+		// that issued it, from this address, at this moment. That is the query
+		// R3a says this project does not make, and it is made here only because
+		// an operator examining their own certificate may decide the authority
+		// learning it is no disclosure at all. The revocation list is still read
+		// either way; a list names no certificate.
+		askResponder = flag.Bool("ask-responder", false,
+			"ask the certificate's own OCSP responder whether it has been revoked. Off by\n"+
+				"\tdefault: the question tells the issuing authority which certificate is\n"+
+				"\tbeing examined")
 		// Where to keep the results, if anywhere.
 		//
 		// Empty keeps nothing, which is the default and the promise this
@@ -297,7 +319,7 @@ func run() int {
 			selectorsFrom(*dkimSelectors, *dkimCommon), *heloName)
 	}
 
-	scanner := tlsScanner(*timeout, *allowPrivate, *resolver, *searchLogs)
+	scanner := tlsScanner(*timeout, *allowPrivate, *resolver, *searchLogs, *askResponder)
 
 	return runTLS(ctx, scanner, targets, *timeout, *asJSON, store)
 }

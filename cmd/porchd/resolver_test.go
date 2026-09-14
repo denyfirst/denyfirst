@@ -52,6 +52,17 @@ func TestNoResolverFlagLeavesTheScannerUnset(t *testing.T) {
 	}
 }
 
+// The service never asks a certificate's responder, with or without proof of
+// control: the question names the certificate to its authority, and only an
+// operator on the command line makes that choice (R3a).
+func TestTheServiceNeverAsksAResponder(t *testing.T) {
+	for _, resolver := range []string{"", "192.0.2.53:53"} {
+		if r := serviceScanner(nil, nil, resolver).Responder; r != nil {
+			t.Errorf("the service's scanner holds a responder fetcher %+v; it must never ask one", r)
+		}
+	}
+}
+
 // A resolver must be an address and a port. A name would be looked up through
 // the machine's resolver, which is the one the flag exists to step around.
 func TestAResolverThatIsNotAnAddressAndPortIsRefused(t *testing.T) {

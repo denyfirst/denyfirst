@@ -133,6 +133,27 @@ type StapleFacts struct {
 	// words. Empty when none was attempted at all — which is the state of the
 	// demonstration deployment, where this check is not compiled in.
 	ListReason string
+
+	// The fields below carry what the certificate's own responder said when it
+	// was asked directly — which happens only where an operator asked for it
+	// on the command line, because the question tells the authority which
+	// certificate is being examined (R3a). All of them are empty everywhere
+	// else, and a report that did not ask says nothing about asking.
+
+	// QueryStatus is "good", "revoked" or "unknown" from an answer verified
+	// against the issuer and current, and empty when no answer established
+	// anything.
+	QueryStatus string
+
+	// QueryRevokedAt is when the responder says the certificate was withdrawn.
+	QueryRevokedAt time.Time
+
+	// QueryAsOf is the answer's own thisUpdate.
+	QueryAsOf time.Time
+
+	// QueryReason says why asking established nothing, in this project's own
+	// words, where it was asked.
+	QueryReason string
 }
 
 // StapleFinding is the graded result.
@@ -252,6 +273,28 @@ func GradeStapling(f StapleFacts) StapleFinding {
 			"A revocation list published by the issuing authority, verified against it and current, names this certificate as revoked"+when+
 				". Revocation is how a certificate is withdrawn before it expires, usually because its key was exposed or it was issued in error. Clients that check will refuse the connection."+asOf,
 			rfc5280, rfc9325)
+	}
+
+	// The same finding, reached a third way: the responder asked directly.
+	//
+	// Still one withdrawal, one finding. Only where neither a stapled response
+	// nor a list already said revoked, for the reason the list's rule gives.
+	if f.QueryStatus == "revoked" && !(f.Validated && f.Status == "revoked") && f.ListStatus != "revoked" {
+		when := ""
+		if !f.QueryRevokedAt.IsZero() {
+			when = " on " + f.QueryRevokedAt.UTC().Format("2006-01-02")
+		}
+		add("cert.revoked", Insecure,
+			"The certificate has been revoked",
+			"The certificate's own responder, asked directly and its answer verified against the issuing authority, says this certificate was revoked"+when+
+				". Revocation is how a certificate is withdrawn before it expires, usually because its key was exposed or it was issued in error. Clients that check will refuse the connection.",
+			rfc6960, rfc9325)
+	}
+	if f.QueryStatus == "unknown" && !(f.Validated && f.Status == "unknown") {
+		add("cert.revocation-unknown", Weak,
+			"The authority does not recognise this certificate",
+			"The certificate's own responder, asked directly and its answer verified against the issuing authority, says the status of this certificate is unknown. That is not the same as not revoked: the responder is authoritative for this issuer and does not have a record of this serial.",
+			rfc6960)
 	}
 
 	// A responder that has never heard of a certificate it should be

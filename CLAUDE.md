@@ -217,6 +217,7 @@ in it is there because it has already gone wrong once.
 | `internal/truststore` | which store decides the word "trusted", for both checks (R7) |
 | `internal/rootstores` | Mozilla's, Chrome's, Microsoft's and Apple's root stores, carried and named beside the verdict (R7) |
 | `internal/crl` | reads the revocation list a certificate names (N11) |
+| `internal/ocspquery` | asks a certificate's own responder, only behind `porch-scan -ask-responder` (R3a) |
 | `internal/ctsearch` | finds certificates a public log holds for a name (N12) |
 | `internal/ctlogs` | Google's signed CT log list, carried; checks each transparency receipt against it (R3c) |
 | `internal/dnsclient` | the resolver; CAA, TXT, and the walk up the tree (N5) |
