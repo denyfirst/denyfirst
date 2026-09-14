@@ -208,6 +208,7 @@ in it is there because it has already gone wrong once.
 | `internal/dkim` | reads signing keys under selectors somebody named |
 | `internal/mtasts` | fetches the MTA-STS policy a zone announces, behind proof (N13) |
 | `internal/smtptls` | asks each MX for STARTTLS on port 25; never names a sender, recipient or message (N3, N13) |
+| `internal/dane` | checks an exchanger's DANE records against the certificate it presented, as RFC 7672 has a sender do (N13) |
 | `internal/demo` | which hosts this deployment may reach, compiled in |
 | `internal/verify` | which domains a deployment has been shown control of (N9) |
 | `internal/challenge` | fetches the file half of that proof, and nothing else |

@@ -26,6 +26,32 @@ func printExchangers(w io.Writer, f *policy.MailFacts) {
 	for _, x := range f.Exchangers {
 		fmt.Fprintf(w, "    STARTTLS   %s: %s\n", x.Host, exchangerLine(x))
 	}
+	for _, b := range f.DANEBindings {
+		fmt.Fprintf(w, "    DANE       %s: %s\n", b.Host, daneLine(b))
+	}
+}
+
+// daneLine is what one exchanger's DANE records made of its certificate, in the
+// words the page uses (R16). Whether the records were reported validated is on
+// the row, because it decides whether a sender acts on any of it.
+func daneLine(b policy.DANEBinding) string {
+	var line string
+	switch b.Outcome {
+	case policy.DANEMatched:
+		line = "matches the certificate presented"
+	case policy.DANEMismatched:
+		line = "does not match: " + b.Reason
+	case policy.DANENoSTARTTLS:
+		line = "records published, STARTTLS not offered"
+	case policy.DANENoUsableRecords:
+		line = "no record a sender uses for SMTP"
+	default:
+		line = "not established: " + b.Reason
+	}
+	if !b.Validated {
+		line += " (records not reported validated)"
+	}
+	return line
 }
 
 // exchangerLine is one exchanger's row.

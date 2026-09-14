@@ -175,8 +175,9 @@ nothing. A failure here looks the same whether the policy host is broken or this
 machine's egress is blocked, and no measurement available from here tells them
 apart.
 
-DANE comes with a limit that is stated rather than implied: the records are
-read, and whether each binding is *correct* is not yet checked.
+Whether each DANE binding *holds* is checked where the exchangers are contacted,
+against the certificate each presented, and said to be unchecked where they are
+not — see below.
 
 **What each exchanger answers when asked for encryption, where the deployment
 asks.** An enforcing MTA-STS policy and a DANE record both promise that mail is
@@ -196,6 +197,22 @@ must not deliver to it — so there it is graded,
 is: it fails closed. An exchanger that offered STARTTLS and could not negotiate
 with this client is not graded, because that is a limit of this client before it
 is a fault of the server (R4).
+
+**Whether each exchanger's DANE records hold for the certificate it presented.**
+Checked as RFC 7672 has a sender check: DANE-EE(3) against the leaf, with no
+name or date check; DANE-TA(2) against a presented certificate, which the leaf
+must chain to and whose chain must name the exchanger. PKIX-TA and PKIX-EE, which
+RFC 7672 sets aside for SMTP, undefined selectors and matching types, and digests
+of the wrong length are reported as records no sender uses. Where a binding does
+not hold — no record matches, or the exchanger offers no STARTTLS — and the
+resolver reported the records validated, it is graded,
+`mail.dane-exchanger-fails-binding`, weak: RFC 7672 has a sender hold the mail,
+so it fails closed, as the enforcing MTA-STS rule does. Without the AD bit it is
+named and not graded, because a sender applies only records that validate, and
+the report says the bit is the resolver's word rather than a check this program
+made. A bare DANE-TA key that no presented certificate carries, and an anchor past
+its own dates, are reported as not established rather than as failures, and so is
+every exchanger that presented no certificate to this client.
 
 Outbound port 25 is blocked by many networks, residential connections and
 hosting providers among them. Where no exchanger can be reached, the report says

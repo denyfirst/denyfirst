@@ -31,6 +31,9 @@ type zone struct {
 	exchangers map[string][]dnsclient.MX
 	dane       map[string][]dnsclient.TLSA
 
+	// validated names the TLSA answers the resolver reports with the AD bit.
+	validated map[string]bool
+
 	asked []string
 }
 
@@ -53,7 +56,7 @@ func (z *zone) LookupTLSA(_ context.Context, name string) (dnsclient.TLSAAnswer,
 		return dnsclient.TLSAAnswer{}, err
 	}
 	records, ok := z.dane[name]
-	return dnsclient.TLSAAnswer{Records: records, Existed: ok}, nil
+	return dnsclient.TLSAAnswer{Records: records, Existed: ok, Validated: z.validated[name]}, nil
 }
 
 func (z *zone) LookupTXT(_ context.Context, name string) (dnsclient.TXTAnswer, error) {

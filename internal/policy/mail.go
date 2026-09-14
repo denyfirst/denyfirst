@@ -50,6 +50,10 @@ var (
 		"RFC 8461 — SMTP MTA Strict Transport Security (MTA-STS)",
 		"https://www.rfc-editor.org/rfc/rfc8461",
 	}
+	rfc7672 = Reference{
+		"RFC 7672 — SMTP Security via Opportunistic DANE TLS",
+		"https://www.rfc-editor.org/rfc/rfc7672",
+	}
 	nist800177 = Reference{
 		"NIST SP 800-177 Rev. 1 — Trustworthy Email",
 		"https://csrc.nist.gov/pubs/sp/800/177/r1/final",
@@ -236,6 +240,37 @@ type MailFacts struct {
 
 	// Exchangers is what each one answered.
 	Exchangers []ExchangerTLS `json:"exchangers,omitempty"`
+
+	// DANEBindings is what each contacted exchanger's DANE records made of the
+	// certificate it presented, for the exchangers publishing any.
+	DANEBindings []DANEBinding `json:"daneBindings,omitempty"`
+}
+
+// What an exchanger's DANE records made of what it presented. The first four
+// are internal/dane's words; the last two are the states before a certificate.
+const (
+	DANEMatched         = "matched"
+	DANEMismatched      = "mismatched"
+	DANENoUsableRecords = "no-usable-records"
+	DANEUndetermined    = "undetermined"
+	DANENoSTARTTLS      = "no-starttls"
+	DANENotChecked      = "not-checked"
+)
+
+// DANEBinding is one exchanger's DANE records checked against its certificate.
+type DANEBinding struct {
+	Host string `json:"host"`
+
+	// Validated is the AD bit on the TLSA answer: the resolver's claim that the
+	// records passed DNSSEC. RFC 7672 has a sender apply only records that
+	// validate, so it decides whether a failure is one a sender acts on.
+	Validated bool `json:"validated"`
+
+	// Usable is how many of the records a sender uses for SMTP.
+	Usable int `json:"usable"`
+
+	Outcome string `json:"outcome"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 // ExchangerTLS is what one mail exchanger answered when asked for encryption.
@@ -459,6 +494,43 @@ func GradeMail(f MailFacts) MailFinding {
 		}
 	}
 
+	// An exchanger failing the DANE binding it publishes.
+	//
+	// Graded, and for the reason the enforcing MTA-STS rule is: a document says
+	// what a sender does. RFC 7672 has a sender that finds usable TLSA records
+	// which validate require TLS and a matching certificate, and hold the mail
+	// rather than deliver it when it finds neither. So this fails closed, and it
+	// is weak for the same reason.
+	//
+	// Only where the resolver reported the records validated. Without that a
+	// sender applying RFC 7672 ignores them, and a report grading them would be
+	// grading records no sender acts on. The bit is the resolver's claim rather
+	// than this program's check, and the rationale says so. And only a
+	// certificate that was obtained and does not match, or an exchanger that was
+	// measured and offers no STARTTLS: anything this client could not establish
+	// is described, never graded (R4).
+	for _, b := range f.DANEBindings {
+		if !b.Validated || b.Usable == 0 {
+			continue
+		}
+		var fails string
+		switch b.Outcome {
+		case DANENoSTARTTLS:
+			fails = "does not offer STARTTLS"
+		case DANEMismatched:
+			fails = "presents a certificate its DANE records do not match: " + b.Reason
+		default:
+			continue
+		}
+		add("mail.dane-exchanger-fails-binding", Weak,
+			"An exchanger fails the DANE binding it publishes",
+			b.Host+" "+fails+". Its TLSA records were reported validated by the resolver this scan asked, "+
+				"and RFC 7672 says a sending server that finds usable, validated TLSA records must not deliver "+
+				"to an exchanger that cannot match them — so mail routed there is held rather than delivered "+
+				"by every sender that applies DANE.",
+			rfc7672)
+	}
+
 	// A signing key a receiver is entitled to ignore.
 	//
 	// Graded, and it is the only thing about DKIM that is. RFC 8301 raised the
@@ -638,7 +710,9 @@ var LimitMailSendsNothing = StandingLimit{
 	Text: "No message was composed or sent, and nothing that would change state at the other end " +
 		"was attempted. Where a mail exchanger was contacted, the conversation ended once encryption " +
 		"had been negotiated or declined: no sender, recipient or message was ever named. Where DANE " +
-		"is published, that the binding is correct was not checked. And a DKIM signing key is read " +
+		"is published, a binding is checked only against a certificate an exchanger presented to this " +
+		"scan, and DNSSEC is not validated here: whether the records validated is the resolver's word. " +
+		"And a DKIM signing key is read " +
 		"only under a selector this scan was told to look under: DNS cannot list what is beneath a " +
 		"name, so which selectors were tried — if any — is said in the report itself rather than here.",
 }
@@ -707,8 +781,7 @@ func describeMailPath(f MailFacts) []Note {
 	case len(f.DANEHosts) == len(f.MXHosts) && f.DANEUnread == 0 && !f.DANEPartial:
 		out = append(out, Observed("Every mail exchanger publishes a DANE record, so a sending "+
 			"server that checks them will refuse to deliver to a host presenting the wrong "+
-			"certificate. Whether each binding is correct was not checked: that needs a "+
-			"certificate from the host, and this check connects to none."))
+			"certificate. "+daneCheckedSentence(f)))
 
 	case len(f.DANEHosts) > 0:
 		out = append(out, Observed("DANE records are published for "+
@@ -968,7 +1041,84 @@ func describeExchangers(f MailFacts) []Note {
 			"only the first few were asked about encryption."))
 	}
 
+	return append(out, describeDANE(f)...)
+}
+
+// daneCheckedSentence says where the answer to "does each binding hold" is.
+func daneCheckedSentence(f MailFacts) string {
+	if f.ExchangersContacted {
+		return "Whether each binding holds is said below, from the certificate each exchanger presented."
+	}
+	return "Whether each binding holds was not checked: that needs the certificate each exchanger " +
+		"presents, and this scan did not contact them."
+}
+
+// describeDANE says what each exchanger's DANE records made of the certificate
+// it presented.
+//
+// A failure a sender acts on is graded in GradeMail and not said again here.
+// What is left is said: a match; a failure in records the resolver did not
+// report validated, which a sender applying RFC 7672 ignores; records no sender
+// uses for SMTP; and what could not be established.
+func describeDANE(f MailFacts) []Note {
+	var (
+		out                                          []Note
+		matched, matchedUnvalidated, ignored, unused []string
+		open                                         []string
+	)
+	for _, b := range f.DANEBindings {
+		switch b.Outcome {
+		case DANEMatched:
+			matched = append(matched, b.Host)
+			if !b.Validated {
+				matchedUnvalidated = append(matchedUnvalidated, b.Host)
+			}
+		case DANEMismatched, DANENoSTARTTLS:
+			if !b.Validated {
+				ignored = append(ignored, b.Host+" ("+daneFailure(b)+")")
+			}
+		case DANENoUsableRecords:
+			unused = append(unused, b.Host)
+		default:
+			open = append(open, b.Host+": "+b.Reason)
+		}
+	}
+
+	if len(matched) > 0 {
+		out = append(out, Observed("The certificate presented by "+namedHosts(matched)+" matches the "+
+			"DANE records published for "+thatHost(len(matched))+", so a sender applying DANE delivers there."))
+	}
+	if len(matchedUnvalidated) > 0 {
+		out = append(out, Unsettled("The resolver this scan asked did not report the DANE records of "+
+			namedHosts(matchedUnvalidated)+" validated. A sender applies DANE only to records that validate, "+
+			"and from here an unsigned zone and a resolver that does not validate look the same, so whether "+
+			"those bindings protect anything is not established."))
+	}
+	if len(ignored) > 0 {
+		out = append(out, Observed("The DANE records do not hold for "+strings.Join(ignored, "; ")+". The "+
+			"resolver this scan asked did not report those records validated, and RFC 7672 has a sender apply "+
+			"only records that validate, so this is named rather than graded: if the zone is signed and this "+
+			"resolver simply does not validate, mail there is being held."))
+	}
+	if len(unused) > 0 {
+		out = append(out, Observed("The DANE records published for "+namedHosts(unused)+" are none of them "+
+			"records a sender uses for SMTP — the PKIX usages RFC 7672 sets aside, or a selector, matching "+
+			"type or digest length nothing can match — so DANE authenticates nothing there, and a sender "+
+			"encrypts without checking the certificate."))
+	}
+	if len(open) > 0 {
+		out = append(out, Unsettled("Whether the DANE records hold was not established for "+
+			strings.Join(open, "; ")+"."))
+	}
 	return out
+}
+
+// daneFailure is the phrase for a binding that does not hold.
+func daneFailure(b DANEBinding) string {
+	if b.Outcome == DANENoSTARTTLS {
+		return "it does not offer STARTTLS"
+	}
+	return b.Reason
 }
 
 // thatHost agrees with a count that has already been written out.

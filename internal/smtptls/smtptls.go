@@ -103,6 +103,11 @@ type Result struct {
 	// that follows "the certificate does not verify:".
 	CertificateReason string
 
+	// Chain is the certificates the exchanger presented, in the order it sent
+	// them, for a caller checking them against something this package does not
+	// read: a DANE record. Never part of a report.
+	Chain []*x509.Certificate `json:"-"`
+
 	// Reason says why something was not measured.
 	Reason string
 
@@ -248,6 +253,7 @@ func (p *Prober) Probe(ctx context.Context, host string) Result {
 	out.Upgraded = true
 	out.Version = versionName(state.Version)
 	out.Suite = tls.CipherSuiteName(state.CipherSuite)
+	out.Chain = state.PeerCertificates
 	out.Trusted, out.NameMatches, out.CertificateReason = p.judge(state.PeerCertificates, host)
 
 	quit(tlsConn)
