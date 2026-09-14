@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -422,13 +423,162 @@ func TestEveryNameGradesAsItsFamily(t *testing.T) {
 	check(Export, "EXPORT", "cipher.export")
 	check(Null, "NULL", "cipher.null")
 
-	for _, s := range SSL3 {
+	for _, s := range append(slices.Clone(SSL3), TLS13...) {
 		if Name(s.ID) != s.Name {
 			t.Errorf("Name(%#04x) = %q, want %q", s.ID, Name(s.ID), s.Name)
 		}
 	}
-	if Name(0x1301) != "" {
+	// 0xCCA8 is a real suite, and not one this package offers.
+	if Name(0xCCA8) != "" {
 		t.Error("a suite this package never offers was given a name")
+	}
+
+	// Every TLS 1.3 name is one internal/policy reads as a TLS 1.3 suite:
+	// ephemeral key exchange. A misspelling would fall through to the rules for
+	// names it cannot read.
+	for _, s := range TLS13 {
+		if s.ID == seenAsOther(seen, s) {
+			t.Errorf("%#04x is also in another list", s.ID)
+		}
+		if p := policy.DescribeCipher(s.Name); !p.ForwardSecret || p.KeyExchange != "ephemeral" {
+			t.Errorf("%s is not read as a TLS 1.3 suite: %+v", s.Name, p)
+		}
+	}
+}
+
+// seenAsOther returns the suite's ID when another list already holds it.
+func seenAsOther(seen map[uint16]string, s Suite) uint16 {
+	if _, ok := seen[s.ID]; ok {
+		return s.ID
+	}
+	return 0
+}
+
+// serverHelloWith builds a ServerHello record with a random and an extension
+// block of the caller's choosing.
+func serverHelloWith(version, suite uint16, random, ext []byte) []byte {
+	body := binary.BigEndian.AppendUint16(nil, version)
+	body = append(body, random...)
+	body = append(body, 0)
+	body = binary.BigEndian.AppendUint16(body, suite)
+	body = append(body, 0)
+	body = binary.BigEndian.AppendUint16(body, uint16(len(ext)))
+	body = append(body, ext...)
+	msg := append([]byte{typeServerHello, byte(len(body) >> 16), byte(len(body) >> 8), byte(len(body))}, body...)
+	return record(contentHandshake, msg)
+}
+
+// supportedTLS13 is a supported_versions extension naming TLS 1.3.
+var supportedTLS13 = []byte{0x00, 0x2b, 0x00, 0x02, 0x03, 0x04}
+
+// A TLS 1.3 hello names TLS 1.3 and carries a key share a server can use.
+//
+// Without supported_versions a server answers at TLS 1.2 and a TLS 1.3 suite
+// is never chosen; without a key share on a group it supports, RFC 8446 has it
+// send an alert or a retry. Either would be read as something about the suite.
+func TestATLS13HelloNamesTLS13AndCarriesAKeyShare(t *testing.T) {
+	h := Hello{RecordVersion: 0x0301, ClientVersion: 0x0303, Suites: []uint16{0x1301}, TLS13: true, ServerName: "example.test"}
+	a, err := h.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	b, _ := h.Marshal()
+
+	pa, pb := parseHello(t, a), parseHello(t, b)
+	if pa.clientVersion != 0x0303 {
+		t.Errorf("legacy_version %#04x, want TLS 1.2 as RFC 8446 says", pa.clientVersion)
+	}
+	if !bytes.Equal(pa.extensions[0x002b], []byte{2, 0x03, 0x04}) {
+		t.Errorf("supported_versions is %x, want TLS 1.3 alone", pa.extensions[0x002b])
+	}
+	share := pa.extensions[0x0033]
+	if len(share) != 2+2+2+32 || binary.BigEndian.Uint16(share[2:4]) != 0x001d || binary.BigEndian.Uint16(share[4:6]) != 32 {
+		t.Fatalf("key_share is %x, want one X25519 share of 32 bytes", share)
+	}
+	if bytes.Equal(share[6:], make([]byte, 32)) {
+		t.Error("the key share is all zeroes, which no server accepts and every log would recognise")
+	}
+	if bytes.Equal(share, pb.extensions[0x0033]) {
+		t.Error("two hellos carry the same key share, which is a fingerprint")
+	}
+	if _, ok := pa.extensions[0x0000]; !ok {
+		t.Error("a TLS 1.3 hello carries no server name")
+	}
+}
+
+// An ordinary hello does not claim TLS 1.3. A TLS 1.2 question with
+// supported_versions in it would be answered at TLS 1.3 by a modern server, and
+// read as its answer to the question asked.
+func TestAnOrdinaryHelloDoesNotClaimTLS13(t *testing.T) {
+	raw, err := Hello{RecordVersion: 0x0301, ClientVersion: 0x0303, Suites: []uint16{0x0003}, Extensions: true}.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	p := parseHello(t, raw)
+	for _, kind := range []uint16{0x002b, 0x0033} {
+		if _, ok := p.extensions[kind]; ok {
+			t.Errorf("a TLS 1.2 hello carries extension %#04x", kind)
+		}
+	}
+}
+
+// The version supported_versions names is the version, and a HelloRetryRequest
+// still chooses the suite.
+func TestTheVersionSupportedVersionsNamesIsRead(t *testing.T) {
+	got := ReadReply(bytes.NewReader(serverHelloWith(0x0303, 0x1302, make([]byte, 32), supportedTLS13)))
+	if got.Answer != Accepted || got.Version != 0x0304 || got.Suite != 0x1302 || got.RetryRequest {
+		t.Errorf("a TLS 1.3 ServerHello read as %+v", got)
+	}
+
+	retry := ReadReply(bytes.NewReader(serverHelloWith(0x0303, 0x1303, helloRetryRandom[:], supportedTLS13)))
+	if retry.Answer != Accepted || retry.Version != 0x0304 || retry.Suite != 0x1303 || !retry.RetryRequest {
+		t.Errorf("a HelloRetryRequest read as %+v; the server chose the suite and asked for another key share", retry)
+	}
+
+	// And a ServerHello with no extensions is what it always was.
+	plain := ReadReply(bytes.NewReader(serverHello(0x0303, 0xC02F, 0)))
+	if plain.Answer != Accepted || plain.Version != 0x0303 {
+		t.Errorf("a TLS 1.2 ServerHello read as %+v", plain)
+	}
+}
+
+// An extension block that does not add up is not believed, and the answer
+// stands at its legacy version rather than being refused: a server that
+// answered a TLS 1.2 question is recorded as it was before this was read.
+func TestAnExtensionBlockThatDoesNotAddUpLeavesTheLegacyVersion(t *testing.T) {
+	body := binary.BigEndian.AppendUint16(nil, 0x0303)
+	body = append(body, make([]byte, 32)...)
+	body = append(body, 0)
+	body = binary.BigEndian.AppendUint16(body, 0x1301)
+	body = append(body, 0)
+	body = binary.BigEndian.AppendUint16(body, 100) // claims 100, carries 6
+	body = append(body, supportedTLS13...)
+	msg := append([]byte{typeServerHello, 0, 0, byte(len(body))}, body...)
+
+	got := ReadReply(bytes.NewReader(record(contentHandshake, msg)))
+	if got.Answer != Accepted || got.Version != 0x0303 {
+		t.Errorf("an extension block claiming more than it carries read as %+v", got)
+	}
+
+	inner := append([]byte{0x00, 0x2b, 0x00, 0x09}, 0x03, 0x04) // an extension claiming 9 bytes of 2
+	if got := ReadReply(bytes.NewReader(serverHelloWith(0x0303, 0x1301, make([]byte, 32), inner))); got.Version != 0x0303 {
+		t.Errorf("an extension claiming more than the block holds read as %+v", got)
+	}
+}
+
+// Extensions past the bound are not read, whatever they would have said.
+func TestExtensionsPastTheBoundAreNotRead(t *testing.T) {
+	filler := append([]byte{0xff, 0xff}, binary.BigEndian.AppendUint16(nil, uint16(maxExtensions))...)
+	filler = append(filler, make([]byte, maxExtensions)...)
+	reply := serverHelloWith(0x0303, 0x1301, make([]byte, 32), append(filler, supportedTLS13...))
+
+	c := &countingReader{r: bytes.NewReader(reply)}
+	got := ReadReply(c)
+	if got.Version != 0x0303 {
+		t.Errorf("a version past the bound was read: %+v", got)
+	}
+	if limit := 5 + 4 + serverHelloFixed + maxSessionID + 2 + 3 + maxExtensions; c.read > limit {
+		t.Errorf("%d bytes were read, past the bound of %d", c.read, limit)
 	}
 }
 

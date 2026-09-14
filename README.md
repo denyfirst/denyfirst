@@ -34,7 +34,8 @@ graded by the same policy version gives the same answer next year.
 
 **Every report says what it did not check.** Go's TLS stack implements
 roughly twenty-seven of the three hundred suites in the IANA registry, and
-gives a client no way to choose among TLS 1.3 suites. Revocation is checked
+gives a client no way to choose among TLS 1.3 suites, so those are asked with
+a hand-written hello, one registry suite at a time. Revocation is checked
 only from what the server itself stapled. All of that is printed alongside the findings, because a short
 list of problems can mean a well-configured server or a scan that could not
 see very far, and a reader deserves to know which.

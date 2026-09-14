@@ -27,8 +27,8 @@
 // twenty-seven of the three hundred or so in the IANA registry. Suites Go has
 // never carried — Camellia, ARIA, GOST — cannot be detected here even if the
 // server supports them, and neither can SSLv2. TLS 1.3 suites are not
-// configurable at all in Go, so for that version the probe reports the
-// negotiated suite rather than enumerating.
+// configurable at all in Go, so for that version they are asked with a
+// hand-written hello, one registry suite at a time; see tls13Suites.
 //
 // SSL 3.0 and the export-grade and NULL suites are the exception, because they
 // are the ones a report most needs: they are asked about with a hand-written
@@ -375,6 +375,10 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 		results = make([]VersionResult, len(probedVersions))
 		states  = make([]*tls.ConnectionState, len(probedVersions))
 		addrs   = make([]string, len(probedVersions))
+
+		// tls13Reason is why the TLS 1.3 suites were not enumerated, when
+		// they were not.
+		tls13Reason string
 	)
 
 	for i, version := range probedVersions {
@@ -398,12 +402,16 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 			result.Grade = policy.GradeVersion(version)
 
 			if version == tls.VersionTLS13 {
-				// Go does not expose TLS 1.3 suite selection, so report what
-				// was negotiated instead of enumerating. One suite is all
-				// there is to have, so the list is as complete as it can be;
-				// the note below says what that means.
-				result.Ciphers = []CipherResult{gradeCipher(state.CipherSuite)}
-				result.CipherListComplete = true
+				// Go does not expose TLS 1.3 suite selection, so the suites are
+				// asked by hand, one hello each — calibrated against the suite
+				// this handshake negotiated. See tls13Suites.
+				var reason string
+				result.Ciphers, result.CipherListComplete, reason = p.tls13Suites(ctx, host, port, state.CipherSuite, reached)
+				if reason != "" {
+					mu.Lock()
+					tls13Reason = reason
+					mu.Unlock()
+				}
 			} else {
 				result.Ciphers, result.CipherListComplete = p.enumerateCiphers(ctx, host, port, version, reached)
 			}
@@ -418,6 +426,9 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 	wg.Wait()
 
 	report.Versions = results
+	if tls13Reason != "" {
+		report.unsettled(tls13Reason)
+	}
 
 	// Take the certificate chain and connection details from the newest
 	// version that answered. probedVersions is ordered newest first.

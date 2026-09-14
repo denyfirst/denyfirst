@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/denyfirst/denyfirst/internal/rawhello"
 )
 
 // A server whose key exchange this test controls, and a count of every
@@ -196,8 +198,18 @@ func TestThePostQuantumQuestionCostsOneHandshake(t *testing.T) {
 		fallback--
 	}
 
-	if got := with.Load() - without.Load() - fallback; got != 1 {
+	// And the TLS 1.3 suites, asked one hello each of a server that speaks TLS
+	// 1.3 and of no other. Taken from the list rather than written as a number
+	// for the reason above.
+	suites := int64(0)
+	for _, v := range modern.Versions {
+		if v.Supported && v.Version == tls.VersionTLS13 {
+			suites = int64(len(rawhello.TLS13))
+		}
+	}
+
+	if got := with.Load() - without.Load() - fallback - suites; got != 1 {
 		t.Errorf("the question cost %d connections; it is meant to cost one (%d against %d, %d of the "+
-			"difference being the downgraded hello)", got, with.Load(), without.Load(), fallback)
+			"difference being the downgraded hello and %d the TLS 1.3 suites)", got, with.Load(), without.Load(), fallback, suites)
 	}
 }
