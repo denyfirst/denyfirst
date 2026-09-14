@@ -1112,6 +1112,9 @@ function zone(facts) {
         for (const x of facts.exchangers || []) {
           row("STARTTLS", x.host + ": " + exchangerSays(x));
         }
+        for (const b of facts.daneBindings || []) {
+          row("DANE", b.host + ": " + daneSays(b));
+        }
       } else if (facts.exchangersReason) {
         row("STARTTLS", "not measured: " + facts.exchangersReason);
       }
@@ -1136,6 +1139,22 @@ function exchangerSays(x) {
   if (!x.trusted) return x.version + " " + x.suite + ", certificate does not verify: " + x.certificateReason;
   if (!x.nameMatches) return x.version + " " + x.suite + ", certificate does not name this exchanger";
   return x.version + " " + x.suite + ", certificate verifies";
+}
+
+// What one exchanger's DANE records made of its certificate.
+//
+// The same words as daneLine in the command line (R16), and the same note when
+// the resolver did not report the records validated: it decides whether a sender
+// acts on any of it.
+function daneSays(b) {
+  let line;
+  if (b.outcome === "matched") line = "matches the certificate presented";
+  else if (b.outcome === "mismatched") line = "does not match: " + b.reason;
+  else if (b.outcome === "no-starttls") line = "records published, STARTTLS not offered";
+  else if (b.outcome === "no-usable-records") line = "no record a sender uses for SMTP";
+  else line = "not established: " + b.reason;
+  if (!b.validated) line += " (records not reported validated)";
+  return line;
 }
 
 // What the MTA-STS row says.

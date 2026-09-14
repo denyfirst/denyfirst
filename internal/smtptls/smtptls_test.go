@@ -2,6 +2,7 @@ package smtptls
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -174,6 +175,11 @@ func TestAnExchangerOfferingSTARTTLSIsUpgradedAndJudged(t *testing.T) {
 	}
 	if got.Version == "" || got.Suite == "" {
 		t.Errorf("version %q, suite %q; what was negotiated is not said", got.Version, got.Suite)
+	}
+
+	// And the chain it presented travels, for the DANE check to read.
+	if len(got.Chain) != 1 || !bytes.Equal(got.Chain[0].Raw, cert.Certificate[0]) {
+		t.Errorf("the result carries %d certificates; the exchanger presented its own, and a DANE record is checked against it", len(got.Chain))
 	}
 
 	// And the goodbye went over the encrypted connection.

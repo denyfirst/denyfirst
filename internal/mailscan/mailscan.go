@@ -63,10 +63,10 @@
 // read — never the stronger reading, which is the one a reader supplies for
 // themselves if nobody stops them.
 //
-// **Whether a DANE binding is correct.** The TLSA records are read, so a report
-// can say which exchangers publish one and what kind of binding they declare.
-// Checking that the binding matches means holding a certificate from the mail
-// host, which needs a connection to it.
+// **Whether a DANE binding is correct, where no exchanger was contacted.** The
+// TLSA records are read either way. Checking that one matches needs the
+// certificate the exchanger presents, so it is checked exactly where the
+// exchangers are asked for STARTTLS (see readExchangerTLS and internal/dane).
 package mailscan
 
 import (
@@ -78,6 +78,7 @@ import (
 	"sync"
 	"time"
 
+	danecheck "github.com/denyfirst/denyfirst/internal/dane"
 	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/dkim"
 	"github.com/denyfirst/denyfirst/internal/dnsclient"
@@ -304,8 +305,8 @@ func (s *Scanner) Scan(ctx context.Context, domain string) (*Result, error) {
 	s.readDMARC(ctx, resolver, domain, &facts)
 	s.readTLSReporting(ctx, resolver, domain, &facts)
 	s.readExchangers(ctx, resolver, domain, &facts)
-	s.readTransportSecurity(ctx, resolver, domain, &facts)
-	s.readExchangerTLS(ctx, &facts)
+	dane := s.readTransportSecurity(ctx, resolver, domain, &facts)
+	s.readExchangerTLS(ctx, &facts, dane)
 	s.readDKIM(ctx, resolver, domain, &facts)
 
 	graded := policy.GradeMail(facts)
@@ -565,7 +566,13 @@ func (s *Scanner) readExchangers(ctx context.Context, r Resolver, domain string,
 // is fetched only where the domain announced one and this deployment is
 // configured to read it — see readSTSPolicy, which is where the whole of that
 // argument lives.
-func (s *Scanner) readTransportSecurity(ctx context.Context, r Resolver, domain string, facts *policy.MailFacts) {
+//
+// It returns the DANE records it found, by exchanger, for readExchangerTLS to
+// check against what each exchanger presents. Returned rather than kept on the
+// Scanner, which a service shares between scans running at the same time.
+func (s *Scanner) readTransportSecurity(ctx context.Context, r Resolver, domain string, facts *policy.MailFacts) map[string]dnsclient.TLSAAnswer {
+	found := map[string]dnsclient.TLSAAnswer{}
+
 	if answer, err := r.LookupTXT(ctx, stsPrefix+domain); err == nil {
 		for _, v := range answer.Values {
 			if isMTASTS(v) {
@@ -598,8 +605,10 @@ func (s *Scanner) readTransportSecurity(ctx context.Context, r Resolver, domain 
 		facts.DANEAsked++
 		if len(answer.Records) > 0 {
 			facts.DANEHosts = append(facts.DANEHosts, host)
+			found[host] = answer
 		}
 	}
+	return found
 }
 
 // isMTASTS reports whether a TXT value announces itself as an MTA-STS record.
@@ -761,7 +770,10 @@ func (s *Scanner) readDKIM(ctx context.Context, r Resolver, domain string, facts
 // being measured, and asked in parallel, because a domain's exchangers are
 // independent and eight sequential twenty-second timeouts would be a scan
 // nobody waits for.
-func (s *Scanner) readExchangerTLS(ctx context.Context, facts *policy.MailFacts) {
+//
+// Where an exchanger publishes DANE records, what they make of the certificate
+// it presented is worked out here too, because this is where both halves meet.
+func (s *Scanner) readExchangerTLS(ctx context.Context, facts *policy.MailFacts, tlsa map[string]dnsclient.TLSAAnswer) {
 	// NullMX is checked by name although, today, a null MX already leaves
 	// MXHosts empty: readExchangers skips the "." record rather than keeping
 	// it. A sabotage removing the NullMX test escaped every test on 2026-09-13
@@ -799,7 +811,12 @@ func (s *Scanner) readExchangerTLS(ctx context.Context, facts *policy.MailFacts)
 	wg.Wait()
 
 	facts.ExchangersContacted = true
-	for _, r := range results {
+	now := s.now()
+	for i, r := range results {
+		if answer, ok := tlsa[hosts[i]]; ok && len(answer.Records) > 0 {
+			facts.DANEBindings = append(facts.DANEBindings, daneBinding(hosts[i], answer, r, now))
+		}
+
 		facts.Exchangers = append(facts.Exchangers, policy.ExchangerTLS{
 			Host:              r.Host,
 			Connected:         r.Connected,
@@ -815,6 +832,36 @@ func (s *Scanner) readExchangerTLS(ctx context.Context, facts *policy.MailFacts)
 			ConnectTimedOut:   r.ConnectTimedOut,
 		})
 	}
+}
+
+// daneBinding says what one exchanger's DANE records made of what it presented.
+//
+// The states before a certificate are said as themselves. An exchanger that
+// does not offer STARTTLS fails every usable record, and RFC 7672 has a sender
+// hold mail rather than deliver it there. One that was not reached, or offered
+// STARTTLS and could not negotiate with this client, presented nothing to check,
+// which is neither a match nor a failure (R3d, R4) — the reason is on its
+// STARTTLS line, and not repeated here.
+func daneBinding(host string, answer dnsclient.TLSAAnswer, r smtptls.Result, now time.Time) policy.DANEBinding {
+	b := policy.DANEBinding{Host: host, Validated: answer.Validated}
+	for _, record := range answer.Records {
+		if danecheck.Usable(record) {
+			b.Usable++
+		}
+	}
+
+	switch {
+	case b.Usable == 0:
+		b.Outcome = policy.DANENoUsableRecords
+	case !r.Measured, r.Offered && !r.Upgraded:
+		b.Outcome, b.Reason = policy.DANENotChecked, "no certificate was obtained from it"
+	case !r.Offered:
+		b.Outcome = policy.DANENoSTARTTLS
+	default:
+		got := danecheck.Check(answer.Records, r.Chain, host, now)
+		b.Outcome, b.Reason = string(got.Outcome), got.Reason
+	}
+	return b
 }
 
 // exchangerProber is the one this scan asks with.

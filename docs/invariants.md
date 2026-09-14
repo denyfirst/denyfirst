@@ -1161,8 +1161,21 @@ graded. A failed fetch looks the same whether the policy host is broken or this
 machine's egress is blocked, and no measurement available from here separates
 them (R4).
 
-The same holds for DANE: the TLSA records are read, and whether each binding is
-*correct* needs a certificate from the host.
+**A DANE record is checked against the certificate its exchanger presented,
+and graded only where RFC 7672 says a sender acts.** The TLSA records are read
+beneath each exchanger either way; whether a binding *holds* needs the
+certificate the exchanger presents, so it is checked exactly where the
+exchangers are contacted, and said to be unchecked everywhere else. Only records
+a sender uses for SMTP count: DANE-EE matches the leaf with no name or date
+check, DANE-TA matches a presented certificate the leaf must chain to and name
+the exchanger through, and PKIX usages, undefined types and wrong-length digests
+authenticate nothing. A bare DANE-TA key no certificate carries, and an anchor
+outside its own dates, are left undetermined rather than guessed. A binding that
+does not hold is graded weak — it fails closed, as the enforcing MTA-STS rule
+does — only where the resolver reported the records validated, because a sender
+applying RFC 7672 ignores records that do not validate; that bit is the
+resolver's word and the rationale says so. Everything this client could not
+establish is described (R4).
 
 **A null MX ends the questions it makes inapplicable.** RFC 7505's single `.`
 is a domain stating that it accepts no mail at all, which is the clearest case
@@ -1227,7 +1240,25 @@ every report.
 `TestAnEnormousExchangerNameIsBounded`,
 `TestTheNameRendererBoundsWhatItIsGiven`,
 `TestTheRootNameIsReadableAsItself`,
-`TestTheDANESelectorsAreReadAndTheDataIsNot`,
+`TestADANERecordIsReadWithItsDataAndItsValidation`,
+`TestTheAssociationDataIsCopiedOutOfTheReply`,
+`TestAnEndEntityRecordMatchesTheLeafWhateverItsNameAndDates`,
+`TestAnEndEntityRecordForAnotherKeyDoesNotMatch`,
+`TestATrustAnchorRecordNeedsTheLeafToChainAndNameTheExchanger`,
+`TestATrustAnchorThatWasNotPresentedIsNotFound`,
+`TestATrustAnchorChainIsNotHeldToAKeyUsageTheRFCDoesNotAsk`,
+`TestABareAnchorKeyNobodyPresentedIsUndetermined`, `TestAnExpiredAnchorIsUndetermined`,
+`TestAnExpiredLeafUnderAnAnchorDoesNotMatch`,
+`TestRecordsASenderDoesNotUseForSMTPAreNotUsable`, `TestEveryMatchingTypeMatches`,
+`TestOneMatchingRecordAmongSeveralIsEnough`, `TestWithoutACertificateNothingIsEstablished`,
+`TestADANERecordIsCheckedAgainstWhatItsExchangerPresented`,
+`TestTheStatesBeforeACertificateAreSaidAsThemselves`,
+`TestNoBindingIsClaimedWhereNothingWasChecked`, `TestTheReportsDANEWordsAreTheCheckersWords`,
+`TestAValidatedBindingThatDoesNotHoldIsGraded`,
+`TestABindingNotReportedValidatedIsNamedAndNotGraded`,
+`TestWhatNoSenderUsesAndWhatWasNotEstablishedAreNotGraded`,
+`TestAMatchIsSaidWithWhetherItValidated`, `TestTheMailPathSaysWhetherTheBindingsWereChecked`,
+`TestEachDANEBindingIsARowInThePagesWords`, `TestThePageReadsTheDANEFieldsTheAPISends`,
 `TestANameWithNoMXIsNotANameThatDoesNotExist`,
 `TestAShortMailRecordIsRefused`,
 `TestDANEIsAskedOnlyBeneathTheExchangersTheDomainNamed`,

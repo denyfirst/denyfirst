@@ -151,17 +151,20 @@ type MX struct {
 	Host string `json:"host"`
 }
 
-// TLSA is one DANE record, reduced to what a report may say about it.
+// TLSA is one DANE record.
 //
-// The certificate association data is deliberately absent. This project reports
-// that a domain publishes DANE and what kind of binding it declares; checking
-// the binding means holding a certificate from the mail host, which needs a
-// connection to it, and the mail check makes none (N13). A field holding data
-// nothing verifies would invite a report claiming the binding was checked.
+// Data is the certificate association data. It was once deliberately not kept,
+// because nothing could check it and a field nothing verifies invites a report
+// claiming the binding was checked. The mail check now holds a conversation
+// with each exchanger, so there is a certificate to check it against, and
+// internal/dane does. It is not written into a report: a digest is not a
+// sentence a reader acts on, and a whole certificate published in DNS is
+// kilobytes of somebody else's bytes.
 type TLSA struct {
-	Usage    uint8 `json:"usage"`
-	Selector uint8 `json:"selector"`
-	Matching uint8 `json:"matching"`
+	Usage    uint8  `json:"usage"`
+	Selector uint8  `json:"selector"`
+	Matching uint8  `json:"matching"`
+	Data     []byte `json:"-"`
 }
 
 // CAA is one property from a CAA record set.
@@ -762,6 +765,12 @@ func (c *Client) LookupMX(ctx context.Context, name string) (MXAnswer, error) {
 type TLSAAnswer struct {
 	Records []TLSA
 	Existed bool
+
+	// Validated is the AD bit the resolver set: its claim to have verified the
+	// DNSSEC chain, not this program's. It matters more here than anywhere
+	// else, because RFC 7672 has a sender apply DANE only to records that
+	// validate, so a report has to be able to say which it was told.
+	Validated bool
 }
 
 // LookupTLSA reads the DANE records at one name.
@@ -778,7 +787,7 @@ func (c *Client) LookupTLSA(ctx context.Context, name string) (TLSAAnswer, error
 
 	reply, err := c.ask(ctx, &resolverSet{servers: servers}, name, TypeTLSA)
 	if err != nil {
-		return TLSAAnswer{Existed: reply.existed}, err
+		return TLSAAnswer{Existed: reply.existed, Validated: reply.validated}, err
 	}
-	return TLSAAnswer{Records: reply.tlsa, Existed: reply.existed}, nil
+	return TLSAAnswer{Records: reply.tlsa, Existed: reply.existed, Validated: reply.validated}, nil
 }

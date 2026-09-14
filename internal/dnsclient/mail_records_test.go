@@ -1,6 +1,7 @@
 package dnsclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"net"
@@ -210,12 +211,10 @@ func TestTheRootNameIsReadableAsItself(t *testing.T) {
 	}
 }
 
-// The DANE selectors are read and the association data is not kept.
-//
-// Keeping the data would invite a report claiming the binding was checked, and
-// checking it needs a certificate from the mail host — which needs a connection
-// the mail check does not make (N13).
-func TestTheDANESelectorsAreReadAndTheDataIsNot(t *testing.T) {
+// A DANE record is read whole — its selectors and the association data the
+// binding is checked with — and the resolver's AD bit comes with it, because
+// RFC 7672 has a sender apply only records that validate.
+func TestADANERecordIsReadWithItsDataAndItsValidation(t *testing.T) {
 	q := name(t, "_25._tcp.mx1.example.net")
 	c := answering(t, TypeTLSA, "_25._tcp.mx1.example.net",
 		record{q, TypeTLSA, tlsaRecord(3, 1, 1, 0xde, 0xad, 0xbe, 0xef)},
@@ -228,8 +227,28 @@ func TestTheDANESelectorsAreReadAndTheDataIsNot(t *testing.T) {
 	if len(got.Records) != 1 {
 		t.Fatalf("got %+v", got.Records)
 	}
-	if r := got.Records[0]; r.Usage != 3 || r.Selector != 1 || r.Matching != 1 {
+	r := got.Records[0]
+	if r.Usage != 3 || r.Selector != 1 || r.Matching != 1 {
 		t.Errorf("selectors are %+v", r)
+	}
+	if !bytes.Equal(r.Data, []byte{0xde, 0xad, 0xbe, 0xef}) {
+		t.Errorf("the association data is %x, want deadbeef", r.Data)
+	}
+	if !got.Validated {
+		t.Error("the resolver set the AD bit and the answer does not say so")
+	}
+}
+
+// The association data is not a window onto the reply it came in.
+func TestTheAssociationDataIsCopiedOutOfTheReply(t *testing.T) {
+	rdata := []byte{3, 1, 1, 0xaa, 0xbb}
+	r, err := parseTLSA(rdata)
+	if err != nil {
+		t.Fatalf("parseTLSA: %v", err)
+	}
+	rdata[3] = 0
+	if r.Data[0] != 0xaa {
+		t.Error("changing the reply changed the record: the data aliases the message")
 	}
 }
 

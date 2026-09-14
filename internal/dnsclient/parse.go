@@ -434,12 +434,12 @@ func parseMX(raw, rdata []byte, rdataAt int) (MX, error) {
 	}, nil
 }
 
-// parseTLSA reads one DANE record's three selectors.
+// parseTLSA reads one DANE record: its three selectors and the association data.
 //
-// The certificate association data itself is deliberately not kept. This
-// project reports that a domain publishes DANE and what kind of binding it
-// declares; checking the binding means holding a certificate from the mail
-// host, which needs a connection to it, and the mail check makes none (N13).
+// The data is copied rather than sliced. rdata is a window onto the whole reply,
+// and a record that held on to it would keep every other byte of the message
+// alive for as long as the record lived. Its length is already bounded by the
+// message it came in.
 func parseTLSA(rdata []byte) (TLSA, error) {
 	if len(rdata) < 4 {
 		return TLSA{}, errors.New("dnsclient: a TLSA record is shorter than its own header")
@@ -448,6 +448,7 @@ func parseTLSA(rdata []byte) (TLSA, error) {
 		Usage:    rdata[0],
 		Selector: rdata[1],
 		Matching: rdata[2],
+		Data:     bytes.Clone(rdata[3:]),
 	}, nil
 }
 
