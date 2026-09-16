@@ -458,6 +458,16 @@ says revocation was not checked, which is true there.
 
 Unreleased.
 
+**Four readings corrected by the 2026-09-16 audit (A13–A16).** A
+Strict-Transport-Security header that repeats a directive is unparseable, as a
+browser treats it, rather than read by its first `max-age`. Only a policy the
+graded host sent itself is graded as its policy; another host's, reached by a
+redirect, is not. A redirect this scan did not follow — a host the deployment
+may not reach, or the redirect limit — is said as not followed rather than
+graded `reach.never-reaches-tls`, and a site whose reach was not established is
+ungraded rather than strong. And missing framing protection is said unless an
+enforcing header carries `frame-ancestors`. No rule identifier changed.
+
 **The check reads the cookies it was already collecting.** Every Set-Cookie a
 site sends has been in the report since the check shipped and no rule looked at
 any of them. Four rules are added and three observations, and the line between
@@ -520,8 +530,11 @@ and not the same as a consequence this scan establishes — whether the absence
 matters depends on content types nothing here read. `hsts.absent` is graded
 because its consequence follows from the scan alone.
 
-A site sending a `Content-Security-Policy` is not told it lacks
-`X-Frame-Options`, which `frame-ancestors` replaced.
+A site sending a `Content-Security-Policy` header with `frame-ancestors` is not
+told it lacks `X-Frame-Options`, which that directive replaced. A policy without
+the directive, or one declared only in the page, was taken as the same until
+the 2026-09-16 audit (A16); CSP Level 3 has a browser ignore `frame-ancestors`
+in a meta element, so the missing header is said there.
 
 ### The page itself is read, where the deployment reads pages
 

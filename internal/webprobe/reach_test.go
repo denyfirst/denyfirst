@@ -133,6 +133,11 @@ func TestARedirectIsNotFollowedToAHostTheCallerRefuses(t *testing.T) {
 	if len(c.Hops) != 1 {
 		t.Errorf("recorded %d hops, want the one that produced the Location", len(c.Hops))
 	}
+	// Marked as not followed, so the rules do not read the redirect as where
+	// the chain ends (audit A15, 2026-09-16).
+	if !c.Unfollowed {
+		t.Error("a chain stopped by the caller's refusal is not marked unfollowed")
+	}
 
 	// The reason must not repeat the name (I3), and the reader does not need
 	// it to: the Location header is one of the headers this probe keeps.

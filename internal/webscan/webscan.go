@@ -18,6 +18,8 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/demo"
@@ -303,7 +305,7 @@ func Grade(observed *webprobe.Report) *Result {
 	}
 
 	reach := policy.GradeReach(hops(observed.Secure), hops(observed.Plain))
-	hsts := policy.GradeHSTS(securePolicy(observed.Secure), plaintextPolicy(observed.Plain),
+	hsts := policy.GradeHSTS(securePolicy(observed.Secure, observed.Host), plaintextPolicy(observed.Plain),
 		answered(observed.Secure))
 	cookies := policy.GradeCookies(cookieFacts(observed))
 	headers := policy.GradeHeaders(headerFacts(observed.Secure))
@@ -316,6 +318,16 @@ func Grade(observed *webprobe.Report) *Result {
 		out.Findings = append(out.Findings, r.Findings...)
 		out.Notes = append(out.Notes, r.Notes...)
 		out.Verdict = policy.Worst(out.Verdict, r.Verdict)
+	}
+
+	// Where the site leads a visitor is the question this check exists for. If
+	// that was not established — nothing answered over TLS, or a redirect went
+	// somewhere this scan did not follow — a sound header elsewhere cannot make
+	// the report strong: policy.Worst passes over Ungraded, which is right for
+	// a list of verdicts and wrong for the question the list is about. The same
+	// join the TLS check had (audit A10, A15).
+	if out.Verdict == policy.Strong && reach.Verdict == policy.Ungraded {
+		out.Verdict = policy.Ungraded
 	}
 
 	// A store that could not be read, said before the standing limits because
@@ -358,6 +370,11 @@ func hops(c *webprobe.Chain) []policy.WebHop {
 			Status:   h.Status,
 		})
 	}
+	// The chain went further than it was followed. Said on the hop it stopped
+	// at, which is the hop the rules would otherwise read as a destination.
+	if len(out) > 0 && (c.Unfollowed || c.Truncated) {
+		out[len(out)-1].Unfollowed = true
+	}
 	return out
 }
 
@@ -370,16 +387,21 @@ func hops(c *webprobe.Chain) []policy.WebHop {
 // first, which a later hop may have replaced. Both of those describe a policy
 // no browser holds.
 //
+// And only a hop from the host being graded. A browser keeps a policy for the
+// host that sent it: example.com redirecting to www.example.com, which sends
+// the header, leaves example.com with none. The 2026-09-16 audit (A14) found
+// the other host's policy graded as this one's.
+//
 // A hop that failed carries no headers and is skipped rather than treated as
 // a response with none: a connection that was refused says nothing about what
 // the server declares.
-func securePolicy(c *webprobe.Chain) []string {
+func securePolicy(c *webprobe.Chain, host string) []string {
 	if c == nil {
 		return nil
 	}
 	for i := len(c.Hops) - 1; i >= 0; i-- {
 		h := c.Hops[i]
-		if !h.TLS || h.Err != "" {
+		if !h.TLS || h.Err != "" || !sameHost(h.URL, host) {
 			continue
 		}
 		if v := h.Headers[hstsHeader]; len(v) > 0 {
@@ -509,6 +531,7 @@ func headerFacts(c *webprobe.Chain) policy.HeaderFacts {
 		}
 		out.ACAO = first(h.Headers["Access-Control-Allow-Origin"])
 		out.ACAC = first(h.Headers["Access-Control-Allow-Credentials"])
+		out.FrameAncestors = framesDeclared(h.Headers["Content-Security-Policy"])
 
 		// The markup of the same response, not of some other hop. A policy
 		// declared in a page applies to that page, so reading one response's
@@ -600,4 +623,32 @@ func contentFacts(c *webprobe.Chain) policy.ContentFacts {
 	}
 
 	return out
+}
+
+// framesDeclared reports whether any enforcing policy names frame-ancestors.
+//
+// Every Content-Security-Policy header a response carries is enforced, so one is
+// enough. The directive name is matched as a whole and case-insensitively, as
+// CSP Level 3 parses it; its value is not judged here.
+func framesDeclared(policies []string) bool {
+	for _, p := range policies {
+		for _, directive := range strings.Split(p, ";") {
+			name, _, _ := strings.Cut(strings.TrimSpace(directive), " ")
+			if strings.EqualFold(name, "frame-ancestors") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// sameHost reports whether an address names the host given, compared as names:
+// case and a trailing dot aside.
+func sameHost(address, host string) bool {
+	u, err := url.Parse(address)
+	if err != nil {
+		return false
+	}
+	fold := func(s string) string { return strings.ToLower(strings.TrimSuffix(s, ".")) }
+	return host != "" && fold(u.Hostname()) == fold(host)
 }

@@ -103,10 +103,11 @@ func TestAPolicyInThePageReachesTheReport(t *testing.T) {
 	if strings.Contains(text, "Content-Security-Policy —") {
 		t.Errorf("a site declaring a policy in its markup was told it sends none:\n%s", text)
 	}
-	if strings.Contains(text, "X-Frame-Options") {
-		t.Errorf("a site with a policy was told it is missing framing protection, which the "+
-			"policy's frame-ancestors supersedes. This was the second of the two wrong sentences "+
-			"one omission produced:\n%s", text)
+	// frame-ancestors in markup protects nothing: CSP Level 3 has a browser
+	// ignore it there. This expected the opposite until the 2026-09-16 audit
+	// (A16), so the missing X-Frame-Options is now said.
+	if !strings.Contains(text, "X-Frame-Options") {
+		t.Errorf("frame-ancestors in a meta element was taken as framing protection:\n%s", text)
 	}
 }
 

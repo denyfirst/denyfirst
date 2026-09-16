@@ -21,7 +21,15 @@ func refuseToDial(context.Context, string, string) (net.Conn, error) {
 }
 
 func hop(tls bool, status int, headers map[string][]string) webprobe.Hop {
-	return webprobe.Hop{TLS: tls, Status: status, Headers: headers}
+	return webprobe.Hop{URL: address(tls, "example.test"), TLS: tls, Status: status, Headers: headers}
+}
+
+// address is the root of a host, over TLS or not.
+func address(tls bool, host string) string {
+	if tls {
+		return "https://" + host + "/"
+	}
+	return "http://" + host + "/"
 }
 
 func failed(tls bool) webprobe.Hop {
@@ -87,7 +95,7 @@ func TestThePolicyReadIsTheOneABrowserWouldHold(t *testing.T) {
 		{name: "no chain", chain: nil, want: nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := securePolicy(tc.chain)
+			got := securePolicy(tc.chain, "example.test")
 			if strings.Join(got, "|") != strings.Join(tc.want, "|") {
 				t.Errorf("securePolicy = %v, want %v", got, tc.want)
 			}

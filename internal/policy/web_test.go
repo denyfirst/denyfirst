@@ -201,7 +201,10 @@ func TestParseHSTS(t *testing.T) {
 			HSTS{IncludeSubDomains: true, Preload: true}},
 		{"a max-age that is not a number", "max-age=forever", HSTS{}},
 		{"a negative max-age is not a number here", "max-age=-1", HSTS{}},
-		{"the first max-age wins", "max-age=100; max-age=99999", HSTS{Parsed: true, MaxAge: 100}},
+		// RFC 6797 §6.1 allows each directive once, and a browser ignores a
+		// header breaking that. This case read "the first max-age wins" until the
+		// 2026-09-16 audit (A13).
+		{"a repeated max-age makes the header nothing", "max-age=100; max-age=99999", HSTS{}},
 		{"empty", "", HSTS{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

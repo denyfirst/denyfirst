@@ -76,6 +76,14 @@ type HeaderFacts struct {
 	MetaCSP           bool
 	MetaCSPReportOnly bool
 
+	// FrameAncestors is true when an enforcing Content-Security-Policy header —
+	// not a report-only one, and not one declared in markup — carries the
+	// frame-ancestors directive. That directive, and only that, is what
+	// supersedes X-Frame-Options; CSP Level 3 says a browser ignores it in a
+	// meta element. Until the 2026-09-16 audit (A16) any policy at all was
+	// taken as framing protection.
+	FrameAncestors bool
+
 	// MarkupRead records that the page was read at all.
 	//
 	// The field that keeps the two above honest. Without it, a deployment that
@@ -163,9 +171,10 @@ func GradeHeaders(f HeaderFacts) WebResult {
 		}
 		if !f.Present[h.Name] {
 			// Content-Security-Policy: frame-ancestors supersedes
-			// X-Frame-Options, so a site with a policy is not missing framing
-			// protection and must not be told it is (R6).
-			if h.Name == "X-Frame-Options" && hasCSP {
+			// X-Frame-Options, so a site sending that directive is not missing
+			// framing protection and must not be told it is (R6). A policy
+			// without it, or declared only in markup, protects nothing here.
+			if h.Name == "X-Frame-Options" && f.FrameAncestors {
 				continue
 			}
 			missing = append(missing, h.Name+" — "+h.Does)
