@@ -902,6 +902,19 @@ set, so a byte comparison reports a revoked certificate as sound for every
 serial above `0x7f` — which is most of them, and which would pass every test
 written with small numbers.
 
+**A list is an answer only about what it covers.** A list the issuer signed,
+inside its own dates, can still say it covers part of what the issuer signs: a
+delta list holds only what changed since its base, an issuing distribution
+point can limit it to authority certificates, to some revocation reasons, to an
+indirect issuer, or to another distribution point. Absence from such a list is
+silence about this certificate, not "not revoked". Until the 2026-09-16 audit
+(A09) every verified list was read as complete, and a signed delta list
+answered "good" alone. Now a delta list, an unknown critical extension, or a
+scope this certificate falls outside is "not checked"; the shape real
+authorities publish — Let's Encrypt's critical issuing distribution point
+naming the list's own address and user certificates — still answers, and a
+test holds its bytes.
+
 **Anything short of an answer is "not checked", never "not revoked"** (R4). The
 report says which of the four failed, in this project's own words rather than in
 a network error that would name a resolver or an address (I6).
@@ -930,6 +943,8 @@ project prints honestly in so many other places that nobody would look twice.
 *Guarded by:* `TestACertificateOnTheListIsRevoked`,
 `TestACertificateNotOnTheListIsGood`,
 `TestAListTheIssuerDidNotSignIsRefused`,
+`TestAListThatDoesNotCoverTheCertificateIsNotAnAnswer`,
+`TestAListScopedToThisCertificateStillAnswers`, `TestARealIssuingDistributionPointIsRead`,
 `TestAStaleListIsNotAnAnswer`,
 `TestAListNotYetInEffectIsNotAnAnswer`,
 `TestAnOversizedListIsRefusedRatherThanTruncated`,

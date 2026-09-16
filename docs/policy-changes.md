@@ -303,6 +303,11 @@ is said by the report that read it.
 
 Unreleased.
 
+**A revocation list answers only for what it covers.** A delta list, a list
+with a critical extension this does not read, and a list whose issuing
+distribution point leaves this certificate out are now "not checked" instead of
+"not revoked". No rule changed; `cert.revoked` is raised exactly as before.
+
 **A scan whose suite list did not finish is ungraded, even beside a sound
 certificate.** The transport was already ungraded when enumeration stopped
 early; joining it with a strong certificate made the whole report strong. It
