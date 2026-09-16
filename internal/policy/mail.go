@@ -551,9 +551,29 @@ func GradeMail(f MailFacts) MailFinding {
 			rfc8301)
 	}
 
+	// A domain whose principal records could not be read is not strong.
+	//
+	// Strong is the verdict that claims nothing above fell short, and the
+	// rules above can only fall short of what was read. A sender policy, a
+	// DMARC record or an exchanger list that could not be read leaves every
+	// rule about it silent — which is not the same as passing it. Until the
+	// 2026-09-16 audit (A11) a domain whose three lookups all failed came
+	// back strong. Only Strong is withdrawn: a finding raised from what was
+	// read stays.
+	if out.Verdict == Strong && principalUnread(f) {
+		out.Verdict = Ungraded
+	}
+
 	out.Notes = append(out.Notes, describeMail(f)...)
 	out.Notes = append(out.Notes, describeDKIM(f)...)
 	return out
+}
+
+// principalUnread reports whether a record every mail rule rests on could not
+// be read. The records themselves being absent is not this: an absence was
+// read, and is described.
+func principalUnread(f MailFacts) bool {
+	return f.SPFReason != "" || f.DMARCReason != "" || f.MXReason != ""
 }
 
 // describeMail says what was established and deliberately not graded.

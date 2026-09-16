@@ -577,10 +577,44 @@ func (s *Scanner) Scan(ctx context.Context, target string) (*Result, error) {
 	// worth reading.
 	out.Issuance = s.checkIssuance(ctx, host)
 
+	// A transport measurement that did not finish cannot end strong, whatever
+	// the certificate says.
+	//
+	// tlsprobe already returns Ungraded for an unfinished suite list, and
+	// policy.Worst deliberately passes over Ungraded — so joining it with a
+	// strong certificate above turned "no verdict was reached" back into
+	// "strong", the one answer an unfinished list cannot support (R11). Found
+	// by the 2026-09-16 audit (A10). Only Strong is withdrawn: a weak or
+	// insecure finding that was seen stays seen.
+	out.Verdict = settle(out.Verdict, tlsReport)
+
 	// Last, because it reads from everything above it.
 	out.Coverage = policy.Coverage(coverageFacts(out))
 
 	return out, nil
+}
+
+// settle withdraws Strong from a scan whose transport did not finish, and
+// leaves every other verdict as it is.
+func settle(v policy.Verdict, t *tlsprobe.Report) policy.Verdict {
+	if v == policy.Strong && transportUnfinished(t) {
+		return policy.Ungraded
+	}
+	return v
+}
+
+// transportUnfinished reports whether a version the server accepted has a
+// suite list that stopped before the server said it had nothing more.
+func transportUnfinished(t *tlsprobe.Report) bool {
+	if t == nil {
+		return false
+	}
+	for _, v := range t.Versions {
+		if v.Supported && !v.CipherListComplete {
+			return true
+		}
+	}
+	return false
 }
 
 // coverageFacts gathers what the scan reached, from the measurements.
