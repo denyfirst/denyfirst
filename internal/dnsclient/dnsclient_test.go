@@ -1,6 +1,7 @@
 package dnsclient
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"strings"
@@ -375,9 +376,27 @@ func TestQueryAsksForWhatTheAnswerNeeds(t *testing.T) {
 	if got := binary.BigEndian.Uint16(query[opt+3 : opt+5]); got != udpPayload {
 		t.Errorf("the advertised payload is %d, want %d", got, udpPayload)
 	}
+	// The TTL, read field by field as RFC 6891 §6.1.3 lays it out: extended
+	// RCODE, version, then the flags. This read the first two bytes as the
+	// flags until 2026-09-16 and agreed with a query that set the wrong bit;
+	// the fixed bytes below are the wire, not a restatement of the code.
+	ttl := query[opt+5 : opt+9]
+	if ttl[0] != 0 {
+		t.Errorf("the extended RCODE is %d; a query carries zero", ttl[0])
+	}
+	if ttl[1] != 0 {
+		t.Errorf("the EDNS version is %d, want 0", ttl[1])
+	}
 	const dnssecOK = 0x8000
-	if binary.BigEndian.Uint16(query[opt+5:opt+7])&dnssecOK == 0 {
+	flags := binary.BigEndian.Uint16(ttl[2:4])
+	if flags&dnssecOK == 0 {
 		t.Error("the DO bit is not set")
+	}
+	if flags&^dnssecOK != 0 {
+		t.Errorf("flags %#04x set a Z bit, which must be zero", flags)
+	}
+	if !bytes.Equal(query[opt+5:opt+9], []byte{0x00, 0x00, 0x80, 0x00}) {
+		t.Errorf("the OPT TTL is %x, want 00008000", query[opt+5:opt+9])
 	}
 }
 
