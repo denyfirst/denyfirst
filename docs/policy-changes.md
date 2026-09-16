@@ -298,6 +298,16 @@ is said by the report that read it.
 
 Unreleased.
 
+**On Windows and macOS, "trusted" is decided by the carried copy of the
+platform's store.** A system pool on those two platforms made crypto/x509 ask
+the platform verifier, and Windows's fetches the intermediates a scanned
+certificate names — outside the dialler that refuses private addresses. The
+verdict there now rests on the copy of Microsoft's or Apple's store this build
+carries, verified by crypto/x509 alone. A chain the platform used to complete by
+fetching an intermediate the server never sent is now reported as incomplete or
+untrusted, which is what the server sent. No rule changed; on Linux nothing
+moved.
+
 **Four clients' root stores are named beside the verdict.** The verdict on a
 chain still rests on the store of the machine that ran the scan (R7). Beside it,
 a report now says what Mozilla, Chrome, Microsoft and Apple make of the chain,

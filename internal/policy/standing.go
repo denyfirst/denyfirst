@@ -84,9 +84,11 @@ var (
 	// changed is that the others are no longer only a warning.
 	LimitOneTrustStore = StandingLimit{
 		ID:    "one-trust-store",
-		Title: "The verdict rests on this machine's root store",
-		Text: "A chain reported as trusted was verified against the root store of the machine that ran " +
-			"this scan, and the verdict rests on that store. Where the report names them, what Mozilla, " +
+		Title: "The verdict rests on one root store",
+		Text: "A chain reported as trusted was verified against one root store, and the verdict rests on " +
+			"that store: on Linux and other unix systems, the store of the machine that ran this scan; on " +
+			"Windows and macOS, the copy of Microsoft's or Apple's store this build carries, because the " +
+			"platform's own verifier fetches what a scanned certificate names. Where the report names them, what Mozilla, " +
 			"Chrome, Microsoft and Apple make of the chain comes from copies of their stores dated in the " +
 			"report: a store changes after that date, and only which roots it includes and Mozilla's " +
 			"dates for distrusting a root are evaluated — other conditions a store places on a root are " +

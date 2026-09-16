@@ -55,7 +55,7 @@ func TestAStoreThatRefusesIsSaidBesideTheVerdict(t *testing.T) {
 	f.Stores[3] = StoreTrust{Store: "Apple", Verdict: storeNotTrusted}
 
 	text := strings.Join(Texts(DescribeStores(f)), " ")
-	for _, want := range []string{"Apple includes no root", "refuses the connection", "machine that ran this scan"} {
+	for _, want := range []string{"Apple includes no root", "refuses the connection", "the one store the limits below name"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the notes do not carry %q: %s", want, text)
 		}
@@ -102,7 +102,7 @@ func TestStoresNotUsedAreUnsettledWithTheReason(t *testing.T) {
 func TestTheTrustStoreLimitSaysWhatTheOtherStoresAre(t *testing.T) {
 	text := LimitOneTrustStore.Text
 	for _, want := range []string{
-		"the verdict rests on that store", "machine that ran this scan",
+		"the verdict rests on that store", "machine that ran this scan", "Windows and macOS",
 		"Mozilla", "Chrome", "Microsoft", "Apple", "dated", "named, not applied",
 	} {
 		if !strings.Contains(text, want) {

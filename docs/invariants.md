@@ -1905,8 +1905,18 @@ do not. An address that does not answer is not established either way, with a
 fixed reason (I6), and these handshakes are not added to the addresses the
 measurements came from.
 
-**And "trusted" is one store's opinion.** A chain verifies against the root
-store of the machine that ran the scan. Chrome, Apple and Microsoft each ship
+**And "trusted" is one store's opinion.** A chain verifies against one root
+store: the machine's own on Linux and the other unix systems, and on Windows
+and macOS the copy of Microsoft's or Apple's store this build carries. The
+second half dates from the 2026-09-16 audit (A25). A pool from
+`x509.SystemCertPool` is not only a pool on those two platforms: crypto/x509
+reads its mark as "ask the platform verifier first", and on Windows that is
+`CertGetCertificateChain` without the flag that keeps it off the network, so it
+fetches the intermediates a scanned certificate's AIA extension names — an
+address the scanned server chose, reached outside safedial, private ones
+included. So `internal/truststore` never returns a system pool there; the
+challenge and MTA-STS fetchers, which had passed their pool straight through,
+now resolve it too. Chrome, Apple and Microsoft each ship
 their own, remove authorities on their own timetables, and a packaged store
 lags the programme it is built from — so a chain trusted here can fail in a
 browser, and one untrusted here can be accepted. The report said *the* trust
@@ -2495,7 +2505,7 @@ against its recorded hash on every build, a weekly workflow opens an issue when 
 store changes, and a person reads the diff before signing it. That is less than
 a signature, and it is said as that.
 
-*Enforced in:* `internal/certinfo.chainComplete`,
+*Enforced in:* `internal/certinfo.chainComplete`, `internal/truststore.defaultStore`,
 `internal/rootstores.Parse`, `internal/rootstores.Set.Judge`,
 `internal/certinfo.judgeStores`, `internal/policy.StoresLine`,
 `internal/certinfo.resolveRoots`, `internal/scan.Scanner.Roots`,
@@ -2524,6 +2534,8 @@ a signature, and it is said as that.
 `TestAnUnparseableRootMatchingItsFingerprintIsLeftOut`,
 `TestTheRootsPassedInAreTheOnesThatDecide`,
 `TestANilPoolBecomesTheSystemPoolRatherThanThePlatformVerifier`,
+`TestEachPlatformResolvesToAPoolThatIsOnlyAPool`, `TestTheCarriedPoolIsACopy`, `TestTheClientResolvesItsStoreAndKeepsNothingOpen`,
+`TestTheServiceTakesItsStoreFromTheResolver`,
 `TestAPoolPassedInIsNotReplaced`,
 `TestAnUnreadableStoreIsNotReportedAsAnUntrustedServer`,
 `TestTheTestRootIsTheStoreAnalyseUses`,

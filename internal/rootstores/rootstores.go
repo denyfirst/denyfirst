@@ -142,6 +142,19 @@ func Carried() (*Set, error) {
 	return carried, carriedErr
 }
 
+// Pool is the roots one store includes, as an ordinary pool a caller may keep.
+//
+// A copy, so that a caller adding to it changes nothing here. Every root the
+// file gives the store a status for is in it, conditional ones included,
+// because the store ships them and its own clients accept chains to them: Judge
+// is where the conditions are said.
+func (s *Set) Pool(store Store) *x509.CertPool {
+	if s == nil || s.pools[store] == nil {
+		return x509.NewCertPool()
+	}
+	return s.pools[store].Clone()
+}
+
 // Parse reads a stores file, refusing it if any certificate does not hash to
 // the fingerprint recorded beside it.
 func Parse(raw []byte) (*Set, error) {
