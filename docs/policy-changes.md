@@ -100,6 +100,11 @@ accept something it should not have. One word cannot mean both without making a
 report harder to read than the configuration it describes, so the severity of
 these is carried by their sentences.
 
+**A domain whose records could not be read is ungraded, not strong.** Where the
+sender policy, the DMARC record or the exchanger list could not be read, every
+rule about it is silent, and silence is not a pass. Such a scan comes back
+`ungraded` unless something that was read raised a finding.
+
 ### What it deliberately does not grade
 
 **A domain with no SPF record.** Whether that matters depends on whether the
@@ -297,6 +302,11 @@ is said by the report that read it.
 ## `denyfirst-tls-v6` → `porch-tls-v7`
 
 Unreleased.
+
+**A scan whose suite list did not finish is ungraded, even beside a sound
+certificate.** The transport was already ungraded when enumeration stopped
+early; joining it with a strong certificate made the whole report strong. It
+now stays ungraded unless something seen was worse.
 
 **On Windows and macOS, "trusted" is decided by the carried copy of the
 platform's store.** A system pool on those two platforms made crypto/x509 ask

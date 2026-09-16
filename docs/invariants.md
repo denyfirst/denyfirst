@@ -2621,11 +2621,26 @@ configuration down for a connection that dropped.
 The field is `CipherListComplete`, and its zero value is `false` on purpose. A
 producer that forgets it gets `Ungraded` rather than a grade it did not earn.
 
+**And the withdrawal has to survive the join.** `policy.Worst` passes over
+`Ungraded`, which is right for a list of verdicts and wrong for a whole report:
+`internal/scan` joined the transport's `Ungraded` with a strong certificate and
+reported the scan strong. The 2026-09-16 audit (A10) found it. A scan whose
+transport did not finish now ends `Ungraded` wherever it would have ended
+strong. The mail check had the same shape one level up (A11): a sender policy,
+DMARC record or exchanger list that could not be read leaves every rule about
+it silent, and three failed lookups came back strong. An unread principal
+record now withdraws `Strong` there too. In both, only `Strong` goes; a finding
+that was raised stays.
+
 *Enforced in:* `internal/tlsprobe.enumerateCiphers`,
-`internal/tlsprobe.isNoSharedSuite`, `internal/tlsprobe.summarise`
+`internal/tlsprobe.isNoSharedSuite`, `internal/tlsprobe.summarise`,
+`internal/scan.settle`, `internal/policy.principalUnread`
 *Guarded by:* `TestATruncatedSuiteListIsNotReportedAsComplete`,
 `TestAnUnfinishedListCannotProduceStrong`,
-`TestOnlyARefusalFinishesAnEnumeration`
+`TestOnlyARefusalFinishesAnEnumeration`,
+`TestAnUnfinishedTransportDoesNotEndStrong`,
+`TestAnUnfinishedTransportKeepsWhatItFound`, `TestSettlingWithdrawsOnlyStrong`,
+`TestUnreadPrincipalRecordsAreNotStrong`, `TestReadRecordsStillGradeAsTheyDid`
 
 ### R12 — A failure to measure is never drawn as a measurement
 
