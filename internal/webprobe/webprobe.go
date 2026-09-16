@@ -356,6 +356,11 @@ type Chain struct {
 	// not conclude anything from where it stops.
 	Truncated bool `json:"truncated,omitempty"`
 
+	// Unfollowed is set when the chain was stopped short of where it pointed:
+	// a Location this deployment may not reach, or one too long to follow.
+	// Where it went from there was not measured.
+	Unfollowed bool `json:"unfollowed,omitempty"`
+
 	// Stopped explains why the chain ended before an answer, where that was a
 	// decision rather than a failure — a Location this probe will not follow,
 	// for instance.
@@ -496,6 +501,7 @@ func (p *Prober) chain(ctx context.Context, client *http.Client, start string, w
 		loc, why := nextURL(hop, next)
 		if why != "" {
 			out.Stopped = why
+			out.Unfollowed = why == errTooLongToFollow
 			return out
 		}
 		if loc == "" {
@@ -510,6 +516,7 @@ func (p *Prober) chain(ctx context.Context, client *http.Client, start string, w
 		// without this sentence naming it (I3).
 		if why := w.may(ctx, hostOf(loc)); why != "" {
 			out.Stopped = why
+			out.Unfollowed = true
 			return out
 		}
 
@@ -637,7 +644,7 @@ func nextURL(hop Hop, from string) (next, stopped string) {
 		return "", ""
 	}
 	if len(raw) > maxLocationLength {
-		return "", "the Location header was too long to follow"
+		return "", errTooLongToFollow
 	}
 
 	base, err := url.Parse(from)
@@ -907,3 +914,8 @@ func (p *Prober) userAgent() string {
 	}
 	return DefaultUserAgent
 }
+
+// errTooLongToFollow is the reason a Location past maxLocationLength is not
+// followed. Named, because unlike the other reasons nextURL gives it says
+// nothing about where the redirect goes, only that this probe did not go.
+const errTooLongToFollow = "the Location header was too long to follow"

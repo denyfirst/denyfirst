@@ -121,7 +121,12 @@ func TestNosniffIsReportedAndNotGraded(t *testing.T) {
 // that it is missing X-Frame-Options would be reporting a gap it does not have
 // (R6).
 func TestAContentSecurityPolicySupersedesTheOlderFramingHeader(t *testing.T) {
-	got := GradeHeaders(present("Content-Security-Policy"))
+	// With the directive that does the superseding. A policy without it was
+	// taken as framing protection until the 2026-09-16 audit (A16); see
+	// TestAPolicyWithoutFrameAncestorsDoesNotHideMissingFramingProtection.
+	f := present("Content-Security-Policy")
+	f.FrameAncestors = true
+	got := GradeHeaders(f)
 
 	if strings.Contains(noteText(got), "X-Frame-Options") {
 		t.Error("a site sending a Content-Security-Policy was told it is missing X-Frame-Options, " +
@@ -218,12 +223,14 @@ func TestAPolicyInTheMarkupCountsAsAPolicy(t *testing.T) {
 	if strings.Contains(text, "Content-Security-Policy —") {
 		t.Errorf("a site declaring a policy in its markup was told it sends none:\n%s", text)
 	}
-	if strings.Contains(text, "X-Frame-Options") {
-		t.Errorf("a site with a policy was told it is missing framing protection, which the "+
-			"policy's frame-ancestors supersedes:\n%s", text)
+	// But not framing protection: CSP Level 3 has a browser ignore
+	// frame-ancestors in a meta element, so the missing X-Frame-Options is the
+	// one thing still said (audit A16, 2026-09-16).
+	if !strings.Contains(text, "X-Frame-Options") {
+		t.Errorf("a meta policy was taken as framing protection, which no browser applies from markup:\n%s", text)
 	}
-	if len(got.Notes) != 0 {
-		t.Errorf("a fully configured site with a meta policy was told %d things:\n%s",
+	if len(got.Notes) != 1 {
+		t.Errorf("a site with a meta policy and every other header was told %d things, want the one:\n%s",
 			len(got.Notes), text)
 	}
 }

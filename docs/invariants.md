@@ -3403,6 +3403,19 @@ flag — and this check cannot tell which it is looking at, because it never
 records a value. Grading that would fail correct servers for a rule nobody
 wrote, which is exactly the failure this invariant is named for.
 
+**And what is graded is read the way a browser reads it.** The 2026-09-16
+audit found four places it was not (A13–A16). A Strict-Transport-Security
+header repeating a directive is one a browser discards (RFC 6797 §6.1, §8.1),
+and was read by its first `max-age`. A policy is kept by the host that sent it,
+and another host's, reached by a redirect, was graded as the scanned host's.
+`frame-ancestors` is what supersedes `X-Frame-Options`, and only in an
+enforcing header — CSP Level 3 has it ignored in a meta element — while any
+policy at all was taken as framing protection. And a redirect this scan did not
+follow was read as the place a chain ends, and graded
+`reach.never-reaches-tls`; a chain stopped by scope or by the redirect limit is
+now said as not followed, and a site whose reach was not established is not
+strong.
+
 *Enforced in:* `internal/policy/web.go`, `internal/policy/cookies.go`,
 `internal/policy/headers.go`, `internal/tlsprobe.Fallback` (whether a downgraded
 hello carrying `TLS_FALLBACK_SCSV` is refused: described, never graded, because
@@ -3433,6 +3446,13 @@ what a downgrade costs is the grade of the version it lands on)
 `TestTheRecommendedHeadersAreReportedAndNotGraded`,
 `TestNosniffIsReportedAndNotGraded`,
 `TestAContentSecurityPolicySupersedesTheOlderFramingHeader`,
+`TestAPolicyWithoutFrameAncestorsDoesNotHideMissingFramingProtection`,
+`TestOnlyFrameAncestorsInAHeaderSupersedesXFrameOptions`,
+`TestARepeatedDirectiveMakesTheHeaderNothing`,
+`TestAPolicyFromAnotherHostIsNotThisHostsPolicy`,
+`TestAnUnfollowedRedirectIsNotADestination`, `TestAnUnfollowedChainIsNeitherGradedNorSound`,
+`TestEmptyDirectivesAreNotRepeats`, `TestAReportOnlyFrameAncestorsIsNotFramingProtection`,
+`TestALocationTooLongToFollowIsUnfollowed`,
 `TestAReportOnlyPolicyIsDescribedAsNotYetEnforcing`,
 `TestAHostThatAnsweredNothingIsNotDescribedAsSendingNoHeaders`,
 `TestASiteThatSendsEverythingIsToldNothing`,

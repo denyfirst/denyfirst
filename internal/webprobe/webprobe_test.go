@@ -158,6 +158,27 @@ func TestALocationWithAnotherSchemeIsNotFollowed(t *testing.T) {
 	if !strings.Contains(c.Stopped, "ftp") {
 		t.Errorf("Stopped is %q, and it has to name what was refused", c.Stopped)
 	}
+	// A redirect to another scheme is where the chain goes, not a chain this
+	// probe declined to follow: it never reaches HTTPS, and saying so is right.
+	if c.Unfollowed {
+		t.Error("a redirect to another scheme is marked unfollowed, which would hide that it leaves HTTPS")
+	}
+}
+
+// A Location too long to follow is marked unfollowed: it says nothing about
+// where the redirect goes, only that this probe did not go.
+func TestALocationTooLongToFollowIsUnfollowed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", "https://example.com/"+strings.Repeat("a", maxLocationLength))
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer srv.Close()
+
+	p := local()
+	c := p.chain(context.Background(), p.client(), srv.URL+"/", anywhere())
+	if c.Stopped != errTooLongToFollow || !c.Unfollowed {
+		t.Errorf("stopped %q, unfollowed %v; a Location too long to follow is not a destination", c.Stopped, c.Unfollowed)
+	}
 }
 
 func TestALocationCarryingCredentialsIsStrippedBeforeItIsFollowed(t *testing.T) {

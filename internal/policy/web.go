@@ -82,6 +82,12 @@ type WebHop struct {
 
 	// Status is the HTTP status code, when one arrived.
 	Status int
+
+	// Unfollowed is true on the last hop of a chain that went further than
+	// this scan followed: a Location this deployment may not reach, or the
+	// redirect limit. Where the chain went from there was not measured, so
+	// nothing is concluded from where it stops.
+	Unfollowed bool
 }
 
 // WebResult is a graded set of observations about one subject.
@@ -154,8 +160,28 @@ func GradeReach(secure, plain []WebHop) WebResult {
 	// where it is.
 	measured := secureLanded != nil && secureLanded.TLS
 
+	// A chain this scan did not follow to its end is not a chain that ended.
+	//
+	// Where a redirect points somewhere this deployment may not reach, or the
+	// redirect limit ran out, the last hop measured is a redirect — and read as
+	// a destination it said the site never reaches TLS. The 2026-09-16 audit
+	// (A15) found exactly that: a scope refusal graded insecure. What happens
+	// past that point was not measured, so nothing is concluded from it and
+	// nothing is called sound either.
+	unfollowed := false
+	if measured && secureLanded.Unfollowed && redirectStatus(secureLanded.Status) {
+		unfollowed = true
+		out.unsettled("The secure address redirects somewhere this scan did not follow, so where a " +
+			"visitor finally arrives was not established.")
+	}
+
 	// The plaintext side.
 	switch {
+	case plainLanded != nil && !plainLanded.TLS && plainLanded.Unfollowed && redirectStatus(plainLanded.Status):
+		unfollowed = true
+		out.unsettled("The plaintext address redirects somewhere this scan did not follow, so whether a " +
+			"visitor on it ends up on TLS was not established. That is not the same as never arriving there.")
+
 	case plainLanded == nil:
 		out.observe("Nothing answered on port 80. There is then no plaintext request to intercept, " +
 			"and a visitor who types the name without a scheme reaches this site only if their " +
@@ -217,7 +243,7 @@ func GradeReach(secure, plain []WebHop) WebResult {
 	// ungraded, which is what a host that never answered comes back as, and
 	// on a command line whose exit status is the whole product the two were
 	// the same number.
-	if measured && out.Verdict == Ungraded {
+	if measured && !unfollowed && out.Verdict == Ungraded {
 		out.Verdict = Strong
 	}
 
@@ -243,14 +269,28 @@ type HSTS struct {
 // most generous of several would describe a policy no browser applies.
 func ParseHSTS(value string) HSTS {
 	var out HSTS
+	seen := map[string]bool{}
 
 	for _, directive := range strings.Split(value, ";") {
 		name, arg, _ := strings.Cut(strings.TrimSpace(directive), "=")
+		name = strings.ToLower(strings.TrimSpace(name))
+
+		// RFC 6797 §6.1: every directive appears at most once, and §8.1 has a
+		// browser ignore a header that breaks the grammar. So a repeat makes
+		// the whole header nothing, whichever value came first. Before the
+		// 2026-09-16 audit (A13) "max-age=31536000; max-age=0" was read as a
+		// year and graded strong.
+		if name != "" {
+			if seen[name] {
+				return HSTS{}
+			}
+			seen[name] = true
+		}
 
 		// Directive names are case-insensitive; the argument may be a quoted
 		// string. Both are in the grammar, and a parser that misses either
 		// reports a correct header as broken.
-		switch strings.ToLower(strings.TrimSpace(name)) {
+		switch name {
 		case "max-age":
 			arg = strings.Trim(strings.TrimSpace(arg), `"`)
 			n, err := strconv.ParseInt(arg, 10, 64)
@@ -326,8 +366,8 @@ func GradeHSTS(secure, plain []string, secureAnswered bool) WebResult {
 		out.add(Finding{
 			RuleID:     "hsts.unparseable",
 			Verdict:    Weak,
-			Title:      "The policy carries no valid max-age, so it is ignored",
-			Rationale:  "Strict-Transport-Security is present but has no max-age a browser can read, and a browser that cannot read max-age discards the whole header. The site is configured for a protection it does not have, which is worse than being configured for none: nothing about it looks wrong.",
+			Title:      "The policy is not one a browser can read, so it is ignored",
+			Rationale:  "Strict-Transport-Security is present but has no max-age a browser can read, or repeats a directive RFC 6797 allows once, and a browser discards a header like that entirely. The site is configured for a protection it does not have, which is worse than being configured for none: nothing about it looks wrong.",
 			References: []Reference{rfc6797},
 		})
 		return out
