@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -260,5 +261,26 @@ func TestTheMTASTSRowSaysWhatWasRead(t *testing.T) {
 	read := policy.MailFacts{MTASTSRecords: 1, MTASTSPolicyRead: true, MTASTSMode: "testing"}
 	if got := stsLine(&read); strings.Contains(got, "not read") {
 		t.Errorf("a policy that was read is drawn as unread: %q", got)
+	}
+}
+
+// A lookup count that is a lower bound says so on the terminal, in the words the
+// page uses (R16).
+func TestALowerBoundLookupCountIsSaidAsOne(t *testing.T) {
+	page, err := os.ReadFile("../../internal/web/assets/app.js")
+	if err != nil {
+		t.Fatalf("reading the page: %v", err)
+	}
+	if !strings.Contains(string(page), `facts.spfLookupsAtLeast ? "at least " : ""`) {
+		t.Error("the page does not read spfLookupsAtLeast, so the two faces disagree about the count")
+	}
+
+	r := mailSample()
+	r.Observed.SPFLookups = 11
+	r.Observed.SPFLookupsAtLeast = true
+	var buf bytes.Buffer
+	printMail(&buf, r)
+	if !strings.Contains(buf.String(), "at least 11 of the ten lookups allowed") {
+		t.Errorf("the SPF line does not say the count is a lower bound:\n%s", buf.String())
 	}
 }

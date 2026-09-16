@@ -149,9 +149,31 @@ type Facts struct {
 	// count is too high: the answer is nearly always one provider too many.
 	Includes []string
 
+	// LookupsAtLeast is true when Lookups is a lower bound: the walk stopped
+	// resolving once the count passed the limit, or a policy it pulls in could
+	// not be read. Either way the real cost is this or more.
+	//
+	// Stopping at the limit is what a receiver does — the evaluation is a
+	// permanent error from the eleventh lookup on — and it is what bounds this
+	// walk. Before the 2026-09-16 audit (A12) nothing did: a record with thirty
+	// includes cost thirty-one queries, and one whose includes each named more
+	// had no ceiling but the caller's deadline.
+	LookupsAtLeast bool
+
+	// Unread counts the included and redirected policies whose lookup failed —
+	// a resolver error or a deadline, not a name that answered nothing. They
+	// are not void lookups, which RFC 7208 defines as a name with no records,
+	// and counting them as void would turn a resolver's failure into a finding
+	// about the domain.
+	Unread int
+
 	// Reason says why nothing was established, in this package's own words.
 	// Empty when the policy was read.
 	Reason string
+
+	// failed marks a lookup that did not answer, as opposed to one that
+	// answered with nothing. Internal to the walk.
+	failed bool
 }
 
 // Check reads a domain's policy and counts what evaluating it would cost.
@@ -191,11 +213,16 @@ type walk struct {
 
 // recordFor finds the one SPF record at a name, or says why there is not one.
 func (w *walk) recordFor(ctx context.Context, domain string) (string, Facts) {
+	// Checked before asking, so a walk whose caller has given up stops here
+	// rather than spending what is left of a deadline that has already passed.
+	if ctx.Err() != nil {
+		return "", Facts{Reason: "the lookups ran out of time", failed: true}
+	}
 	values, existed, err := w.resolver.LookupTXT(ctx, domain)
 	if err != nil {
 		// The underlying error names resolvers and addresses, so only the
 		// shape of the failure is reported (I6).
-		return "", Facts{Reason: "the domain's TXT records could not be read"}
+		return "", Facts{Reason: "the domain's TXT records could not be read", failed: true}
 	}
 	if !existed {
 		return "", Facts{Reason: "the domain does not exist"}
@@ -259,12 +286,8 @@ func (w *walk) evaluate(ctx context.Context, domain, record string, depth int, f
 			}
 			facts.rememberInclude(name)
 
-			included, sub := w.recordFor(ctx, name)
-			if sub.Reason != "" || !sub.Found {
-				// A name that answered nothing is a void lookup, which RFC
-				// 7208 bounds separately and low: a policy resting on names
-				// that no longer resolve is a policy nobody is maintaining.
-				facts.VoidLookups++
+			included, ok := w.follow(ctx, name, facts)
+			if !ok {
 				continue
 			}
 			w.evaluate(ctx, name, included, depth+1, facts)
@@ -293,13 +316,43 @@ func (w *walk) evaluate(ctx context.Context, domain, record string, depth int, f
 		facts.Lookups++
 		facts.rememberInclude(redirect)
 
-		target, sub := w.recordFor(ctx, redirect)
-		if sub.Reason != "" || !sub.Found {
-			facts.VoidLookups++
+		target, ok := w.follow(ctx, redirect, facts)
+		if !ok {
 			return
 		}
 		w.evaluate(ctx, redirect, target, depth+1, facts)
 	}
+}
+
+// follow reads the policy an include or redirect names, once the term has been
+// counted, and says whether there is one to walk.
+//
+// Past the limit nothing more is resolved: a receiver has already stopped with
+// a permanent error, and the count from here on is a lower bound, which the
+// report says. That is what bounds the walk — at most one query for each of
+// the lookups a receiver would make, and one more for the record itself.
+func (w *walk) follow(ctx context.Context, name string, facts *Facts) (string, bool) {
+	if facts.Lookups > maxLookups {
+		facts.LookupsAtLeast = true
+		return "", false
+	}
+
+	record, sub := w.recordFor(ctx, name)
+	switch {
+	case sub.failed:
+		// Not a void lookup: the name may well have a policy, and this walk
+		// did not get to read it.
+		facts.Unread++
+		facts.LookupsAtLeast = true
+		return "", false
+	case !sub.Found:
+		// A name that answered nothing is a void lookup, which RFC 7208
+		// bounds separately and low: a policy resting on names that no longer
+		// resolve is a policy nobody is maintaining.
+		facts.VoidLookups++
+		return "", false
+	}
+	return record, true
 }
 
 // rememberInclude keeps the domains a policy pulls in, bounded and in order.

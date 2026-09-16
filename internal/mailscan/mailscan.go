@@ -331,6 +331,8 @@ func (s *Scanner) readSPF(ctx context.Context, r Resolver, domain string, facts 
 	facts.SPFLookups = got.Lookups
 	facts.SPFLookupLimit = got.LookupLimit
 	facts.SPFVoidLookups = got.VoidLookups
+	facts.SPFLookupsAtLeast = got.LookupsAtLeast
+	facts.SPFUnreadIncludes = got.Unread
 	facts.SPFVoidLimit = got.VoidLimit
 	facts.SPFUsesPTR = got.UsesPTR
 	facts.SPFIncludes = got.Includes
