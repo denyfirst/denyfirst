@@ -1,6 +1,9 @@
 package policy
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // A domain whose principal records could not be read is not strong.
 //
@@ -31,5 +34,47 @@ func TestReadRecordsStillGradeAsTheyDid(t *testing.T) {
 	broken := MailFacts{SPFRecords: 2, DMARCReason: "unavailable", MXRead: true}
 	if got := GradeMail(broken).Verdict; got != Insecure {
 		t.Errorf("two SPF records beside an unread DMARC record graded %q, want insecure", got)
+	}
+}
+
+// A lookup count that is a lower bound is said as one, and a policy pulled in
+// that nobody could read keeps the report from being strong.
+func TestAnSPFCountThatIsALowerBoundIsSaidAsOne(t *testing.T) {
+	over := MailFacts{SPFRecords: 1, SPFAll: "-", SPFLookups: 30, SPFLookupLimit: true, SPFLookupsAtLeast: true,
+		DMARCRecords: 1, DMARCPolicy: "reject", DMARCPercent: 100, MXRead: true}
+	got := GradeMail(over)
+	found := false
+	for _, f := range got.Findings {
+		if f.RuleID == "mail.spf-lookup-limit" {
+			found = true
+			if !strings.Contains(f.Rationale, "takes at least 30") {
+				t.Errorf("the finding does not say the count is a lower bound: %s", f.Rationale)
+			}
+		}
+	}
+	if !found || got.Verdict != Insecure {
+		t.Errorf("thirty lookups graded %q with findings %v", got.Verdict, got.Findings)
+	}
+
+	unread := MailFacts{SPFRecords: 1, SPFAll: "-", SPFLookups: 3, SPFLookupsAtLeast: true, SPFUnreadIncludes: 2,
+		DMARCRecords: 1, DMARCPolicy: "reject", DMARCPercent: 100, MXRead: true}
+	got = GradeMail(unread)
+	if got.Verdict != Ungraded {
+		t.Errorf("a policy with two includes nobody could read is %q, want ungraded", got.Verdict)
+	}
+	var observed, unsettled string
+	for _, n := range got.Notes {
+		switch n.Kind {
+		case KindObserved:
+			observed += n.Text
+		case KindUnsettled:
+			unsettled += n.Text
+		}
+	}
+	if !strings.Contains(observed, "takes at least 3 of the ten") {
+		t.Errorf("the count is not said to be a lower bound: %s", observed)
+	}
+	if !strings.Contains(unsettled, "2 policies this one pulls in could not be read") {
+		t.Errorf("the unread includes are not named: %s", unsettled)
 	}
 }

@@ -100,6 +100,13 @@ accept something it should not have. One word cannot mean both without making a
 report harder to read than the configuration it describes, so the severity of
 these is carried by their sentences.
 
+**The SPF walk stops where a receiver stops.** Past ten lookups nothing more is
+resolved and the count is reported as a lower bound; `mail.spf-lookup-limit` is
+raised exactly as before. An included policy the resolver could not answer is
+counted as unread rather than as a void lookup, so a resolver's failure no
+longer counts towards `mail.spf-void-lookups`, and while any include is unread
+the report is ungraded rather than strong.
+
 **A domain whose records could not be read is ungraded, not strong.** Where the
 sender policy, the DMARC record or the exchanger list could not be read, every
 rule about it is silent, and silence is not a pass. Such a scan comes back

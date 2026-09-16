@@ -63,7 +63,10 @@ type mailResult struct {
 func runMail(ctx context.Context, domains []string, timeout time.Duration, resolver string, asJSON bool, store *results.Store, selectors []dkim.Selector, heloName string) int {
 	scanner := mailScanner(timeout, selectors, heloName)
 	if resolver != "" {
-		scanner.Resolver = &dnsclient.Client{Server: resolver, Timeout: timeout}
+		// One question at a time is bounded by the client's own timeout, as on
+		// the TLS path. This used to be -timeout itself, the budget for a whole
+		// target, so a policy with a dozen includes could wait a dozen budgets.
+		scanner.Resolver = &dnsclient.Client{Server: resolver}
 	}
 
 	// reports rather than results: internal/results is the store, and a local
@@ -135,8 +138,8 @@ func printMail(w io.Writer, r mailResult) {
 		case f.SPFRecords > 1:
 			fmt.Fprintf(w, "    SPF        %d records, which is a permanent error\n", f.SPFRecords)
 		default:
-			fmt.Fprintf(w, "    SPF        ends in %sall, %d of the ten lookups allowed\n",
-				allOrNone(f.SPFAll), f.SPFLookups)
+			fmt.Fprintf(w, "    SPF        ends in %sall, %s%d of the ten lookups allowed\n",
+				allOrNone(f.SPFAll), lowerBound(f.SPFLookupsAtLeast), f.SPFLookups)
 		}
 
 		fmt.Fprintf(w, "\n  Authentication policy\n")
@@ -277,4 +280,13 @@ func selectorsFrom(named string, common bool) []dkim.Selector {
 		out = append(out, dkim.DocumentedSelectors()...)
 	}
 	return out
+}
+
+// lowerBound is the words a count that may be higher needs in front of it, the
+// same the page uses (R16).
+func lowerBound(bound bool) string {
+	if bound {
+		return "at least "
+	}
+	return ""
 }

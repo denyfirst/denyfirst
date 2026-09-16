@@ -1069,7 +1069,7 @@ function zone(facts) {
     row("SPF", "ends in " + (facts.spfAll || "no ") + "all");
     row(
       "Lookups",
-      facts.spfLookups + " of the ten RFC 7208 allows",
+      (facts.spfLookupsAtLeast ? "at least " : "") + facts.spfLookups + " of the ten RFC 7208 allows",
       facts.spfLookupLimit ? "insecure" : null,
     );
   }

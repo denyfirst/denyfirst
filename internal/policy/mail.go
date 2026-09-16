@@ -87,6 +87,15 @@ type MailFacts struct {
 	// SPFVoidLookups is how many lookups found nothing.
 	SPFVoidLookups int `json:"spfVoidLookups"`
 
+	// SPFLookupsAtLeast is true when SPFLookups is a lower bound: the walk
+	// stopped past the limit, or a policy it pulls in could not be read.
+	SPFLookupsAtLeast bool `json:"spfLookupsAtLeast,omitempty"`
+
+	// SPFUnreadIncludes is how many policies this one pulls in could not be
+	// read. They are not void lookups, and while any is unread the counts
+	// above are lower bounds.
+	SPFUnreadIncludes int `json:"spfUnreadIncludes,omitempty"`
+
 	// SPFUsesPTR is true when any record in the chain uses ptr.
 	SPFUsesPTR bool `json:"spfUsesPTR"`
 
@@ -343,7 +352,7 @@ func GradeMail(f MailFacts) MailFinding {
 		add("mail.spf-lookup-limit", Insecure,
 			"Evaluating this SPF policy takes more DNS lookups than are allowed",
 			"RFC 7208 allows at most ten DNS-resolving terms across everything a policy pulls in; "+
-				"this one takes "+strconv.Itoa(f.SPFLookups)+". Over the limit the policy is a "+
+				"this one takes "+atLeast(f.SPFLookupsAtLeast)+strconv.Itoa(f.SPFLookups)+". Over the limit the policy is a "+
 				"permanent error, and receivers treat that as no policy. Nothing in the record "+
 				"shows this: the cost is mostly inside the providers it includes.",
 			rfc7208)
@@ -573,7 +582,7 @@ func GradeMail(f MailFacts) MailFinding {
 // be read. The records themselves being absent is not this: an absence was
 // read, and is described.
 func principalUnread(f MailFacts) bool {
-	return f.SPFReason != "" || f.DMARCReason != "" || f.MXReason != ""
+	return f.SPFReason != "" || f.SPFUnreadIncludes > 0 || f.DMARCReason != "" || f.MXReason != ""
 }
 
 // describeMail says what was established and deliberately not graded.
@@ -619,8 +628,12 @@ func describeMail(f MailFacts) []Note {
 	// provider away from switching its policy off and has no other way to find
 	// that out.
 	if f.SPFRecords == 1 && !f.SPFLookupLimit {
-		out = append(out, Observed("Evaluating this policy takes "+strconv.Itoa(f.SPFLookups)+
+		out = append(out, Observed("Evaluating this policy takes "+atLeast(f.SPFLookupsAtLeast)+strconv.Itoa(f.SPFLookups)+
 			" of the ten DNS lookups RFC 7208 allows."+includeList(f.SPFIncludes)))
+	}
+	if f.SPFUnreadIncludes > 0 {
+		out = append(out, Unsettled(policiesPulledIn(f.SPFUnreadIncludes)+" could not be read, "+
+			"so the lookup counts above are lower bounds and what those policies allow is not established."))
 	}
 
 	if f.SPFUsesPTR {
@@ -1258,4 +1271,20 @@ func describeDKIM(f MailFacts) []Note {
 	}
 
 	return out
+}
+
+// atLeast is the words a lower bound needs in front of it.
+func atLeast(bound bool) string {
+	if bound {
+		return "at least "
+	}
+	return ""
+}
+
+// policiesPulledIn opens the sentence about included policies nobody could read.
+func policiesPulledIn(n int) string {
+	if n == 1 {
+		return "One policy this one pulls in"
+	}
+	return strconv.Itoa(n) + " policies this one pulls in"
 }

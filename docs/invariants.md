@@ -1131,6 +1131,18 @@ its own policy off has no way to see that from its own zone. The included
 domains are named with the count, because a number alone says there is a problem
 and not where it is.
 
+**And the count is bounded the way a receiver bounds it.** Past ten, a receiver
+has already stopped with a permanent error, so the walk stops resolving there
+too; the remaining terms of the record in hand are still counted, and the report
+says the figure is a lower bound. Before the 2026-09-16 audit (A12) nothing
+bounded the walk but the caller's deadline: thirty includes cost thirty-one
+queries, and a zone whose includes each named more had no ceiling. Now it is at
+most one query for the record and one for each lookup up to the limit. An
+include the resolver could not answer is counted as unread, not void — RFC 7208
+defines a void lookup as a name with no records, and counting a timeout as one
+turned this machine's failure into a finding about the domain. While any include
+is unread the report is not strong.
+
 **A record read is not a policy read, and the report says which it means.** The
 MTA-STS record at `_mta-sts.<domain>` announces that a policy exists; the policy
 itself is a file at `https://mta-sts.<domain>/.well-known/mta-sts.txt`, and only
@@ -1217,6 +1229,11 @@ every report.
 `internal/policy.GradeMail`, `internal/policy.MailStandingLimits`,
 `internal/httpapi.New`, `cmd/porch-scan.mailScanner`, `cmd/porch-scan.runMail`
 *Guarded by:* `TestTheScanAsksOnlyAboutTheDomainItWasGiven`,
+`TestTheWalkStopsWhereAReceiverStops`, `TestAPolicyUnderTheLimitIsWalkedInFull`,
+`TestAnUnreadIncludeIsNotAVoidLookup`, `TestACancelledWalkAsksNothing`,
+`TestTheTenthLookupIsFollowed`,
+`TestAnSPFCountThatIsALowerBoundIsSaidAsOne`, `TestAnUnreadIncludeReachesTheReport`,
+`TestALowerBoundLookupCountIsSaidAsOne`,
 `TestOnlyTheZoneProofAuthorisesAMailScan`,
 `TestScanRefusesBeforeItAsksAnything`,
 `TestExclusionSurvivesTheSpelling`,
