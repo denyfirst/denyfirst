@@ -232,6 +232,13 @@ func (f *Fetcher) checkOne(ctx context.Context, address string, leaf, issuer *x5
 		return out
 	}
 
+	// A list that does not cover this certificate answers nothing about it,
+	// however well it is signed (see scope.go).
+	if reason := scopeReason(list, leaf); reason != "" {
+		out.Reason = reason
+		return out
+	}
+
 	for _, entry := range list.RevokedCertificateEntries {
 		if entry.SerialNumber == nil {
 			continue
