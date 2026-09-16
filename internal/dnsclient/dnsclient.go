@@ -569,14 +569,21 @@ func buildQuery(id uint16, question []byte, qtype uint16) []byte {
 	msg = binary.BigEndian.AppendUint16(msg, classIN)
 
 	// EDNS0: an OPT pseudo-record on the root name. The class field carries
-	// the payload size and the TTL field carries the flags, of which the top
-	// bit asks for DNSSEC records.
-	const dnssecOK = 0x8000
+	// the payload size, and the TTL field is four fields in one (RFC 6891
+	// §6.1.3): the extended RCODE and the version, a byte each, then sixteen
+	// bits of flags whose top bit is DO.
+	//
+	// So DO is 0x00008000 of the TTL. Until 2026-09-16 it was written shifted
+	// sixteen bits up, which asked for no DNSSEC records at all and sent an
+	// extended RCODE of 128 in a query, where it must be zero. The test beside
+	// this read the same wrong bytes and agreed with it; the audit (A08) read
+	// the wire.
+	const dnssecOK = 0x00008000
 	msg = append(msg, 0) // root name
 	msg = binary.BigEndian.AppendUint16(msg, typeOPT)
 	msg = binary.BigEndian.AppendUint16(msg, udpPayload)
-	msg = binary.BigEndian.AppendUint32(msg, dnssecOK<<16)
-	msg = binary.BigEndian.AppendUint16(msg, 0) // no options
+	msg = binary.BigEndian.AppendUint32(msg, dnssecOK) // extended RCODE 0, version 0, DO
+	msg = binary.BigEndian.AppendUint16(msg, 0)        // no options
 
 	return msg
 }
