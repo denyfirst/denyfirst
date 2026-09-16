@@ -44,6 +44,7 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/safedial"
+	"github.com/denyfirst/denyfirst/internal/truststore"
 )
 
 const (
@@ -120,7 +121,7 @@ type Fetcher struct {
 	Dial func(ctx context.Context, network, address string) (net.Conn, error)
 
 	// Roots is the trust store the connection is judged against. Nil means the
-	// system pool.
+	// store internal/truststore resolves to.
 	//
 	// What it may not be is off. RFC 8461 requires the policy be fetched over
 	// a connection whose certificate validates for the policy host, and a
@@ -288,9 +289,21 @@ func (f *Fetcher) dialFunc() func(context.Context, string, string) (net.Conn, er
 }
 
 func (f *Fetcher) client() *http.Client {
+	// Resolved rather than passed through. A nil pool, and on Windows and macOS
+	// the system pool as well, hands verification to the platform, which then
+	// fetches whatever the presented certificate names (see internal/truststore).
+	// A store that cannot be read leaves an empty pool, so the fetch fails
+	// closed.
+	roots, _ := truststore.Resolve(f.Roots)
+
 	return &http.Client{
 		Transport: &http.Transport{
 			DialContext: f.dialFunc(),
+
+			// One request per client, and the client is not kept. A kept-alive
+			// connection on a transport nobody holds stays open until the peer
+			// closes it — one more for every policy fetched (audit A28).
+			DisableKeepAlives: true,
 
 			// No proxy. One would put a third party between this and a policy
 			// whose whole purpose is that nobody in the middle can rewrite it.
@@ -298,7 +311,7 @@ func (f *Fetcher) client() *http.Client {
 
 			TLSClientConfig: &tls.Config{
 				MinVersion: tls.VersionTLS12,
-				RootCAs:    f.Roots,
+				RootCAs:    roots,
 			},
 		},
 

@@ -41,6 +41,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/results"
 	"github.com/denyfirst/denyfirst/internal/scan"
+	"github.com/denyfirst/denyfirst/internal/truststore"
 	"github.com/denyfirst/denyfirst/internal/verify"
 	"github.com/denyfirst/denyfirst/internal/web"
 )
@@ -276,7 +277,7 @@ func run() int {
 	// platform verifier, which reads a different store. So this check passed
 	// against one store and every chain was then judged against another, on
 	// the two platforms self-hosting is most likely to run on.
-	roots, rootsErr := x509.SystemCertPool()
+	roots, rootsErr := truststore.Resolve(nil)
 	if err := trustStoreUsable(roots, rootsErr); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
@@ -765,7 +766,7 @@ func resolverAddress(resolver string) error {
 
 // trustStoreUsable reports whether chains can be judged against anything.
 //
-// Written to take what x509.SystemCertPool returns rather than to call it,
+// Written to take what truststore.Resolve returns rather than to call it,
 // because the standard library builds that pool once per process: a test that
 // arranged an empty store would get whatever the first caller in the test
 // binary had already cached, and would pass or fail on the order the tests ran

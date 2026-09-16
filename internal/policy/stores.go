@@ -4,8 +4,9 @@ import "strings"
 
 // What other clients' root stores make of a chain, described and never graded.
 //
-// The verdict on a chain rests on the store of the machine that ran the scan,
-// because that is the store a deployment checked and can stand behind (R7). But
+// The verdict on a chain rests on one store — the machine's own on Linux, the
+// carried copy of the platform's programme on Windows and macOS — because that
+// is the store a deployment checked and can stand behind (R7). But
 // that is one store among several, and the question an operator actually has is
 // whether the people connecting to them will be refused. Mozilla, Chrome,
 // Microsoft and Apple each answer that for their own users, from copies of their
@@ -93,14 +94,14 @@ func DescribeStores(f StoreFacts) []Note {
 	trusted := f.named(storeTrusted)
 	if len(trusted) == len(f.Stores) {
 		return []Note{Observed(andList(trusted) + " each include a root this chain reaches, as their stores " +
-			"stood on " + f.Retrieved + ", so it is not only this machine's store that accepts it.")}
+			"stood on " + f.Retrieved + ", so it is not only the store the verdict rests on that accepts it.")}
 	}
 
 	var out []Note
 	if names := f.named(storeNotTrusted); len(names) > 0 {
 		out = append(out, Observed(andList(names)+" "+includes(len(names))+" no root this chain reaches, as of "+
 			f.Retrieved+", so a client relying on that store refuses the connection whatever the verdict "+
-			"above says. The verdict rests on the store of the machine that ran this scan."))
+			"above says. The verdict rests on the one store the limits below name."))
 	}
 	for _, s := range f.Stores {
 		if s.Verdict == storeDistrusted {

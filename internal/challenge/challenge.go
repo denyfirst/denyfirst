@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/denyfirst/denyfirst/internal/safedial"
+	"github.com/denyfirst/denyfirst/internal/truststore"
 	"github.com/denyfirst/denyfirst/internal/verify"
 )
 
@@ -152,9 +153,21 @@ func (f *Fetcher) dialFunc() func(context.Context, string, string) (net.Conn, er
 func (f *Fetcher) client() *http.Client {
 	dial := f.dialFunc()
 
+	// Resolved rather than passed through. A nil pool, and on Windows and macOS
+	// the system pool as well, hands verification to the platform, which then
+	// fetches whatever the presented certificate names (see internal/truststore).
+	// A store that cannot be read leaves an empty pool, so the proof fails
+	// closed.
+	roots, _ := truststore.Resolve(f.Roots)
+
 	return &http.Client{
 		Transport: &http.Transport{
 			DialContext: dial,
+
+			// One request per client, and the client is not kept. A kept-alive
+			// connection on a transport nobody holds stays open until the peer
+			// closes it — one more for every proof asked for (audit A28).
+			DisableKeepAlives: true,
 
 			// No proxy. One would put a third party between this deployment
 			// and the proof, and the proof is the whole boundary.
@@ -162,7 +175,7 @@ func (f *Fetcher) client() *http.Client {
 
 			TLSClientConfig: &tls.Config{
 				MinVersion: tls.VersionTLS12,
-				RootCAs:    f.Roots,
+				RootCAs:    roots,
 			},
 		},
 
