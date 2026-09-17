@@ -289,3 +289,40 @@ func TestTheWorkingStateIsLegible(t *testing.T) {
 		}
 	}
 }
+
+// The dark scheme is one scheme, reached two ways.
+//
+// A dark system without a choice, and a reader who chose dark with the switch,
+// get the same tokens. Two copies are in the stylesheet because CSS has no way
+// to name the second condition inside the first; this keeps them one table,
+// so the contrast checked above for the one is true of the other.
+func TestBothWaysToTheDarkSchemeAreTheSame(t *testing.T) {
+	sheet := stylesheet(t)
+	block := func(from string) map[string]string {
+		start := strings.Index(sheet, from)
+		if start < 0 {
+			t.Fatalf("the stylesheet has no %q block", from)
+		}
+		rest := sheet[start:]
+		rest = rest[:strings.Index(rest, "}")]
+		found := map[string]string{}
+		for _, m := range regexp.MustCompile(`--([a-z-]+):\s*([^;]+);`).FindAllStringSubmatch(rest, -1) {
+			found[m[1]] = strings.TrimSpace(m[2])
+		}
+		return found
+	}
+
+	system := block(`:root:not([data-theme="light"]) {`)
+	chosen := block(`:root[data-theme="dark"] {`)
+	if len(system) < 8 {
+		t.Fatalf("only %d tokens in the dark scheme", len(system))
+	}
+	if len(system) != len(chosen) {
+		t.Errorf("the dark scheme has %d tokens one way and %d the other", len(system), len(chosen))
+	}
+	for k, v := range system {
+		if chosen[k] != v {
+			t.Errorf("--%s is %s on a dark system and %s when dark is chosen", k, v, chosen[k])
+		}
+	}
+}

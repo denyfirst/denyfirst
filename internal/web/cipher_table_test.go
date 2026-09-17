@@ -127,9 +127,10 @@ func TestTheCipherTableScrollsInsideItsOwnContainer(t *testing.T) {
 		t.Error("the container is not shaded at both edges, so a reader is not told there is more")
 	}
 	// Both colour schemes define the shade, because a black shadow on a dark
-	// page is no shadow at all.
-	if strings.Count(stylesheet(t), "--edge:") != 2 {
-		t.Error("the edge shade is not defined for both colour schemes")
+	// page is no shadow at all — and the dark one twice, once for a dark
+	// system and once for a reader who switched to dark on a light one.
+	if strings.Count(stylesheet(t), "--edge:") != 3 {
+		t.Error("the edge shade is not defined for the light scheme and both ways to the dark one")
 	}
 }
 

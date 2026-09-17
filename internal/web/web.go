@@ -122,6 +122,11 @@ type page struct {
 	// longest and the one a reader is likeliest to have a report from.
 	Method string
 
+	// Brand is true on the demonstration, which is the denyfirst site and
+	// carries its wordmark; an installation somebody runs is porch, by
+	// denyfirst, and says so in the footer. Set by render from the build.
+	Brand bool
+
 	// Body is filled in at startup. It is template.HTML because the fragment
 	// is a file in this repository rather than anything a user supplied.
 	Body template.HTML
@@ -387,6 +392,7 @@ var files = map[string]struct {
 }{
 	"/style.css":    {"assets/style.css", "text/css; charset=utf-8"},
 	"/app.js":       {"assets/app.js", "text/javascript; charset=utf-8"},
+	"/theme.js":     {"assets/theme.js", "text/javascript; charset=utf-8"},
 	"/favicon.svg":  {"assets/favicon.svg", "image/svg+xml"},
 	SecurityTxtPath: {"assets/security.txt", "text/plain; charset=utf-8"},
 
@@ -442,6 +448,7 @@ func render(p *page) ([]byte, error) {
 	if p.Method == "" {
 		p.Method = defaultMethodPage
 	}
+	p.Brand = demo.Enabled
 
 	fragment, err := assets.ReadFile(p.Fragment)
 	if err != nil {
