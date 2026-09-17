@@ -287,6 +287,12 @@ func TestEveryDocumentedSelectorNamesItsProvider(t *testing.T) {
 	if len(Documented) == 0 {
 		t.Fatal("the list is empty, so this test checks nothing")
 	}
+	// The bound applies to the whole list a scan is given, so the documented
+	// names alone must leave room for an operator's own, or a service that
+	// offers only these would silently drop the last of them.
+	if len(Documented) >= maxSelectors {
+		t.Errorf("%d documented selectors leave no room under the bound of %d", len(Documented), maxSelectors)
+	}
 
 	seen := map[string]bool{}
 	for _, d := range Documented {
@@ -439,5 +445,30 @@ func TestASelectorThatHeldNothingIsNotDescribed(t *testing.T) {
 	unread := Check(context.Background(), broken, "example.com", Named("s1"))
 	if d := unread.Keys[0].Describe(); d != "" {
 		t.Errorf("a selector that could not be read is described as %q", d)
+	}
+}
+
+// Migadu's three names are looked under.
+//
+// This project's own domain is served by Migadu, and a check of it found no
+// key under any documented name while the zone held three. A list that
+// cannot find the keys of the domain demonstrating it is the first thing a
+// visitor to the demonstration sees fail.
+func TestMigadusSelectorsAreDocumented(t *testing.T) {
+	for _, s := range []string{"key1", "key2", "key3"} {
+		if ProviderOf(s) != "Migadu" {
+			t.Errorf("%s is not listed as Migadu's", s)
+		}
+	}
+
+	// And listed is not enough: the names a scan is given are what it looks under.
+	given := map[string]bool{}
+	for _, s := range DocumentedSelectors() {
+		given[s.Name] = true
+	}
+	for _, d := range Documented {
+		if !given[d.Selector] {
+			t.Errorf("%s is documented and not given to a scan", d.Selector)
+		}
 	}
 }

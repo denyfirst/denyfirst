@@ -36,6 +36,14 @@ var Documented = []struct {
 	{"mail", "a common default in self-hosted setups"},
 	{"dkim", "a common default in self-hosted setups"},
 	{"default", "a common default in self-hosted setups"},
+
+	// Migadu asks for three CNAMEs, key1 to key3, so that it can rotate keys
+	// without its customers touching DNS. Added after a check of this
+	// project's own domain, which Migadu serves, found no key under any name
+	// above while the zone held all three.
+	{"key1", "Migadu"},
+	{"key2", "Migadu"},
+	{"key3", "Migadu"},
 }
 
 // DocumentedSelectors is the list above, ready to look under.

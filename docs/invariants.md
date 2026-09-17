@@ -1395,7 +1395,7 @@ every report.
 `TestOnlyARecordThatAnnouncesItselfIsAKey`,
 `TestAFailedLookupIsNotAnAbsentKey`,
 `TestWhereASelectorCameFromIsKept`,
-`TestEveryDocumentedSelectorNamesItsProvider`,
+`TestEveryDocumentedSelectorNamesItsProvider`, `TestMigadusSelectorsAreDocumented`,
 `TestASelectorIsAskedAboutOnce`,
 `TestTheSelectorListIsBounded`,
 `TestTheNameAskedAboutIsWhereAKeyLives`,
