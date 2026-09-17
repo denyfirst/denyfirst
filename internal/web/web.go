@@ -379,9 +379,8 @@ var moved = map[string]string{
 var standingIn = rootRedirect()
 
 func rootRedirect() map[string]string {
-	if demo.Enabled {
-		return map[string]string{"/": "/tls"}
-	}
+	// Empty in both builds now. The demonstration has its front page at "/",
+	// and an installation somebody runs has the tool there.
 	return map[string]string{}
 }
 
@@ -410,6 +409,24 @@ var files = map[string]struct {
 var rendered = map[string][]byte{}
 
 func init() {
+	// The denyfirst front page and the Porch page exist on the demonstration
+	// only. An installation somebody runs is the tool at "/" and needs
+	// neither: nobody there needs the product explained to them.
+	if demo.Enabled {
+		pages["/"] = &page{
+			Title:       "denyfirst — independent security and privacy tools",
+			Description: "denyfirst builds security and privacy tools that show their evidence. Porch checks TLS, web reach and mail policy.",
+			Fragment:    "assets/home.html",
+		}
+		pages["/porch"] = &page{
+			Title:       "Porch — denyfirst",
+			Description: "Porch checks the TLS handshake and certificate, how a site is reached, and what a domain's DNS says about its mail. See it run on our own domain.",
+			Fragment:    "assets/porch.html",
+			Script:      true,
+			Data:        porchPage{Hosts: demo.Hosts(), Checks: consoleChecks()},
+		}
+	}
+
 	for path, p := range pages {
 		body, err := render(p)
 		if err != nil {
@@ -493,10 +510,13 @@ func render(p *page) ([]byte, error) {
 // safe to expose when it is not; a page understating one costs them a second
 // look at a flag.
 func Configure(verified, keeps bool) {
-	rendered["/"] = renderConsole(verified, keeps)
-	if !demo.Enabled {
-		rendered["/privacy"] = renderPrivacy(verified, keeps)
+	// The demonstration's root is its front page and its privacy page is its
+	// own; neither depends on how it was started.
+	if demo.Enabled {
+		return
 	}
+	rendered["/"] = renderConsole(verified, keeps)
+	rendered["/privacy"] = renderPrivacy(verified, keeps)
 }
 
 // renderConsole builds the tool surface.
@@ -653,4 +673,10 @@ func renderPrivacy(verified, keeps bool) []byte {
 		panic("rendering the privacy page: " + err.Error())
 	}
 	return body
+}
+
+// porchPage is what assets/porch.html reads.
+type porchPage struct {
+	Hosts  []demo.Host
+	Checks []consoleCheck
 }

@@ -27,6 +27,13 @@ func TestTheProjectsPagesStayAtTheRootAndTheChecksDoNot(t *testing.T) {
 		"/privacy": true,
 		"/terms":   true,
 	}
+	// The demonstration is the denyfirst site: its front page and the page for
+	// the product are the project's own, at the root, and a self-hosted build
+	// has neither.
+	if demo.Enabled {
+		project["/"] = true
+		project["/porch"] = true
+	}
 
 	// The question this test was written to ask ahead of time. There are two
 	// checks now, so the answer is a list rather than one prefix — and a
@@ -162,11 +169,10 @@ func TestTheRootStandsInAndSaysSoInTheStatusCode(t *testing.T) {
 	// The root itself differs by deployment since 2026-09-12, and this is where
 	// that is asserted rather than assumed.
 	//
-	// On the demonstration it still stands in for /tls: that deployment exists
-	// to explain a check to somebody who arrived from a log line, and a console
-	// asking them to choose checks answers a question they did not ask. On an
-	// installation somebody runs themselves the root is the tool, because
-	// nobody there needs persuading that scanning is safe.
+	// On the demonstration it stood in for /tls until there was a front page
+	// to put there, and now there is: the denyfirst site, answered directly.
+	// On an installation somebody runs themselves the root is the tool,
+	// because nobody there needs persuading that scanning is safe.
 	w := get(t, "/")
 
 	if !demo.Enabled {
@@ -180,12 +186,12 @@ func TestTheRootStandsInAndSaysSoInTheStatusCode(t *testing.T) {
 		return
 	}
 
-	if w.Code != http.StatusFound {
-		t.Errorf("GET / returned %d, want 302 — the root is going to change, and a "+
-			"permanent redirect would say the opposite", w.Code)
+	if w.Code != http.StatusOK || w.Header().Get("Location") != "" {
+		t.Errorf("GET / on the demonstration returned %d to %q, want the front page",
+			w.Code, w.Header().Get("Location"))
 	}
-	if got := w.Header().Get("Location"); got != "/tls" {
-		t.Errorf("GET / redirects to %q, want /tls", got)
+	if !strings.Contains(w.Body.String(), `href="/porch"`) {
+		t.Error("the front page does not lead to the product")
 	}
 }
 

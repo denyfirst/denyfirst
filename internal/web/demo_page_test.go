@@ -77,4 +77,43 @@ func TestTheDemonstrationKeepsItsOwnPrivacyPage(t *testing.T) {
 	if strings.Contains(get(t, "/privacy").Body.String(), "What this installation keeps") {
 		t.Error("configuring the demonstration replaced its privacy page")
 	}
+	if root := get(t, "/").Body.String(); strings.Contains(root, `id="console-form"`) || !strings.Contains(root, `id="products"`) {
+		t.Error("configuring the demonstration replaced its front page with the console")
+	}
+}
+
+// The Porch page offers what the demonstration can check, every check this
+// binary has, and runs them from the page.
+func TestThePorchPageRunsEveryCheckOnTheHostsItOffers(t *testing.T) {
+	page := get(t, "/porch").Body.String()
+	for _, h := range demo.Hosts() {
+		if !strings.Contains(page, `<option value="`+h.Host+`">`) {
+			t.Errorf("the Porch page does not offer %s", h.Host)
+		}
+	}
+	if strings.Contains(page, `type="text"`) {
+		t.Error("the Porch page offers a free-text field the deployment cannot answer")
+	}
+	for _, c := range consoleChecks() {
+		if !strings.Contains(page, `value="`+c.ID+`" checked`) {
+			t.Errorf("the Porch page does not offer the %s check", c.Label)
+		}
+	}
+	if !strings.Contains(page, `<script src="/app.js"></script>`) || !strings.Contains(page, `id="porch-results"`) {
+		t.Error("the Porch page cannot run or show a check")
+	}
+}
+
+// The front page claims nothing about a product that is not available.
+func TestTheFrontPageSaysWhatIsNotAvailable(t *testing.T) {
+	page := get(t, "/").Body.String()
+	if strings.Contains(page, `<script src="/app.js">`) {
+		t.Error("the front page loads the check script, and runs no check")
+	}
+	if strings.Count(page, `class="badge badge-live"`) != 1 {
+		t.Error("more or fewer than one offering is marked available")
+	}
+	if !strings.Contains(page, "They are not available, and no date is promised.") {
+		t.Error("the front page does not say its planned offerings are not available")
+	}
 }

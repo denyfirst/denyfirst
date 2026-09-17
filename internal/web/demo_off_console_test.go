@@ -203,3 +203,13 @@ func TestTheConsoleSaysItsNameOnce(t *testing.T) {
 		t.Error("nothing hides the console's heading from the screen")
 	}
 }
+
+// A self-hosted build has no front page and no Porch page: "/" is the tool.
+func TestASelfHostedBuildServesNoMarketing(t *testing.T) {
+	if w := get(t, "/porch"); w.Code != http.StatusNotFound {
+		t.Errorf("/porch answered %d on a self-hosted build", w.Code)
+	}
+	if strings.Contains(get(t, "/").Body.String(), `id="products"`) {
+		t.Error("the self-hosted root carries the front page")
+	}
+}
