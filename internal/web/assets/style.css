@@ -2149,3 +2149,18 @@ main > .band:last-child { border-bottom: 0; }
 @media (prefers-reduced-motion: reduce) {
   .hero-lens { transition: none; }
 }
+
+/*
+  On a phone the footer's row wraps, and left-aligned it left the links in a
+  corner with the width beside them empty. There it is one centred column:
+  the mark and its line, then the links.
+*/
+@media (max-width: 40rem) {
+  .colophon-row {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .colophon-by,
+  .colophon-row .colophon-links { justify-content: center; }
+}
