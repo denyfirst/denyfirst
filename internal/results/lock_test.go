@@ -184,7 +184,10 @@ func TestATrimReplacesTheHistoryWhole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(held) != string(before) {
+	// The append lands in the file the reader holds; the trim then replaces
+	// the name. Rewritten in place, the reader would see the trimmed two lines
+	// instead of the untouched two and the appended one.
+	if !strings.HasPrefix(string(held), string(before)) || strings.Count(string(held), "\n") != 3 {
 		t.Errorf("a reader open across a trim saw the file rewritten under it:\n%q\nwas\n%q", held, before)
 	}
 }
