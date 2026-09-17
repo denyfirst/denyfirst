@@ -31,7 +31,7 @@ func TestTheHeaderNamesTheToolAndTheFooterTheMaker(t *testing.T) {
 			if !strings.Contains(head, `<span class="wordmark-deny">deny</span>first.</a>`) {
 				t.Errorf("%s: the demonstration's header does not carry the wordmark:\n%s", path, head)
 			}
-			if !strings.Contains(foot, `<span class="colophon-brand">denyfirst.</span>`) {
+			if !strings.Contains(foot, `<span class="colophon-brand"><span class="wordmark-deny">deny</span>first.</span>`) {
 				t.Errorf("%s: the demonstration's footer does not name denyfirst", path)
 			}
 			continue
@@ -43,7 +43,7 @@ func TestTheHeaderNamesTheToolAndTheFooterTheMaker(t *testing.T) {
 		if strings.Contains(strings.ToLower(head), "denyfirst") || strings.Contains(head, "Records nothing") {
 			t.Errorf("%s: the header still carries the maker:\n%s", path, head)
 		}
-		if !strings.Contains(foot, ToolName+`, by <span class="colophon-brand">denyfirst</span>`) {
+		if !strings.Contains(foot, ToolName+`, by <span class="colophon-brand"><span class="wordmark-deny">deny</span>first.</span>`) {
 			t.Errorf("%s: the footer does not name the maker", path)
 		}
 	}

@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/style.css">
 <script src="/theme.js"></script>
 </head>
-<body>
+<body{{if .Brand}} data-site="demo"{{end}}>
 
 <header class="masthead">
   {{if .Brand}}<a class="wordmark" href="/"><span class="wordmark-deny">deny</span>first.</a>
@@ -52,7 +52,10 @@
 -->
 <footer class="colophon">
   <div class="colophon-row">
-    {{if .Brand}}<p class="colophon-by colophon-by-mark"><span class="colophon-brand">denyfirst.</span> Independent security and privacy tools.</p>{{else}}<p class="colophon-by">porch, by <span class="colophon-brand">denyfirst</span>.</p>{{end}}
+    <div class="colophon-by">
+      {{if .Brand}}<p class="colophon-mark"><span class="colophon-brand"><span class="wordmark-deny">deny</span>first.</span></p>
+      <p class="colophon-line">Independent security and privacy tools. Cites everything. Records nothing.</p>{{else}}<p class="colophon-line">porch, by <span class="colophon-brand"><span class="wordmark-deny">deny</span>first.</span> Cites everything. Records nothing.</p>{{end}}
+    </div>
     <p class="colophon-links">
       <a href="{{.Method}}">How a report is read</a>
       <a href="/docs">Docs</a>
@@ -60,8 +63,7 @@
       <a href="/terms">Terms</a>
     </p>
   </div>
-  <p class="tally" id="tally" hidden></p>
-  <p class="colophon-small">Cites everything. Records nothing.</p>
+  {{if not .Brand}}<p class="tally" id="tally" hidden></p>{{end}}
 </footer>
 
 {{if .Script}}<script src="/app.js"></script>{{end}}
