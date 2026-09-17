@@ -38,8 +38,8 @@ func TestEveryDocumentIsOnTheDocsPage(t *testing.T) {
 	for path := range pages {
 		body := get(t, path).Body.String()
 		_, foot, _ := strings.Cut(body, `<footer class="colophon">`)
-		if n := strings.Count(foot, "<a "); n != 4 {
-			t.Errorf("%s: the footer carries %d links, want four", path, n)
+		if n := strings.Count(foot, "<a "); n != 3 {
+			t.Errorf("%s: the footer carries %d links, want three", path, n)
 		}
 		if !strings.Contains(foot, `href="/docs">Docs</a>`) {
 			t.Errorf("%s: the footer does not lead to /docs", path)
