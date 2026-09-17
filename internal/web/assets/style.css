@@ -2043,3 +2043,20 @@ main > .band:last-child { border-bottom: 0; }
 @media (max-width: 52rem) {
   .cards-four { grid-template-columns: 1fr; }
 }
+
+/* Three tabs always; one that was not chosen is there to say so, and is not
+   a control. */
+.tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.tab.tab-off {
+  cursor: default;
+  background: transparent;
+  border-style: dashed;
+}
+
+.tab.tab-off .tab-name,
+.tab.tab-off .tab-says { color: var(--ink-faint); }
+
+@media (max-width: 40rem) {
+  .tabs { grid-template-columns: 1fr; }
+}

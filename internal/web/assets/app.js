@@ -1013,18 +1013,11 @@ function chains(observed) {
   frag.appendChild(chain("Reached over HTTPS", observed.secure));
   frag.appendChild(chain("Reached over plaintext", observed.plain));
 
-  // What was sent, said on the report rather than only on the method page.
-  // The user agent is recorded so that a report says how it was obtained
-  // instead of asking a reader to trust a document.
-  if (observed.userAgent) {
-    const p = el("p", "group-note");
-    p.appendChild(document.createTextNode("Requested as " + observed.userAgent + ". "));
-    const a = el("a", "notes-method-link", "What was sent, in full");
-    a.href = CHECKS.web.methodPage;
-    p.appendChild(a);
-    frag.appendChild(p);
-  }
-
+  // The user agent is not drawn. It is the same on every report, so it is a
+  // line about this program rather than about the server, and the method
+  // page states it with everything else that was sent; the report's limits
+  // line links there. The field stays in the JSON, which is where a saved
+  // report says how it was obtained, and the terminal never printed it.
   return frag;
 }
 
@@ -1653,19 +1646,34 @@ function porchTabs(target, chosen) {
   tabs.setAttribute("aria-label", "Checks");
   porchResults.appendChild(tabs);
 
-  const entries = chosen.map(name => {
+  // Every check has a tab, run or not. One chosen check drew one tab across
+  // the whole width, which read as a banner rather than a choice; the others
+  // are drawn switched off, so the row keeps its shape and says what was
+  // left out. A switched-off tab has no panel and is not in the arrow-key
+  // rotation, because there is nothing behind it.
+  const entries = [];
+  for (const name of CHECK_ORDER) {
     const spec = CHECKS[name];
+    const on = chosen.includes(name);
 
-    const tab = el("button", "tab");
+    const tab = el("button", on ? "tab" : "tab tab-off");
     tab.type = "button";
     tab.id = "tab-" + name;
     tab.setAttribute("role", "tab");
-    tab.setAttribute("aria-controls", "panel-" + name);
     tab.appendChild(el("span", "tab-name", spec.label));
-    const state = el("span", "tab-state", "running");
+    const state = el("span", "tab-state", on ? "running" : "not selected");
     tab.appendChild(state);
     tab.appendChild(el("span", "tab-says", spec.says));
     tabs.appendChild(tab);
+
+    if (!on) {
+      tab.disabled = true;
+      tab.setAttribute("aria-disabled", "true");
+      tab.setAttribute("aria-selected", "false");
+      tab.tabIndex = -1;
+      continue;
+    }
+    tab.setAttribute("aria-controls", "panel-" + name);
 
     const panel = el("div", "tab-panel");
     panel.id = "panel-" + name;
@@ -1674,8 +1682,8 @@ function porchTabs(target, chosen) {
     panel.appendChild(el("p", "working", spec.working));
     porchResults.appendChild(panel);
 
-    return { spec, tab, state, panel };
-  });
+    entries.push({ spec, tab, state, panel });
+  }
 
   const select = index => {
     entries.forEach((entry, i) => {

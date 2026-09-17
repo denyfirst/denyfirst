@@ -1,12 +1,14 @@
 package web
 
 import (
+	"html"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/denyfirst/internal/webprobe"
 )
 
 // Why the obsolete suites are asked by hand is said on the method page, and
@@ -80,5 +82,19 @@ func TestTheMailCheckHasAMethodPage(t *testing.T) {
 	// Listed with the other two where a reader looks for them.
 	if docs := get(t, "/docs").Body.String(); !strings.Contains(docs, `href="/mail/method"`) {
 		t.Error("/docs does not list the mail method page")
+	}
+}
+
+// What the web check calls itself is said on its method page, not under
+// every report.
+func TestTheUserAgentIsOnTheMethodPageAndNotTheReport(t *testing.T) {
+	// Unescaped, because html/template writes the plus sign as an entity.
+	page := html.UnescapeString(get(t, "/web/method").Body.String())
+	if !strings.Contains(page, "<code>"+webprobe.DefaultUserAgent+"</code>") {
+		t.Error("the web method page does not say what the probe calls itself")
+	}
+	src := script(t)
+	if strings.Contains(src, "Requested as") || strings.Contains(src, "observed.userAgent") {
+		t.Error("the Reach report still draws the user agent")
 	}
 }

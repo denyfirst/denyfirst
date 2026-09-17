@@ -179,7 +179,6 @@ func TestTheStandingLimitsAreNamedAndLinked(t *testing.T) {
 		"notes(data.notes, verdict, CHECKS.web.methodPage)",
 		"notes(data.notes, verdict, CHECKS.mail.methodPage)",
 		"a.href = methodPage;",
-		"a.href = CHECKS.web.methodPage;",
 		"limits of this method apply to every scan",
 		"standing.length",
 	} {
