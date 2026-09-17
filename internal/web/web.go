@@ -180,6 +180,21 @@ var pages = map[string]*page{
 		Fragment:    "assets/terms.html",
 	},
 
+	// Every document in one place. The footer carried six links and the
+	// privacy page three more; they are grouped here by the question they
+	// answer instead.
+	"/docs": {
+		Title:       "Documentation — denyfirst",
+		Description: "How to read a report, what a check sends, how to run your own copy, and how to reach us.",
+		Fragment:    "assets/docs.html",
+		Data: docsPage{
+			TLS:  policy.TLSVersion,
+			Web:  policy.WebVersion,
+			Mail: policy.MailVersion,
+			Demo: demo.Enabled,
+		},
+	},
+
 	// A fourth page, on a site that deliberately went from five to three.
 	//
 	// The consolidation was about pages a reader has to choose between: three
@@ -679,4 +694,10 @@ func renderPrivacy(verified, keeps bool) []byte {
 type porchPage struct {
 	Hosts  []demo.Host
 	Checks []consoleCheck
+}
+
+// docsPage is what assets/docs.html reads.
+type docsPage struct {
+	TLS, Web, Mail string
+	Demo           bool
 }

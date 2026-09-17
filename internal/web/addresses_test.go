@@ -26,6 +26,7 @@ func TestTheProjectsPagesStayAtTheRootAndTheChecksDoNot(t *testing.T) {
 	project := map[string]bool{
 		"/privacy": true,
 		"/terms":   true,
+		"/docs":    true,
 	}
 	// The demonstration is the denyfirst site: its front page and the page for
 	// the product are the project's own, at the root, and a self-hosted build
