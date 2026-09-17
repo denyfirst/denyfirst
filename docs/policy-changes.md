@@ -317,6 +317,15 @@ is said by the report that read it.
 
 Unreleased.
 
+**Three sentences corrected by the 2026-09-16 audit (A19, A20).** The coverage
+line says every suite *this client can offer* was tried, not every suite the
+server accepts. A verified transparency receipt is described as a log's signed
+promise, with the inclusion proof named as not asked for, rather than as proof
+the log recorded the certificate. And a version served the same leaf over a
+different intermediate is now a different chain, graded like any other; it was
+invisible before. The `alpn` field, which no handshake here ever filled, is
+gone.
+
 **A revocation list answers only for what it covers.** A delta list, a list
 with a critical extension this does not read, and a list whose issuing
 distribution point leaves this certificate out are now "not checked" instead of
@@ -1117,7 +1126,7 @@ already on the page — one of them word for word. The block is gone. What
 replaces it is one line beside the verdict:
 
 ```
-Coverage  Every cipher suite this server accepts was enumerated, the chain was
+Coverage  Every cipher suite this client can offer was tried, the chain was
           checked against the trust store, revocation was read from a stapled
           response, transparency receipts were counted, and issuance policy
           was answered.

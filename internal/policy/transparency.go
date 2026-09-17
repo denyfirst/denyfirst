@@ -153,8 +153,12 @@ func describeReceipts(f TransparencyFacts, total int) []Note {
 	var out []Note
 	switch {
 	case f.Verified == total:
+		// A receipt is a log's signed promise, and a verified one proves the
+		// promise was made. That the log kept it is a separate proof. The
+		// sentence said "really did record" until the 2026-09-16 audit (A20).
 		out = append(out, Observed("Every receipt was checked against the key "+list+" gives its log, and "+
-			"every signature verifies: the logs named really did record this certificate."))
+			"every signature verifies: each log named signed a promise to include this certificate. "+
+			"Whether it did is shown by an inclusion proof, which this scan did not ask for."))
 	case f.Verified > 0:
 		out = append(out, Observed(fmt.Sprintf("%s of the %d verify against the key %s gives its log.",
 			plural(f.Verified, "receipt"), total, list)))

@@ -71,8 +71,12 @@ type CoverageFacts struct {
 func Coverage(f CoverageFacts) string {
 	var reached []string
 
+	// "This client can offer", not "this server accepts": the enumeration covers
+	// the suites Go can be told to offer, and a suite outside that set is one
+	// nothing here asked about. Until the 2026-09-16 audit (A20) the clause
+	// claimed the server's whole list.
 	if f.CipherListComplete && f.SuitesGraded > 0 {
-		reached = append(reached, "every cipher suite this server accepts was enumerated")
+		reached = append(reached, "every cipher suite this client can offer was tried")
 	}
 	if f.ChainRead {
 		reached = append(reached, "the chain was checked against the trust store")

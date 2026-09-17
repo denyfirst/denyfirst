@@ -2290,6 +2290,7 @@ as though the count itself were uncertain.
 `TestAHandshakeReceiptSignsTheCertificateItself`,
 `TestAMalformedReceiptIsUnreadable`, `TestDifferenceSeesWhatChanged`,
 `FuzzReadReceipts`, `TestVerifiedReceiptsNameTheListTheyWereCheckedAgainst`,
+`TestAVerifiedReceiptIsAPromiseAndNotAnInclusion`,
 `TestUncheckedReceiptsAreSaidNotToBeVerified`,
 `TestABadSignatureIsSaidAndNotGraded`,
 `TestAReceiptFromAnUnlistedLogIsUnsettledNotFalse`,
@@ -2943,13 +2944,14 @@ R5 settles what to do about it. An attacker chooses which version to
 negotiate, so a certificate reachable at any version is a certificate
 reachable, and the worse of the two has to set the verdict.
 
-Every version that completed a handshake is compared by its leaf's own DER
-bytes — not by subject, serial or names, each of which a server can repeat
-across two genuinely different certificates. A chain whose leaf is not the
-leaf already described is analysed in full, its findings join the list, its
+Every version that completed a handshake is compared by every certificate's
+own DER bytes, in order — not by subject, serial or names, each of which a
+server can repeat across two genuinely different certificates. The leaf alone
+was compared until the 2026-09-16 audit (A19), which missed one leaf served
+over a different intermediate. A chain that is not the chain already described
+is analysed in full, its findings join the list, its
 notes name the version and the certificate by fingerprint, and its verdict
-joins the aggregate. Two versions served the same second certificate count
-once.
+joins the aggregate. Two versions served the same second chain count once.
 
 What the report still shows in detail is the newest handshake's chain, because
 that is the one nearly every visitor's browser is given. The note says the
@@ -2961,6 +2963,11 @@ the ordinary case nothing here runs.
 *Enforced in:* `internal/tlsprobe.differingChains`, `internal/scan.Scan`,
 `internal/scan.Result.Findings`, `internal/scan.Result.Notes`
 *Guarded by:* `TestAChainServedOnlyToOldClientsIsSeen`,
+`TestTheSameLeafOverAnotherPathIsAnotherChain`,
+`TestAChainDigestCoversEveryCertificateInOrder`,
+`TestTheSameWholeChainEverywhereIsNoAlternate`,
+`TestAChainDigestKnowsWhereEachCertificateEnds`,
+`TestNoApplicationProtocolIsReported`,
 `TestOneCertificateForEveryVersionProducesNoAlternate`,
 `TestAWeakCertificateBehindAnOldVersionIsGraded`
 
@@ -3175,6 +3182,7 @@ one of those clauses went straight past it.
 `TestCoverageIsEmptyWhenNothingWasReached`,
 `TestEachClauseWaitsForWhatItDescribes`,
 `TestCoverageIsOneSentence`,
+`TestCoverageClaimsOnlyTheSuitesThisClientOffers`,
 `TestTheCoverageLineSaysWhatWasReached`,
 `TestAScanThatReachedNothingClaimsNoCoverage`,
 `TestAWeakOrInsecureVerdictSaysWhatItMeans`,
