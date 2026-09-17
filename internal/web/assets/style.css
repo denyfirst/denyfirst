@@ -197,8 +197,9 @@ a:hover { text-decoration-thickness: 2px; }
   footer it does not read as one.
 */
 .colophon-brand {
-  color: var(--brand);
-  font-weight: 600;
+  color: var(--ink);
+  font-weight: 700;
+  letter-spacing: -0.03em;
 }
 
 /* ── The ask ──────────────────────────────────────────────────────────── */
@@ -1808,11 +1809,6 @@ a:hover.arrow-down::after    { transform: translateY(2px); }
 
 .colophon-row .colophon-links { margin: 0; }
 
-.colophon-small {
-  margin-top: 1.1rem !important;
-  font-size: 0.78rem;
-  color: var(--ink-faint);
-}
 
 @media (prefers-reduced-motion: reduce) {
   .card-link,
@@ -1842,13 +1838,6 @@ a:hover.arrow-down::after    { transform: translateY(2px); }
 /* The last section needs no rule of its own: the footer draws one. */
 main > .band:last-child { border-bottom: 0; }
 
-/* The mark in the footer, a size down from the header's, as the design has it. */
-.colophon-by-mark .colophon-brand {
-  font-size: 1.35rem;
-  font-weight: 750;
-  letter-spacing: -0.05em;
-  margin-right: 0.35rem;
-}
 
 /* The Products menu. Opens on hover and on keyboard focus, and needs no
    script; the list sits under its button with a small bridge so the pointer
@@ -1916,4 +1905,114 @@ main > .band:last-child { border-bottom: 0; }
 
 @media (hover: none) {
   .nav-menu:hover .nav-menu-list { display: none; }
+}
+
+/* The footer's left side: the mark, as the header draws it and a size down,
+   and one line beside it. Both sentences sit on that line, so the footer is a
+   single row wherever there is room for one. */
+.colophon-by {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.9rem;
+}
+
+.colophon .colophon-by p { margin: 0; }
+
+.colophon-mark .colophon-brand {
+  font-size: 1.35rem;
+  font-weight: 750;
+  letter-spacing: -0.05em;
+}
+
+/*
+  Three numbered steps, one row each: what the step is for on the left, the
+  commands on the right, wide enough to read without scrolling.
+*/
+.steps {
+  display: grid;
+  gap: 0.8rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.steps li {
+  counter-increment: step;
+  display: grid;
+  grid-template-columns: minmax(0, 18rem) minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr;
+  column-gap: 2rem;
+  align-items: start;
+  padding: 1.4rem;
+  background: var(--paper-sunk);
+  border: 1px solid var(--rule);
+  border-radius: calc(var(--radius) + 2px);
+}
+
+.steps li::before {
+  content: "0" counter(step);
+  grid-column: 1;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--link);
+}
+
+.steps h3 {
+  grid-column: 1;
+  margin: 0.4rem 0 0.35rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.steps p {
+  grid-column: 1;
+  margin: 0;
+  font-size: 0.93rem;
+  color: var(--ink-soft);
+}
+
+.steps pre {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  align-self: center;
+  margin: 0;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.steps pre code {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.75;
+  color: var(--ink);
+  white-space: pre;
+}
+
+.steps p code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  color: var(--ink);
+}
+
+@media (max-width: 52rem) {
+  .steps li { grid-template-columns: minmax(0, 1fr); }
+  .steps pre { grid-column: 1; grid-row: auto; margin-top: 1rem; }
+}
+
+/* A domain the page shows rather than offers: the field's box, no control. */
+.field-fixed {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.field-fixed .field-note {
+  font-weight: 400;
+  color: var(--ink-soft);
 }

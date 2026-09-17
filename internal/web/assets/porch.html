@@ -24,10 +24,18 @@
     <h2 id="check-heading" class="check-panel-title">Our domain.<br>A real result.</h2>
 
     <form id="porch-form" autocomplete="off">
+      {{/* One domain is a fact, not a choice: it is shown, and a menu with
+           nothing else in it is not drawn. A second host brings the menu back. */}}
+      {{if eq (len .Hosts) 1}}{{with index .Hosts 0}}
+      <p class="field-label">Domain</p>
+      <p class="field field-fixed">{{.Host}} <span class="field-note">&mdash; {{.Shows}}</span></p>
+      <input type="hidden" id="porch-target" name="target" value="{{.Host}}">
+      {{end}}{{else}}
       <label class="field-label" for="porch-target">Domain</label>
       <select class="field" id="porch-target" name="target" aria-describedby="porch-help">
         {{range .Hosts}}<option value="{{.Host}}">{{.Host}} &mdash; {{.Shows}}</option>{{end}}
       </select>
+      {{end}}
 
       <fieldset class="checks">
         <legend class="field-label">Checks</legend>
@@ -87,10 +95,54 @@
     <article>
       <p class="index">03 / Understand</p>
       <h3>Start with what matters.</h3>
-      <p>Each check leads with its verdict and its findings. The tables and
-      limits are underneath, and the full report downloads as JSON.</p>
+      <p>Each check leads with its verdict and its findings, with the tables
+      and limits underneath. Your own copy lets you save every report.</p>
     </article>
   </div>
+</section>
+
+<!--
+  Getting started, in three steps, on the page that sells it. The commands are
+  the ones docs/self-host.md gives, and the guide stays the reference: it has
+  the reasons, the certificate for a public address, and what to check before
+  trusting a download.
+-->
+<section class="band" id="start">
+  <div class="band-head">
+    <div>
+      <p class="eyebrow">Get started</p>
+      <h2 class="band-title">Your own copy,<br>in three steps.</h2>
+    </div>
+    <p class="band-note">Docker on the server, Go on any machine. Nothing is
+    fetched but this source and the standard library.</p>
+  </div>
+  <ol class="steps">
+    <li>
+      <h3>Build it</h3>
+      <p>Get the source and build the service. Built elsewhere, copy
+      <code>porchd</code> into the checkout on the server.</p>
+      <pre><code>git clone https://github.com/denyfirst/denyfirst
+cd denyfirst
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o porchd ./cmd/porchd</code></pre>
+    </li>
+    <li>
+      <h3>Start it</h3>
+      <p>Give the container a data directory, then start it. Proof of control
+      is on from the first start.</p>
+      <pre><code>mkdir -p porch-data &amp;&amp; sudo chown 65534:65534 porch-data
+docker compose up -d --build</code></pre>
+    </li>
+    <li>
+      <h3>Open it</h3>
+      <p>It listens only on the server itself. Reach it through SSH, then open
+      <code>http://localhost:8080</code>.</p>
+      <pre><code>ssh -L 8080:127.0.0.1:8080 you@your-server</code></pre>
+    </li>
+  </ol>
+  <p class="band-footnote">The first check of a domain shows a DNS record to
+  add; the checks run once it is published. A public address, a signed
+  release and everything else are in the
+  <a class="arrow-ne" href="https://github.com/denyfirst/denyfirst/blob/main/docs/self-host.md">self-hosting guide</a>.</p>
 </section>
 
 <section class="cta">

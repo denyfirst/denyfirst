@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/denyfirst/denyfirst/internal/demo"
 )
 
 func get(t *testing.T, path string) *httptest.ResponseRecorder {
@@ -63,11 +65,20 @@ func TestEveryPageCarriesTheSameShell(t *testing.T) {
 			`class="colophon"`,
 			`href="/privacy"`,
 			`href="/terms"`,
-			`id="tally"`,
 		} {
 			if !strings.Contains(body, required) {
 				t.Errorf("%s is missing %s from the shared layout", path, required)
 			}
+		}
+
+		// The scan counter is the operator's figure. On the demonstration it
+		// counted our own checks of our own domain, which tells a visitor
+		// nothing, so it is not drawn there.
+		if got := strings.Contains(body, `id="tally"`); got == demo.Enabled {
+			t.Errorf("%s: the counter is drawn = %v on a build where demo = %v", path, got, demo.Enabled)
+		}
+		if got := strings.Contains(body, `data-site="demo"`); got != demo.Enabled {
+			t.Errorf("%s: the page says it is the demonstration = %v, and it is %v", path, got, demo.Enabled)
 		}
 	}
 }

@@ -75,6 +75,11 @@ const CHECKS = {
 // out is not a change.
 const CHECK_ORDER = ["tls", "web", "mail"];
 
+// The demonstration says so on its body. A few things an installation offers
+// its operator mean nothing there: a download of a report about our own
+// domain, and a count of our own checks.
+const DEMO_SITE = document.body.dataset.site === "demo";
+
 // Defaulting to the TLS check rather than to nothing, because a page that
 // declared no check would otherwise fail at the first click with an error
 // about undefined rather than about anything a reader could act on.
@@ -245,7 +250,10 @@ function summary(data) {
   if (address) meta.push(address);
   if (data.policy) meta.push("graded by " + data.policy);
   if (meta.length) left.appendChild(el("p", "summary-meta", meta.join("  ·  ")));
-  left.appendChild(downloadLink(data));
+  // Not on the demonstration: a report there is about our own domain, and a
+  // visitor has no use for a copy of it. A copy of your own is where a
+  // download matters, because nothing is kept for you.
+  if (!DEMO_SITE) left.appendChild(downloadLink(data));
 
   head.appendChild(left);
 
@@ -1325,7 +1333,7 @@ if (form) form.addEventListener("submit", async event => {
 */
 async function showTally() {
   const tally = document.getElementById("tally");
-  if (!tally) return;
+  if (!tally || DEMO_SITE) return;
 
   try {
     const response = await fetch("/api/v1/stats", { cache: "no-store" });

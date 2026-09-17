@@ -86,10 +86,19 @@ func TestTheDemonstrationKeepsItsOwnPrivacyPage(t *testing.T) {
 // binary has, and runs them from the page.
 func TestThePorchPageRunsEveryCheckOnTheHostsItOffers(t *testing.T) {
 	page := get(t, "/porch").Body.String()
-	for _, h := range demo.Hosts() {
-		if !strings.Contains(page, `<option value="`+h.Host+`">`) {
+	hosts := demo.Hosts()
+	for _, h := range hosts {
+		offered := strings.Contains(page, `<option value="`+h.Host+`">`)
+		if len(hosts) == 1 {
+			offered = strings.Contains(page, `<input type="hidden" id="porch-target" name="target" value="`+h.Host+`">`)
+		}
+		if !offered {
 			t.Errorf("the Porch page does not offer %s", h.Host)
 		}
+	}
+	// A menu with one entry is an arrow that opens onto nothing.
+	if menu := strings.Contains(page, `<select`); menu != (len(hosts) > 1) {
+		t.Errorf("the Porch page draws a menu: %v, for %d hosts", menu, len(hosts))
 	}
 	if strings.Contains(page, `type="text"`) {
 		t.Error("the Porch page offers a free-text field the deployment cannot answer")
