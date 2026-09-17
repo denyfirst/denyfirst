@@ -16,10 +16,27 @@
 <header class="masthead">
   {{if .Brand}}<a class="wordmark" href="/"><span class="wordmark-deny">deny</span>first.</a>
   <nav class="masthead-nav" aria-label="Main">
-    <a href="/#products">Products</a>
-    <a href="/porch">Porch</a>
-    <a href="/privacy">Privacy</a>
-  </nav>{{else}}<a class="wordmark" href="/">porch</a>{{end}}
+    <a href="/">Home</a>
+    <!--
+      Products opens a list on hover or keyboard focus, drawn by the
+      stylesheet alone. Without either — a phone — the link goes to the
+      catalog on the front page, which is the same list. A product joins the
+      list here, not the bar, so the bar does not grow with the catalog.
+    -->
+    <div class="nav-menu">
+      <a class="nav-menu-button" href="/#products">Products</a>
+      <ul class="nav-menu-list">
+        <li><a href="/porch"><span class="nav-menu-name">Porch</span><span class="nav-menu-note">Infrastructure checks</span></a></li>
+        <li><span class="nav-menu-soon"><span class="nav-menu-name">Porch Elite</span><span class="nav-menu-note">Planned</span></span></li>
+        <li><span class="nav-menu-soon"><span class="nav-menu-name">PAM services</span><span class="nav-menu-note">Exploring</span></span></li>
+      </ul>
+    </div>
+    <a href="/docs">Docs</a>
+  </nav>{{else}}<a class="wordmark" href="/">porch</a>
+  <nav class="masthead-nav" aria-label="Main">
+    <a href="/">Check</a>
+    <a href="/docs">Docs</a>
+  </nav>{{end}}
   <button class="theme-toggle" id="theme-toggle" type="button" hidden>Dark</button>
 </header>
 
@@ -27,17 +44,24 @@
 {{.Body}}
 </main>
 
+<!--
+  Who made this, and four ways on. Every other document is on /docs, grouped
+  by the question it answers: a row of nine links on every page was a list
+  nobody read. "How a report is read" stays, and points at the limits of the
+  check the page is about.
+-->
 <footer class="colophon">
-  {{if .Brand}}<p class="colophon-by"><span class="colophon-brand">denyfirst.</span> Independent security and privacy tools. Cites everything. Records nothing.</p>{{else}}<p class="colophon-by">porch, by <span class="colophon-brand">denyfirst</span>. Cites everything. Records nothing.</p>{{end}}
+  <div class="colophon-row">
+    {{if .Brand}}<p class="colophon-by colophon-by-mark"><span class="colophon-brand">denyfirst.</span> Independent security and privacy tools.</p>{{else}}<p class="colophon-by">porch, by <span class="colophon-brand">denyfirst</span>.</p>{{end}}
+    <p class="colophon-links">
+      <a href="{{.Method}}">How a report is read</a>
+      <a href="/docs">Docs</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+    </p>
+  </div>
   <p class="tally" id="tally" hidden></p>
-  <p class="colophon-links">
-    <a href="{{.Method}}">How a report is read</a>
-    <a href="/privacy">Privacy and what a scan does</a>
-    <a href="/terms">Terms</a>
-    <a href="https://github.com/denyfirst/denyfirst/tree/main/docs">Documentation</a>
-    <a href="https://github.com/denyfirst/denyfirst">Source</a>
-    <a href="https://github.com/denyfirst/denyfirst/blob/main/SECURITY.md">Report a vulnerability</a>
-  </p>
+  <p class="colophon-small">Cites everything. Records nothing.</p>
 </footer>
 
 {{if .Script}}<script src="/app.js"></script>{{end}}

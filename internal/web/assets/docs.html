@@ -1,0 +1,136 @@
+<!--
+  Every document, in one place.
+
+  The footer carried six links and the privacy page three more, and a reader
+  looking for one of them had to know which page held it. They are here
+  instead, grouped by the question they answer. The two pages on how a report
+  is read stay where they are — reports and scanning notices point at them —
+  and are listed here first.
+-->
+<section class="docs-hero">
+  <p class="eyebrow eyebrow-dot">Documentation</p>
+  <h1>Everything written down,<br><span class="hero-soft">in one place.</span></h1>
+  <p class="lede">How to read a report, what a check sends, how to run your
+  own copy, and how to reach us. Short pages here; the full reasoning lives
+  with the source.</p>
+</section>
+
+<section class="band">
+  <div class="band-head">
+    <div>
+      <p class="eyebrow">01 / Reading a report</p>
+      <h2 class="band-title">What a result means.</h2>
+    </div>
+    <p class="band-note">Each check has its own rules and its own limits. These
+    pages explain both.</p>
+  </div>
+  <div class="cards">
+    <a class="card card-link" href="/tls/method">
+      <span class="card-symbol" aria-hidden="true">⌁</span>
+      <h3 class="card-name arrow-ne">Transport</h3>
+      <p>The TLS handshake and certificate: what is graded, what is only
+      reported, and what a scan cannot see.</p>
+      <span class="card-foot">Rule set {{.TLS}}</span>
+    </a>
+    <a class="card card-link" href="/web/method">
+      <span class="card-symbol" aria-hidden="true">≋</span>
+      <h3 class="card-name arrow-ne">Reach</h3>
+      <p>How a site is reached over HTTP and HTTPS, and exactly what the web
+      check sends to a server.</p>
+      <span class="card-foot">Rule set {{.Web}}</span>
+    </a>
+    <a class="card card-link" href="https://github.com/denyfirst/denyfirst/blob/main/docs/policy-changes.md">
+      <span class="card-symbol" aria-hidden="true">⊞</span>
+      <h3 class="card-name arrow-ne">What changed</h3>
+      <p>Every rule set version and what it grades differently, including the
+      mail rules ({{.Mail}}).</p>
+      <span class="card-foot">On GitHub</span>
+    </a>
+  </div>
+</section>
+
+<section class="band">
+  <div class="band-head">
+    <div>
+      <p class="eyebrow">02 / Privacy &amp; terms</p>
+      <h2 class="band-title">What is kept, and what is agreed.</h2>
+    </div>
+  </div>
+  <div class="cards cards-two">
+    <a class="card card-link" href="/privacy">
+      <h3 class="card-name arrow-ne">Privacy, and what a scan does</h3>
+      <p>What this {{if .Demo}}service{{else}}installation{{end}} records, what a
+      check sends, who else is asked anything, and how to stop a scan.</p>
+      <span class="card-foot">On this site</span>
+    </a>
+    <a class="card card-link" href="/terms">
+      <h3 class="card-name arrow-ne">Terms of use</h3>
+      <p>What you agree to when you use this, and what it does not
+      promise.</p>
+      <span class="card-foot">On this site</span>
+    </a>
+  </div>
+</section>
+
+<section class="band">
+  <div class="band-head">
+    <div>
+      <p class="eyebrow">03 / Run it yourself</p>
+      <h2 class="band-title">Your machine, your scope.</h2>
+    </div>
+    <p class="band-note">Porch is built to be run by the people responsible for
+    what it checks.</p>
+  </div>
+  <div class="cards">
+    <a class="card card-link" href="https://github.com/denyfirst/denyfirst/blob/main/docs/self-host.md">
+      <h3 class="card-name arrow-ne">Self-hosting</h3>
+      <p>Docker or a single binary, proof of control for every domain, and a
+      certificate for a public address.</p>
+      <span class="card-foot">On GitHub</span>
+    </a>
+    <a class="card card-link" href="https://github.com/denyfirst/denyfirst/blob/main/docs/verify.md">
+      <h3 class="card-name arrow-ne">Verify a download</h3>
+      <p>Check a release's signature and rebuild it yourself, byte for
+      byte.</p>
+      <span class="card-foot">On GitHub</span>
+    </a>
+    <a class="card card-link" href="https://github.com/denyfirst/denyfirst/blob/main/docs/scope.md">
+      <h3 class="card-name arrow-ne">Who may scan what</h3>
+      <p>The boundaries a copy enforces, and the reasoning behind each
+      one.</p>
+      <span class="card-foot">On GitHub</span>
+    </a>
+  </div>
+</section>
+
+<section class="band">
+  <div class="band-head">
+    <div>
+      <p class="eyebrow">04 / Security &amp; source</p>
+      <h2 class="band-title">Check it, and tell us.</h2>
+    </div>
+  </div>
+  <div class="cards">
+    <a class="card card-link" href="https://github.com/denyfirst/denyfirst/blob/main/SECURITY.md">
+      <h3 class="card-name arrow-ne">Report a vulnerability</h3>
+      <p>How to reach us privately, and the fingerprint of the key to encrypt
+      to.</p>
+      <span class="card-foot">On GitHub</span>
+    </a>
+    <a class="card card-link" href="https://github.com/denyfirst/denyfirst/blob/main/docs/invariants.md">
+      <h3 class="card-name arrow-ne">Guarantees and their tests</h3>
+      <p>Every promise this project makes, each with the test that fails if it
+      is broken.</p>
+      <span class="card-foot">On GitHub</span>
+    </a>
+    <a class="card card-link" href="https://github.com/denyfirst/denyfirst">
+      <h3 class="card-name arrow-ne">Source</h3>
+      <p>The whole of it, under the AGPL-3.0, with no third-party
+      dependencies.</p>
+      <span class="card-foot">On GitHub</span>
+    </a>
+  </div>
+  <p class="band-footnote">The key itself is served at <a href="/pgp-key.txt">/pgp-key.txt</a>
+  and the contact details at <a href="/.well-known/security.txt">security.txt</a>. Compare the
+  key's fingerprint with the one on GitHub before using it.</p>
+</section>
