@@ -98,11 +98,27 @@ func TestTheComposeFileTakesAwayWhatItSays(t *testing.T) {
 		t.Error("nothing points the process at the mounted trust store")
 	}
 
-	// The container binds an unprivileged port and the host publishes 443, so
-	// no capability is needed inside. A privileged bind here would be a
-	// capability added to a container that drops all of them.
-	if !strings.Contains(compose, `"443:8443"`) {
-		t.Error("the published port mapping changed; the container is meant to bind above 1024")
+	// The container binds an unprivileged port, so no capability is needed
+	// inside. A privileged bind here would be a capability added to a
+	// container that drops all of them. And it is published on the host's
+	// loopback only, so the example as written exposes nothing.
+	if !strings.Contains(compose, `"127.0.0.1:8080:8080"`) {
+		t.Error("the example publishes beyond the host's loopback, or the container binds a different port")
+	}
+
+	// Proof of control is on in the example and in the image. A container
+	// listens beyond loopback by construction, and porchd refuses to do that
+	// scanning anything (audit A01, A02).
+	for name, file := range map[string]string{"docker-compose.yml": compose, "Dockerfile": repoFile(t, "Dockerfile")} {
+		if !strings.Contains(file, `"-verification-secret-file"`) || !strings.Contains(file, `"/data/secret"`) {
+			t.Errorf("%s does not turn proof of control on", name)
+		}
+		if strings.Contains(file, `"-open"`) {
+			t.Errorf("%s turns proof of control off", name)
+		}
+	}
+	if !strings.Contains(compose, "./porch-data:/data") || !strings.Contains(compose, "chown 65534:65534 porch-data") {
+		t.Error("the secret has nowhere writable to live, or nothing says how to make it so")
 	}
 	if regexp.MustCompile(`(?m)^\s*privileged:\s*true`).MatchString(compose) {
 		t.Error("the compose file asks for a privileged container")

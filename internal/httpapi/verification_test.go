@@ -138,15 +138,15 @@ func postTo(t *testing.T, s *Server, path, body, remoteAddr string) *httptest.Re
 // than the text it was reading, because it is what the mux is actually built
 // from rather than a spelling that happens to describe it.
 //
-// Every POST on this service is a scan today. If one that is not is ever added,
-// this stops being a true statement and the person adding it has to say which
-// kind it is — which is the conversation worth having.
+// Every POST on this service is a scan except /api/v1/verify, which is marked
+// asksOnly where it is registered. Adding another means saying which kind it
+// is there — which is the conversation worth having.
 func scanningRoutes(t *testing.T, s *Server) []string {
 	t.Helper()
 
 	var routes []string
 	for _, rt := range s.routes {
-		if rt.method == http.MethodPost {
+		if rt.method == http.MethodPost && !rt.asksOnly {
 			routes = append(routes, rt.path)
 		}
 	}

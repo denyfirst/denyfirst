@@ -293,21 +293,25 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 
 	tls, web := s.tlsCheck(), s.webCheck()
 	s.routes = []route{
-		{http.MethodPost, "/api/v1/tls/scan", s.scanHandler(tls)},
-		{http.MethodPost, "/api/v1/scan", s.scanHandler(tls)},
+		{http.MethodPost, "/api/v1/tls/scan", s.scanHandler(tls), false},
+		{http.MethodPost, "/api/v1/scan", s.scanHandler(tls), false},
 
 		// The web check's address. Every guard the TLS endpoint has applies to
 		// it, because there is one chain and both endpoints walk it — see
 		// checks.go.
-		{http.MethodPost, "/api/v1/web/scan", s.scanHandler(web)},
+		{http.MethodPost, "/api/v1/web/scan", s.scanHandler(web), false},
 
 		// The mail check's address. It opens no connection, and it walks the
 		// same chain of guards anyway: a lookup a stranger caused this service
 		// to make is still a lookup this service made.
-		{http.MethodPost, "/api/v1/mail/scan", s.scanHandler(s.mailCheck())},
+		{http.MethodPost, "/api/v1/mail/scan", s.scanHandler(s.mailCheck()), false},
 
-		{http.MethodGet, "/healthz", s.readLimited(s.handleHealth)},
-		{http.MethodGet, "/api/v1/stats", s.readLimited(s.handleStats)},
+		// What a domain must publish for this deployment to scan it, and
+		// whether it has. The same guards as a scan; see verification.go.
+		{method: http.MethodPost, path: "/api/v1/verify", handler: s.handleVerify, asksOnly: true},
+
+		{http.MethodGet, "/healthz", s.readLimited(s.handleHealth), false},
+		{http.MethodGet, "/api/v1/stats", s.readLimited(s.handleStats), false},
 	}
 	for _, rt := range s.routes {
 		s.mux.HandleFunc(rt.method+" "+rt.path, rt.handler)
@@ -321,6 +325,11 @@ type route struct {
 	method  string
 	path    string
 	handler http.HandlerFunc
+
+	// asksOnly marks a POST that scans nothing: it reads what a domain has
+	// published and opens no connection to it. The boundary tests drive every
+	// other POST as a scan.
+	asksOnly bool
 }
 
 // Paths are the addresses this service answers, for whatever mounts it.
@@ -397,6 +406,25 @@ func (s *Server) scanHandler(c check) http.HandlerFunc {
 }
 
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, c check) {
+	t, ok := s.admit(w, r, c.parse)
+	if !ok {
+		return
+	}
+	host := t.host
+
+	ctx, cancel := context.WithTimeout(r.Context(), s.limits.RequestTimeout)
+	defer cancel()
+
+	s.runCheck(ctx, w, c, t, host)
+}
+
+// admit walks every guard a request meets before any work is done for it, and
+// answers the refusal itself where one applies.
+//
+// Shared by the scan endpoints and the verification endpoint, because a guard
+// that exists on one path and not another is a guard somebody walks around by
+// calling the other (N6).
+func (s *Server) admit(w http.ResponseWriter, r *http.Request, parse func(string) (target, *refusal)) (target, bool) {
 	key := clientKey(r, s.limits.TrustedProxies, s.limits.TrustedProxyHops)
 
 	// Everything below this line costs something, including the refusals.
@@ -414,7 +442,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, c check) {
 		w.Header().Set("Retry-After", "1")
 		s.refuse(w, http.StatusTooManyRequests, "rate_limited",
 			"Too many requests from this address. Try again shortly.")
-		return
+		return target{}, false
 	}
 
 	// A page on another site can make a browser send this request, and it
@@ -451,20 +479,20 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, c check) {
 		s.refuse(w, http.StatusForbidden, "cross_site",
 			"This endpoint is not available to other sites. Use it from this page, "+
 				"from the command line tool, or from your own instance.")
-		return
+		return target{}, false
 	}
 
 	if ct := r.Header.Get("Content-Type"); ct != "" && !strings.HasPrefix(ct, "application/json") {
 		s.refuse(w, http.StatusUnsupportedMediaType, "unsupported_media",
 			"Send application/json.")
-		return
+		return target{}, false
 	}
 
 	if !s.rate.allow(key) {
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(s.limits.Refill)))
 		s.refuse(w, http.StatusTooManyRequests, "rate_limited",
 			"Too many scans from this address. Try again shortly.")
-		return
+		return target{}, false
 	}
 
 	// The reader is capped before any parsing, so an oversized body is
@@ -482,16 +510,16 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, c check) {
 		if errors.As(err, &tooLarge) {
 			s.refuse(w, http.StatusRequestEntityTooLarge, "payload_too_large",
 				"The request body is larger than this endpoint accepts.")
-			return
+			return target{}, false
 		}
 		s.refuse(w, http.StatusBadRequest, "bad_request",
 			"The body must be a JSON object with a single \"target\" field.")
-		return
+		return target{}, false
 	}
 	if dec.More() {
 		s.refuse(w, http.StatusBadRequest, "bad_request",
 			"The body must contain exactly one JSON object.")
-		return
+		return target{}, false
 	}
 
 	// What a target is depends on the check. The TLS check takes a hostname
@@ -501,10 +529,10 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, c check) {
 	//
 	// Validity before permission, so that somebody who mistyped is told they
 	// mistyped rather than told this deployment does not do that (N6).
-	t, refused := c.parse(req.Target)
+	t, refused := parse(req.Target)
 	if refused != nil {
 		s.refuse(w, refused.status, refused.code, refused.message)
-		return
+		return target{}, false
 	}
 	host := t.host
 
@@ -514,7 +542,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, c check) {
 		s.refuse(w, http.StatusForbidden, "excluded",
 			"This service does not scan that domain. A small number of names are "+
 				"excluded, and any domain owner can ask to be added.")
-		return
+		return target{}, false
 	}
 
 	// This deployment connects only to hosts this project owns.
@@ -527,12 +555,15 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, c check) {
 		s.refuse(w, http.StatusForbidden, "not_demonstrated",
 			"This deployment scans only hosts this project owns. Run the tool on your "+
 				"own machine to scan anything else: github.com/denyfirst/denyfirst")
-		return
+		return target{}, false
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), s.limits.RequestTimeout)
-	defer cancel()
+	return t, true
+}
 
+// runCheck is the part of a scan request that spends something: a scan slot,
+// the target's budget, and the scan itself.
+func (s *Server) runCheck(ctx context.Context, w http.ResponseWriter, c check, t target, host string) {
 	if err := s.sem.acquire(ctx); err != nil {
 		w.Header().Set("Retry-After", "5")
 		s.refuse(w, http.StatusServiceUnavailable, "too_busy",
@@ -602,7 +633,8 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, c check) {
 		s.refuse(w, http.StatusForbidden, "not_verified",
 			"This deployment scans only domains it has been shown control of. Publish a TXT "+
 				"record at "+verify.Label+" beneath the domain, carrying the token this "+
-				"deployment expects for it, and ask again. The operator can print that token.")
+				"deployment expects for it, and ask again. /api/v1/verify says which record, "+
+				"and the page shows it.")
 		return
 	}
 

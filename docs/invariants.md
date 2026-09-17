@@ -681,7 +681,36 @@ tells nobody anything about another.
 
 **The secret is read from a file.** A flag value is in the process list, where
 every user on the machine can read it, and in whatever unit file or shell
-history put it there. It is the whole of the proof.
+history put it there. It is the whole of the proof. A path naming no file gets
+a new secret, created exclusively and readable by its owner alone, so turning
+proof on is one flag; a mistyped path means a new secret and every record
+refused, which fails closed.
+
+**A service beyond loopback requires it.** `porchd` will not listen anywhere
+but loopback without a secret unless it is also given `-open`, and the image and
+the compose file both turn proof on. docs/scope.md said the service default was
+on while the code shipped it off; the 2026-09-16 audit (A01, A02) found a
+container example publishing an open scanner.
+
+**The page shows the record to publish, and that is safe because of the token,
+not despite it.** `POST /api/v1/verify` answers whether a name is proven and,
+where proof is required, the record for the name and each domain above it. A
+token is worth something only to whoever can publish it in that domain's
+zone. Copied to another domain it is the wrong value, because that domain's
+token differs; copied to another deployment it is the wrong value, because that
+deployment's secret differs. Knowing it proves nothing; publishing it is the
+proof. The endpoint walks every guard a scan does — rate limit, cross-site,
+exclusion list — opens no connection to the name, and is marked as asking
+rather than scanning where it is registered, so the boundary tests say which
+kind each POST is.
+
+**What a zone proof does not prove is who owns the addresses the name points
+at.** Whoever runs a zone can point a name anywhere, including at an address
+that is not theirs, and a TXT record cannot tell. That is a property of DNS and
+not of this token. What bounds it is everything else in this document: the
+private and reserved ranges `safedial` refuses, the per-host budget, the
+implicit-TLS ports, and a scan that sends only what a browser or a sending mail
+server would.
 
 **Nothing is remembered.** A verification checked once and stored is a standing
 authorisation outliving the relationship it came from: a domain changes hands,
@@ -770,6 +799,15 @@ carries the gap until it is.
 `TestAVerifiedNameIsScanned`, `TestNoScopeMeansNoProofIsRequired`,
 `TestAnExcludedNameIsRefusedAsExcludedRatherThanAsUnproven`,
 `TestEveryScanningEndpointRequiresProofOfControl`,
+`TestTheVerifyEndpointNamesTheRecordAndSaysWhetherItIsThere`,
+`TestTheVerifyEndpointReadsWhatTheChecksRead`, `TestAnOpenDeploymentHasNothingToVerify`,
+`TestAFailedChallengeLookupIsNotUnverified`, `TestTheVerifyEndpointHasTheScanGuards`,
+`TestTheVerifyRecordsAreBounded`, `TestAMissingSecretIsCreatedAndThenKept`,
+`TestTheSecretIsCreatedByStartingAndNotByAsking`, `TestAnOpenServiceStaysOnLoopback`,
+`TestTheComposeFileTakesAwayWhatItSays`,
+`TestTheProofDialogIsOfferedOnlyWhereProofIsRequired`, `TestTheConsoleAsksForProofBeforeItRuns`,
+`TestOnlyTheVerifyEndpointAsksWithoutScanning`, `TestAServedFileIsNotReportedAsProofForEveryCheck`,
+`TestAnUnprovenNameOpensTheDialog`,
 `TestAProvenDomainReachesTheProbe`,
 `TestTheConstructorGivesEveryCheckTheSameBoundary`,
 `TestReplacingTheWebScannerCannotDropTheBoundary`,

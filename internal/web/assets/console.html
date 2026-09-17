@@ -14,7 +14,7 @@
     <p class="console-where">{{.Tool}}, running on this machine</p>
   </div>
 
-  <form class="console-form" id="console-form" autocomplete="off">
+  <form class="console-form" id="console-form" autocomplete="off"{{if .Verified}} data-proof="required"{{end}}>
     <label class="field-label" for="console-target">Hostname</label>
 
     <div class="field-row">
@@ -60,6 +60,50 @@
   </form>
 
   <div class="console-results" id="console-results" hidden></div>
+
+  <!--
+    Proof of control, asked for where it is needed.
+
+    Only on an installation that requires it. The record is this
+    installation's token for the one domain, and it is shown freely because it
+    proves nothing until it is published in that domain's zone — which only
+    whoever runs the zone can do. Another domain's token is a different value,
+    and so is another installation's.
+  -->
+  {{if .Verified}}
+  <dialog class="proof" id="proof-dialog" aria-labelledby="proof-title">
+    <h2 class="section-title" id="proof-title">Show this domain is yours</h2>
+    <p class="proof-lede">
+      This installation checks only domains whose DNS carries its record. Add
+      the TXT record below at your DNS provider, then check again. A new
+      record can take a few minutes to be seen.
+    </p>
+
+    <label class="field-label" for="proof-level">Publish under</label>
+    <select class="proof-level" id="proof-level"></select>
+    <p class="proof-hint">A record on a domain covers every name beneath it.</p>
+
+    <dl class="proof-record">
+      <dt>Type</dt>
+      <dd><code>TXT</code></dd>
+      <dt>Name</dt>
+      <dd><code id="proof-name"></code> <button class="proof-copy" type="button" data-copy="proof-name">Select</button></dd>
+      <dt>Value</dt>
+      <dd><code id="proof-value"></code> <button class="proof-copy" type="button" data-copy="proof-value">Select</button></dd>
+    </dl>
+    <p class="proof-hint">
+      Some providers want only the part of the name before your domain, and add
+      the rest themselves.
+    </p>
+
+    <p class="proof-status" id="proof-status" role="status"></p>
+
+    <div class="proof-actions">
+      <button class="submit" type="button" id="proof-check">Check again</button>
+      <button class="proof-cancel" type="button" id="proof-cancel">Cancel</button>
+    </div>
+  </dialog>
+  {{end}}
 
   <!--
     The state of this installation, on the page rather than in a manual.
