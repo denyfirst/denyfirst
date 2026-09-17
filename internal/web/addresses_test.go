@@ -410,3 +410,26 @@ func TestTheFooterRowIsCentredInItsBand(t *testing.T) {
 		}
 	}
 }
+
+// On a phone the footer is one centred column.
+func TestTheFooterIsCentredOnAPhone(t *testing.T) {
+	css, err := assets.ReadFile("assets/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, block, ok := strings.Cut(string(css), "@media (max-width: 40rem) {\n  .colophon-row {")
+	if !ok {
+		t.Fatal("the footer has no narrow-screen rule")
+	}
+	block, _, _ = strings.Cut(block, "\n}\n")
+	for _, want := range []string{
+		"flex-direction: column;",
+		"align-items: center;",
+		"text-align: center;",
+		".colophon-by,\n  .colophon-row .colophon-links { justify-content: center; }",
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("the narrow footer rule does not contain %q", want)
+		}
+	}
+}
