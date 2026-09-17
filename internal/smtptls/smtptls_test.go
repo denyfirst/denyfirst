@@ -297,6 +297,39 @@ func TestARefusedEHLOIsNotMeasured(t *testing.T) {
 	if got.Measured || got.Reason == "" {
 		t.Errorf("got %+v; an EHLO the server refused is not a list of what it offers", got)
 	}
+	if strings.Contains(got.Reason, "reverse DNS") {
+		t.Errorf("a refusal with no X.7.25 code was blamed on reverse DNS: %q", got.Reason)
+	}
+}
+
+// A refusal for a missing reverse DNS name says so, and nothing else the
+// exchanger wrote.
+//
+// Migadu's exchangers answered a scan from a VPN address with the reply
+// below, and the report said only that EHLO was refused. The code is the
+// part an operator can act on; the text names the address the scan came
+// from, and stays out of the report.
+func TestARefusalForReverseDNSSaysSo(t *testing.T) {
+	for _, reply := range []string{
+		"450 4.7.25 no reverse DNS record for IP address 192.0.2.44\r\n",
+		"550-5.7.25 reverse DNS validation failed for 192.0.2.44\r\n550 5.7.25 see the policy page\r\n",
+	} {
+		got := probe(t, pipeProber(&script{greeting: "220 hi\r\n", ehlo: reply}, nil))
+		if got.Measured {
+			t.Errorf("%q: measured %+v", reply, got)
+		}
+		if !strings.Contains(got.Reason, "no reverse DNS name") {
+			t.Errorf("%q: the reason does not name reverse DNS: %q", reply, got.Reason)
+		}
+		if strings.Contains(got.Reason, "192.0.2.44") || strings.Contains(got.Reason, "validation") {
+			t.Errorf("%q: the reason carries the exchanger's own text: %q", reply, got.Reason)
+		}
+	}
+	// A neighbouring code is not this one.
+	got := probe(t, pipeProber(&script{greeting: "220 hi\r\n", ehlo: "550 5.7.26 multiple checks failed\r\n"}, nil))
+	if strings.Contains(got.Reason, "reverse DNS") {
+		t.Errorf("X.7.26 was read as a reverse DNS refusal: %q", got.Reason)
+	}
 }
 
 // Anything sent before encryption begins stops the conversation.

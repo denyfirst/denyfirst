@@ -200,6 +200,10 @@ func (p *Prober) Probe(ctx context.Context, host string) Result {
 	}
 	if code != 250 {
 		out.Reason = "the server refused the EHLO greeting, so what it offers was not established"
+		if refusedForReverseDNS(lines) {
+			out.Reason = "the server refused the EHLO greeting because the address this scan came from " +
+				"has no reverse DNS name it accepts, so what it offers was not established"
+		}
 		quit(conn)
 		return out
 	}
@@ -439,6 +443,22 @@ func readReply(r *bufio.Reader) (int, []string, error) {
 		}
 	}
 	return 0, nil, errReplyTooLong
+}
+
+// refusedForReverseDNS reports whether a refusal carries the enhanced status
+// code RFC 7372 assigns to a failed reverse DNS check, X.7.25.
+//
+// The most common reason an exchanger turns this scanner away, and the one
+// its operator can act on: a machine on a home or VPN address usually has no
+// reverse name, and a server somebody runs can be given one. Only the code is
+// read. The text after it is the exchanger's own, and the usual one names the
+// address the scan came from, which a report has no business carrying.
+func refusedForReverseDNS(lines []string) bool {
+	if len(lines) == 0 {
+		return false
+	}
+	code, _, _ := strings.Cut(lines[0], " ")
+	return code == "4.7.25" || code == "5.7.25"
 }
 
 // offersSTARTTLS reports whether an EHLO reply lists the extension.
