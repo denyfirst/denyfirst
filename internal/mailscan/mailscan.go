@@ -667,9 +667,15 @@ func (s *Scanner) readSTSPolicy(ctx context.Context, domain string, facts *polic
 	}
 
 	facts.MTASTSPolicyRead = true
+	if got.Invalid != "" {
+		// Read, and not a policy: graded as such, and nothing in it used.
+		facts.MTASTSPolicyInvalid = got.Invalid
+		return
+	}
 	facts.MTASTSMode = string(got.Mode)
 	facts.MTASTSMaxAge = got.MaxAge
 	facts.MTASTSPolicyMX = got.MX
+	facts.MTASTSPolicyMXTruncated = got.MXTruncated
 
 	// Which of the domain's exchangers the policy leaves out. Only where the MX
 	// records were read: an empty list of uncovered hosts has to mean "the
@@ -682,7 +688,9 @@ func (s *Scanner) readSTSPolicy(ctx context.Context, domain string, facts *polic
 	// partial answer — at which point a failed lookup would produce a coverage
 	// verdict over half a list, and TestCoverageIsNotClaimedWhereTheExchangersWereNotRead
 	// is the test that will say so.
-	if !facts.MXRead || facts.MXReason != "" {
+	// Nor over half a policy: patterns past the bound were not kept, and one of
+	// them might be the one that covers a host.
+	if !facts.MXRead || facts.MXReason != "" || got.MXTruncated {
 		return
 	}
 	for _, host := range facts.MXHosts {

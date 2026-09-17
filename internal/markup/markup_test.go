@@ -521,6 +521,13 @@ func TestAReadThatFailsPartWayIsWhatWasSeen(t *testing.T) {
 	if !has(f, KindScript, "cdn.example") {
 		t.Errorf("what was read before the failure was discarded: %+v", f.References)
 	}
+	// And it says only the start was seen (audit A17).
+	if !f.Incomplete {
+		t.Error("a read that failed part way is not marked incomplete")
+	}
+	if whole := read(t, `<script src="http://cdn.example/a.js"></script>`); whole.Incomplete {
+		t.Error("a page read to its end is marked incomplete")
+	}
 }
 
 type errorReader struct{}

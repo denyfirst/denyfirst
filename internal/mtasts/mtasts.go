@@ -111,6 +111,16 @@ type Policy struct {
 	// kept: it is a wildcard the specification defines and dropping it would
 	// turn one pattern into a different one.
 	MX []string `json:"mx,omitempty"`
+
+	// Invalid says why a fetched file is not a policy a sending server would
+	// apply, and is empty when it is one. Mode, MaxAge and MX are empty when it
+	// is set: nothing in an invalid policy is acted on.
+	Invalid string `json:"invalid,omitempty"`
+
+	// MXTruncated is true when the policy named more patterns than are kept.
+	// Which exchangers it covers is then not established: a pattern past the
+	// bound might be the one that covers a host.
+	MXTruncated bool `json:"mxTruncated,omitempty"`
 }
 
 // Fetcher reads a policy. The zero value is usable.
@@ -174,24 +184,48 @@ func (f *Fetcher) Fetch(ctx context.Context, domain string) Policy {
 		return Policy{Reason: "the policy file is not served at " + Path}
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {
 		return Policy{Reason: "the policy file could not be read"}
 	}
 
-	policy := parse(string(body))
+	policy, invalid := parse(string(body))
+	if invalid != "" {
+		// A file that is not a valid policy is, to a sending server, no
+		// policy: RFC 8461 has it carry on as though MTA-STS were not
+		// published. It was fetched, and nothing in it is kept but what is
+		// wrong with it. Before the 2026-09-16 audit (A18) a file with no
+		// version line was read as enforcing.
+		//
+		// Built afresh rather than from what parse returned. parse returns an
+		// empty Policy with a reason too, so a sabotage of either one alone
+		// escapes the tests (2026-09-17): the two guard one property, that
+		// nothing parse saw before finding the fault reaches a report.
+		return Policy{Fetched: true, Invalid: invalid}
+	}
 	policy.Fetched = true
 	return policy
 }
 
-// parse reads the key-value lines RFC 8461 defines.
+// parse reads the key-value lines RFC 8461 §3.2 defines, and says what makes the
+// file not a policy where something does.
 //
 // Unknown keys are ignored rather than refused: the specification says a parser
-// must, so that it can be extended. A file that is not a policy at all produces
-// a Policy with no mode, and the caller says what that means.
-func parse(body string) Policy {
+// must, so that it can be extended. What is required is required: a version of
+// STSv1, one of the three modes, a max_age, and for a policy that enforces or
+// tests, at least one mx. version, mode and max_age appear once; a file that
+// says two things about one of them says nothing a sender can act on.
+func parse(body string) (Policy, string) {
 	var out Policy
 
+	if len(body) > maxBody {
+		// Refused rather than read in part: a policy cut at the bound could
+		// lose the pattern that covers an exchanger and report it uncovered.
+		return Policy{}, "it is larger than a policy may be"
+	}
+
+	seen := map[string]bool{}
+	version := ""
 	for _, line := range strings.Split(body, "\n") {
 		key, value, ok := strings.Cut(line, ":")
 		if !ok {
@@ -201,6 +235,17 @@ func parse(body string) Policy {
 		value = strings.TrimSpace(strings.TrimSuffix(value, "\r"))
 
 		switch key {
+		case "version", "mode", "max_age":
+			if seen[key] {
+				return Policy{}, "it gives " + key + " more than once"
+			}
+			seen[key] = true
+		}
+
+		switch key {
+		case "version":
+			version = value
+
 		case "mode":
 			switch strings.ToLower(value) {
 			case "enforce":
@@ -209,15 +254,20 @@ func parse(body string) Policy {
 				out.Mode = Testing
 			case "none":
 				out.Mode = None
+			default:
+				return Policy{}, "its mode is not one RFC 8461 defines"
 			}
 
 		case "max_age":
-			if n, err := strconv.Atoi(value); err == nil && n >= 0 {
-				out.MaxAge = n
+			n, err := strconv.Atoi(value)
+			if err != nil || n < 0 {
+				return Policy{}, "its max_age is not a number of seconds"
 			}
+			out.MaxAge = n
 
 		case "mx":
 			if len(out.MX) >= maxNames {
+				out.MXTruncated = true
 				continue
 			}
 			if name := cleanName(value); name != "" {
@@ -226,7 +276,17 @@ func parse(body string) Policy {
 		}
 	}
 
-	return out
+	switch {
+	case version != "STSv1":
+		return Policy{}, "it does not declare version STSv1"
+	case out.Mode == "":
+		return Policy{}, "it declares no mode"
+	case !seen["max_age"]:
+		return Policy{}, "it declares no max_age"
+	case out.Mode != None && len(out.MX) == 0 && !out.MXTruncated:
+		return Policy{}, "it names no mx for a mode that needs them"
+	}
+	return out, ""
 }
 
 // Covers reports whether a policy permits delivery to one exchanger.

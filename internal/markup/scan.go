@@ -1,6 +1,9 @@
 package markup
 
-import "strings"
+import (
+	"html"
+	"strings"
+)
 
 // tag is one start tag, reduced to what examine() asks about.
 type tag struct {
@@ -228,7 +231,10 @@ func (s *scanner) readAttr() (key, value string) {
 		value = s.src[start:s.i]
 	}
 
-	return key, value
+	// A browser decodes character references in an attribute before anything
+	// reads it, so "http&#58;//host/" is an http address. Read as written it
+	// was a relative one, until the 2026-09-16 audit (A17).
+	return key, html.UnescapeString(value)
 }
 
 func (s *scanner) skipSpace() {

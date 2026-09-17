@@ -587,6 +587,7 @@ func contentFacts(c *webprobe.Chain) policy.ContentFacts {
 
 		out.Read = h.Markup.Read
 		out.Truncated = h.Markup.Truncated
+		out.Incomplete = h.Markup.Incomplete
 		out.MoreThanListed = h.Markup.MoreThanListed
 
 		for _, r := range h.Markup.References {

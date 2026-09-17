@@ -258,3 +258,41 @@ func TestTheSTSFindingsCiteTheirDocument(t *testing.T) {
 		}
 	}
 }
+
+// A file that is not a policy is graded, and says why (audit A18).
+func TestAnInvalidPolicyIsGradedWithItsReason(t *testing.T) {
+	f := stsFacts()
+	f.MTASTSMode, f.MTASTSMaxAge, f.MTASTSPolicyMX = "", 0, nil
+	f.MTASTSPolicyInvalid = "it does not declare version STSv1"
+
+	got := GradeMail(f)
+	if got.Verdict != Weak {
+		t.Errorf("verdict = %q, want weak", got.Verdict)
+	}
+	said := false
+	for _, finding := range got.Findings {
+		said = said || (finding.RuleID == "mail.mta-sts-policy-invalid" &&
+			strings.Contains(finding.Rationale, "version STSv1") &&
+			!strings.Contains(finding.Title, "no mode"))
+	}
+	if !said {
+		t.Errorf("findings are %v; the invalid policy is not graded with its reason", mailRuleIDs(got))
+	}
+}
+
+// Coverage is claimed from a whole list, and only from one.
+func TestCoverageIsClaimedOnlyFromAWholeList(t *testing.T) {
+	const all, cut = "Every mail exchanger the domain publishes is matched", "more host patterns than this scan keeps"
+
+	whole := mailNoteText(GradeMail(stsFacts()).Notes)
+	if !strings.Contains(whole, all) || strings.Contains(whole, cut) {
+		t.Errorf("a whole list covering every exchanger:\n%s", whole)
+	}
+
+	f := stsFacts()
+	f.MTASTSPolicyMXTruncated = true
+	partial := mailNoteText(GradeMail(f).Notes)
+	if strings.Contains(partial, all) || !strings.Contains(partial, cut) {
+		t.Errorf("a cut list:\n%s", partial)
+	}
+}

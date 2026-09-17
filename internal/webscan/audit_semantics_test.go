@@ -3,6 +3,7 @@ package webscan
 import (
 	"testing"
 
+	"github.com/denyfirst/denyfirst/internal/markup"
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/webprobe"
 )
@@ -130,5 +131,19 @@ func TestAReportOnlyFrameAncestorsIsNotFramingProtection(t *testing.T) {
 		Headers: map[string][]string{"Content-Security-Policy-Report-Only": {"frame-ancestors 'none'"}}}))
 	if facts.FrameAncestors {
 		t.Error("a report-only frame-ancestors was taken as framing protection")
+	}
+}
+
+// A page whose read stopped early reaches the grading as one (audit A17).
+func TestAnIncompletePageReachesTheGrading(t *testing.T) {
+	page := func(incomplete bool) *webprobe.Chain {
+		return chain(webprobe.Hop{URL: address(true, "example.test"), TLS: true, Status: 200,
+			Markup: &markup.Facts{Read: true, Incomplete: incomplete}})
+	}
+	if !contentFacts(page(true)).Incomplete {
+		t.Error("an incomplete read was not carried to the content facts")
+	}
+	if contentFacts(page(false)).Incomplete {
+		t.Error("a whole page was carried as incomplete")
 	}
 }

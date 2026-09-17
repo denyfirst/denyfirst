@@ -365,3 +365,22 @@ func TestTheOriginCountReadsAsEnglish(t *testing.T) {
 		t.Errorf("two origins are described as %q", two)
 	}
 }
+
+// A read that failed part way says so, and only where it did (audit A17).
+func TestAnIncompleteReadSaysWhatItCouldNotSee(t *testing.T) {
+	got := GradeContent(ContentFacts{Read: true, Incomplete: true})
+	if !strings.Contains(contentText(got), "stopped before it ended") {
+		t.Errorf("a page read only in part said nothing about the rest:\n%s", contentText(got))
+	}
+	if len(got.Findings) != 0 {
+		t.Errorf("an incomplete read graded %v", findingIDs(got))
+	}
+	whole := GradeContent(ContentFacts{Read: true})
+	if strings.Contains(contentText(whole), "stopped before it ended") {
+		t.Errorf("a whole page is said to be incomplete:\n%s", contentText(whole))
+	}
+	both := GradeContent(ContentFacts{Read: true, Incomplete: true, Truncated: true})
+	if len(NotesOfKind(both.Notes, KindUnsettled)) != 1 {
+		t.Errorf("one missing tail is said twice:\n%s", contentText(both))
+	}
+}

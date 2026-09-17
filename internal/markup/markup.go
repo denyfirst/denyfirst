@@ -39,6 +39,7 @@ package markup
 
 import (
 	"io"
+	"slices"
 	"strings"
 )
 
@@ -94,14 +95,15 @@ type Reference struct {
 	// existed either way.
 	Host string `json:"host,omitempty"`
 
-	// Plaintext records that the address began http://.
+	// Plaintext records that the address, resolved as a browser resolves it,
+	// is http.
 	Plaintext bool `json:"plaintext,omitempty"`
 
 	// ThirdParty records that the host is not the page's own.
 	//
 	// Origin, not registrable domain: static.example.com is a different origin
-	// from www.example.com, and subresource integrity and CORS both work on
-	// origins. Treating a sibling subdomain as the page's own would report a
+	// from www.example.com, and so is the page's own host over plaintext or on
+	// another port. Subresource integrity and CORS both work on origins. Treating a sibling subdomain as the page's own would report a
 	// site as loading nothing from elsewhere while a browser treats it as
 	// exactly that.
 	ThirdParty bool `json:"thirdParty,omitempty"`
@@ -140,6 +142,11 @@ type Facts struct {
 	// read" and the report has to say so.
 	Truncated bool `json:"truncated,omitempty"`
 
+	// Incomplete is true when reading stopped on an error before the page
+	// ended: the connection closed, or the body did not decode. Like Truncated,
+	// only the start of the page was seen.
+	Incomplete bool `json:"incomplete,omitempty"`
+
 	// MetaCSP and MetaCSPReportOnly record a policy declared in the markup
 	// rather than in a header.
 	//
@@ -166,13 +173,13 @@ type Facts struct {
 	MoreThanListed bool `json:"moreThanListed,omitempty"`
 }
 
-// Read scans one page.
+// Read scans one page served by host.
 //
 // It never returns an error. A body that stops early, a connection that dies
 // mid-page and a page that is not HTML at all all produce what was seen up to
 // that point with Read set — because the alternative is a failure to read
-// arriving in a report as a page with nothing in it.
-// Read scans one page served by host.
+// arriving in a report as a page with nothing in it. A read that stopped early
+// sets Incomplete, so the report can say so.
 //
 // host is the name the page was fetched from, and it decides one thing: which
 // references are somebody else's origin. An empty host means that question
@@ -188,9 +195,12 @@ func Read(r io.Reader, host string) Facts {
 		facts.Truncated = true
 		body = body[:MaxBytes]
 	}
-	// err is deliberately unused beyond this point: what was read is what is
-	// reported, and a read that ended early is not a page without references.
-	_ = err
+	// What was read is still reported: a read that ended early is not a page
+	// without references. It is a page of which only the start was seen, and
+	// until the 2026-09-16 audit (A17) nothing said so.
+	if err != nil {
+		facts.Incomplete = true
+	}
 
 	seen := map[Reference]bool{}
 	add := func(ref Reference) {
@@ -213,21 +223,62 @@ func Read(r io.Reader, host string) Facts {
 		facts.References = append(facts.References, ref)
 	}
 
+	// Where a relative address resolves: the page itself, until a base element
+	// says otherwise.
+	p := &page{host: host, base: origin{host: host}}
+
 	s := &scanner{src: string(body)}
 	for {
 		tag, ok := s.next()
 		if !ok {
 			break
 		}
-		examine(tag, host, &facts, add)
+		p.examine(tag, &facts, add)
 	}
 
 	return facts
 }
 
+// origin is where an address leads, reduced to what the rules ask about.
+type origin struct {
+	plaintext bool
+	host      string
+
+	// otherPort is true when the address named a port other than the one its
+	// scheme defaults to. The page is fetched from https://host/, so a port —
+	// like plaintext — makes a different origin even on the same host.
+	otherPort bool
+}
+
+// page is what reading one page carries from one tag to the next.
+type page struct {
+	host string
+
+	// base is where relative addresses resolve. The page's own origin, until
+	// the first base element with an href: HTML uses that one and ignores the
+	// rest, and an element before it was fetched against the page's address
+	// already.
+	base    origin
+	baseSet bool
+}
+
 // examine turns one start tag into whatever it establishes.
-func examine(t tag, host string, facts *Facts, add func(Reference)) {
+func (p *page) examine(t tag, facts *Facts, add func(Reference)) {
 	switch t.name {
+	case "base":
+		// The first one with an href, and only that one. A base pointing at
+		// another origin moves every relative address after it there — and a
+		// base over plaintext turns "app.js" into a plaintext script. Before
+		// the 2026-09-16 audit (A17) it was not read at all.
+		href, ok := t.attr["href"]
+		if !ok || p.baseSet {
+			return
+		}
+		p.baseSet = true
+		if o, ok := p.resolve(href); ok {
+			p.base = o
+		}
+
 	case "meta":
 		// http-equiv is the only form of this that a browser honours. A
 		// <meta name="Content-Security-Policy"> is a comment with delusions
@@ -244,112 +295,176 @@ func examine(t tag, host string, facts *Facts, add func(Reference)) {
 		// integrity is carried only where it means something. The two elements
 		// subresource integrity covers are script and link, and recording it
 		// on an image would invite a rule about a guarantee no browser makes.
-		record(t.attr["src"], KindScript, true, hasIntegrity(t), host, add)
+		p.record(t.attr["src"], KindScript, true, hasIntegrity(t), add)
 	case "iframe", "frame":
-		record(t.attr["src"], KindFrame, true, false, host, add)
+		p.record(t.attr["src"], KindFrame, true, false, add)
 	case "embed":
-		record(t.attr["src"], KindObject, true, false, host, add)
+		p.record(t.attr["src"], KindObject, true, false, add)
 	case "object":
-		record(t.attr["data"], KindObject, true, false, host, add)
+		p.record(t.attr["data"], KindObject, true, false, add)
 
 	case "link":
 		// Only the relations that fetch something a page then depends on.
 		// rel="dns-prefetch" over http is not a subresource, and reporting it
-		// as mixed content would be a finding about a hint.
-		switch strings.ToLower(strings.TrimSpace(t.attr["rel"])) {
-		case "stylesheet":
-			record(t.attr["href"], KindStyle, true, hasIntegrity(t), host, add)
-		case "preload", "modulepreload":
-			record(t.attr["href"], KindScript, true, hasIntegrity(t), host, add)
+		// as mixed content would be a finding about a hint. rel is a list of
+		// words, so "preload stylesheet" is a stylesheet.
+		rel := strings.Fields(strings.ToLower(t.attr["rel"]))
+		switch {
+		case slices.Contains(rel, "stylesheet"):
+			p.record(t.attr["href"], KindStyle, true, hasIntegrity(t), add)
+		case slices.Contains(rel, "preload"), slices.Contains(rel, "modulepreload"):
+			p.record(t.attr["href"], KindScript, true, hasIntegrity(t), add)
 		}
 
 	case "img", "image":
-		record(t.attr["src"], KindImage, false, false, host, add)
-	case "audio", "video", "source", "track":
-		record(t.attr["src"], KindMedia, false, false, host, add)
+		p.record(t.attr["src"], KindImage, false, false, add)
+		p.recordSet(t.attr["srcset"], KindImage, add)
+	case "source":
+		// src inside audio and video, srcset inside picture.
+		p.record(t.attr["src"], KindMedia, false, false, add)
+		p.recordSet(t.attr["srcset"], KindImage, add)
+	case "audio", "video", "track":
+		p.record(t.attr["src"], KindMedia, false, false, add)
 
 	case "form":
 		// Not a subresource and not blocked: a browser warns and submits.
 		// Whatever is typed into the form travels in the clear, which is the
 		// one thing here that is about the visitor rather than the page.
-		record(t.attr["action"], KindForm, false, false, host, add)
+		p.record(t.attr["action"], KindForm, false, false, add)
+	case "button", "input":
+		// formaction overrides the form's own action for the submission this
+		// control makes, so it is a form action in its own right.
+		p.record(t.attr["formaction"], KindForm, false, false, add)
 	}
 }
 
-// hasIntegrity reports whether an element carried a usable integrity attribute.
+// hasIntegrity reports whether an element carried a non-empty integrity
+// attribute.
 //
 // Present and non-empty. `integrity=""` is the attribute spelled without a
 // value, which a browser treats as no integrity at all — and a report crediting
-// it would tell a site it has a guarantee its visitors do not get.
+// it would tell a site it has a guarantee its visitors do not get. Whether the
+// value is a well-formed hash of the file served is not checked: nothing here
+// fetches the file.
 func hasIntegrity(t tag) bool {
 	return strings.TrimSpace(t.attr["integrity"]) != ""
 }
 
+// recordSet keeps each address in a srcset: candidates separated by commas,
+// each an address followed by an optional descriptor.
+//
+// An address containing a comma is split by this where a browser would not.
+// A piece left over is relative and names the base, which a rule reads only
+// where the base is somebody else's.
+func (p *page) recordSet(set string, kind Kind, add func(Reference)) {
+	for _, candidate := range strings.Split(set, ",") {
+		if fields := strings.Fields(candidate); len(fields) > 0 {
+			p.record(fields[0], kind, false, false, add)
+		}
+	}
+}
+
 // record keeps a reference where some rule reads it.
 //
-// Two questions, asked separately because they are different facts. Is the
-// address plaintext — which only an explicit http:// makes it, since a relative
-// address inherits the page's scheme, "//host/x" inherits it too, and data:,
-// blob: and about: fetch nothing over a network. And is the host somebody
-// else's origin, which needs an absolute address to answer at all.
+// Two questions, asked separately because they are different facts. Does the
+// address lead over plaintext, and is it somebody else's origin. Both are
+// answered for the address as a browser resolves it — against the page, or
+// against a base element — rather than for the text as written.
 //
 // Treating a relative address as either would report a correctly built page as
 // mixed content or as loading from elsewhere, and a reader who has seen one
 // false finding stops believing the true ones.
-func record(value string, kind Kind, blocking, integrity bool, host string, add func(Reference)) {
-	value = strings.TrimSpace(value)
-	lower := strings.ToLower(value)
-
-	var (
-		plaintext bool
-		prefix    string
-	)
-	switch {
-	case strings.HasPrefix(lower, "http://"):
-		plaintext, prefix = true, "http://"
-	case strings.HasPrefix(lower, "https://"):
-		prefix = "https://"
-
-	case strings.HasPrefix(value, "//"):
-		// Scheme-relative, and worth reading rather than skipping. It inherits
-		// the page's scheme — which is TLS, since this only reads a page
-		// fetched over TLS — so it is never mixed content. It may well be
-		// another origin, and "//cdn.example/jquery.js" is how a great many
-		// older pages load their scripts. Those are exactly the pages least
-		// likely to carry an integrity attribute, so dropping this form would
-		// have missed the sites the rule is most for.
-		prefix = "//"
-
-	default:
-		// Relative, or not a network address at all: same origin by
-		// construction, or data:, blob: and about:, which fetch nothing.
+func (p *page) record(value string, kind Kind, blocking, integrity bool, add func(Reference)) {
+	o, ok := p.resolve(value)
+	if !ok {
 		return
 	}
-	found := hostOf(value, prefix)
-
 	add(Reference{
 		Kind:       kind,
-		Host:       found,
-		Plaintext:  plaintext,
-		ThirdParty: host != "" && found != "" && found != host,
+		Host:       o.host,
+		Plaintext:  o.plaintext,
+		ThirdParty: p.host != "" && o.host != "" && (o.host != p.host || o.otherPort || o.plaintext),
 		Integrity:  integrity,
-		Blocking:   blocking && plaintext,
+		Blocking:   blocking && o.plaintext,
 	})
 }
 
-// hostOf reduces an http address to the host, and keeps nothing else.
+// resolve says where an address leads, the way the URL standard reads it.
+//
+// ok is false where it leads nowhere a network fetch goes — no address at all,
+// or data:, blob:, javascript: and the like.
+//
+// What a browser does before it reads an address, this does too: it trims
+// spaces and control characters from both ends and drops every tab and newline
+// inside, and for http and https a backslash is a slash. So "ht\ntp:\\host/"
+// is http://host/, and before the 2026-09-16 audit (A17) it was a relative
+// address on the page's own origin.
+func (p *page) resolve(value string) (origin, bool) {
+	value = strings.TrimFunc(value, func(r rune) bool { return r <= 0x20 })
+	value = strings.NewReplacer("\t", "", "\n", "", "\r", "").Replace(value)
+	if value == "" {
+		// An empty src fetches nothing; an empty action submits to the page
+		// itself.
+		return origin{}, false
+	}
+
+	scheme, rest, hasScheme := splitScheme(value)
+	switch {
+	case !hasScheme:
+		rest = value
+	case scheme == "http" || scheme == "https":
+		plaintext := scheme == "http"
+		if plaintext == p.base.plaintext && !isSlash(rest, 0) {
+			// "https:app.js" against an https base is relative to it.
+			return p.base, true
+		}
+		// Otherwise the authority follows, however many slashes precede it.
+		return authority(strings.TrimLeft(rest, `/\`), plaintext), true
+	default:
+		return origin{}, false
+	}
+
+	// No scheme: relative to the base.
+	if isSlash(rest, 0) && isSlash(rest, 1) {
+		// Scheme-relative: the base's scheme, another authority.
+		return authority(strings.TrimLeft(rest, `/\`), p.base.plaintext), true
+	}
+	return p.base, true
+}
+
+// splitScheme reads a URL scheme: a letter, then letters, digits, "+", "-" or
+// ".", then a colon.
+func splitScheme(value string) (scheme, rest string, ok bool) {
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z':
+		case i > 0 && (c >= '0' && c <= '9' || c == '+' || c == '-' || c == '.'):
+		case i > 0 && c == ':':
+			return strings.ToLower(value[:i]), value[i+1:], true
+		default:
+			return "", "", false
+		}
+	}
+	return "", "", false
+}
+
+func isSlash(s string, i int) bool {
+	return i < len(s) && (s[i] == '/' || s[i] == '\\')
+}
+
+// authority reduces what follows the slashes to an origin, and keeps nothing
+// else.
 //
 // Userinfo is dropped before anything is kept rather than after. "http://
 // user:token@host/" is a credential in a page's markup, and a report that
 // carried it would have published it to everyone the report is shown to —
 // which is the exact failure this package was allowed to exist on condition of
 // avoiding.
-func hostOf(address, scheme string) string {
-	rest := address[len(scheme):]
-
+func authority(rest string, plaintext bool) origin {
 	// The authority ends at the first of these. Whatever follows is a path, a
 	// query or a fragment and none of them is kept.
-	if i := strings.IndexAny(rest, "/?#"); i >= 0 {
+	if i := strings.IndexAny(rest, `/\?#`); i >= 0 {
 		rest = rest[:i]
 	}
 
@@ -358,14 +473,22 @@ func hostOf(address, scheme string) string {
 		rest = rest[i+1:]
 	}
 
-	// A port says nothing a host does not, and an operator reading "example.com"
-	// and "example.com:8080" as two findings is reading one.
+	// A port is not kept in the name: an operator reading "example.com" and
+	// "example.com:8080" as two findings is reading one. Whether it is the
+	// scheme's own port is kept, because another port is another origin.
+	o := origin{plaintext: plaintext}
 	if i := strings.LastIndex(rest, ":"); i >= 0 && !strings.Contains(rest[i:], "]") {
+		port := strings.TrimLeft(rest[i+1:], "0")
+		defaultPort := "443"
+		if plaintext {
+			defaultPort = "80"
+		}
+		o.otherPort = port != "" && port != defaultPort
 		rest = rest[:i]
 	}
 	rest = strings.Trim(rest, "[]")
 
-	rest = strings.ToLower(strings.TrimSpace(rest))
+	rest = fold(rest)
 	if len(rest) > maxHostLength {
 		rest = rest[:maxHostLength]
 	}
@@ -373,12 +496,13 @@ func hostOf(address, scheme string) string {
 	// A host is chosen by whoever wrote the page, so it is stripped before it
 	// travels (I5). A name carrying a newline would otherwise forge a line in
 	// a terminal report.
-	return strings.Map(func(r rune) rune {
+	o.host = strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f {
 			return -1
 		}
 		return r
 	}, rest)
+	return o
 }
 
 // fold reduces a name the way every other comparison in this project does (I7).

@@ -172,11 +172,21 @@ func TestOnlyTheThreeModesAreRead(t *testing.T) {
 		"mode: strict":    "",
 		"mode:":           "",
 	} {
-		f, _ := policyServer(t, "version: STSv1\n"+body+"\nmx: mx1.example.test\n", http.StatusOK)
+		f, _ := policyServer(t, "version: STSv1\n"+body+"\nmx: mx1.example.test\nmax_age: 86400\n", http.StatusOK)
 
 		got := f.Fetch(context.Background(), testDomain)
 		if got.Mode != want {
 			t.Errorf("%q gave mode %q, want %q", body, got.Mode, want)
+		}
+		// A mode RFC 8461 does not define makes the file not a policy, and
+		// says so rather than leaving an empty mode to be guessed at.
+		if (want == "") != (got.Invalid != "") {
+			t.Errorf("%q: invalid %q, want invalid only for an undefined mode", body, got.Invalid)
+		}
+		// And the reason is that one: the file named a mode, just not one
+		// that exists, which is a different fix from a file naming none.
+		if want == "" && !strings.Contains(got.Invalid, "not one RFC 8461 defines") {
+			t.Errorf("%q: invalid %q, want the mode named as undefined", body, got.Invalid)
 		}
 	}
 }
@@ -257,6 +267,78 @@ func TestAnEnormousBodyIsBounded(t *testing.T) {
 	if len(got.MX) > maxNames {
 		t.Errorf("%d exchangers were kept, and the bound is %d; the scanned party decides how "+
 			"long the report is", len(got.MX), maxNames)
+	}
+	// Past the bound it is refused rather than read in part: a policy cut
+	// short could lose the pattern that covers an exchanger.
+	if !strings.Contains(got.Invalid, "larger") || got.Mode != "" {
+		t.Errorf("a body past the bound was read as a policy: %+v", got)
+	}
+
+	// At the bound exactly, it is still a policy.
+	exact := wholePolicy + strings.Repeat("#", maxBody-len(wholePolicy))
+	f, _ = policyServer(t, exact, http.StatusOK)
+	if got := f.Fetch(context.Background(), testDomain); got.Invalid != "" || got.Mode != Enforce {
+		t.Errorf("a policy of exactly %d bytes was refused: %+v", maxBody, got)
+	}
+}
+
+// More patterns than are kept is said, rather than read as the whole list.
+func TestTooManyPatternsAreSaidToBeCut(t *testing.T) {
+	body := wholePolicy + strings.Repeat("mx: other.example.test\n", maxNames)
+	f, _ := policyServer(t, body, http.StatusOK)
+	got := f.Fetch(context.Background(), testDomain)
+	if got.Invalid != "" || len(got.MX) != maxNames || !got.MXTruncated {
+		t.Errorf("a list past the bound: invalid %q, %d kept, truncated %v", got.Invalid, len(got.MX), got.MXTruncated)
+	}
+
+	f, _ = policyServer(t, wholePolicy, http.StatusOK)
+	if got := f.Fetch(context.Background(), testDomain); got.MXTruncated {
+		t.Error("a two-pattern policy is said to be cut")
+	}
+}
+
+// What RFC 8461 §3.2 requires is required.
+//
+// Before the 2026-09-16 audit (A18) a file with no version, a second mode or no
+// max_age was read as the policy its remaining lines described — a file no
+// sending server applies, reported as enforcing.
+func TestAFileMissingWhatAPolicyNeedsIsNotAPolicy(t *testing.T) {
+	for name, body := range map[string]string{
+		"no version":          "mode: enforce\nmx: mx1.example.test\nmax_age: 86400\n",
+		"another version":     "version: STSv2\nmode: enforce\nmx: mx1.example.test\nmax_age: 86400\n",
+		"two versions":        "version: STSv1\nversion: STSv1\nmode: enforce\nmx: mx1.example.test\nmax_age: 86400\n",
+		"no mode":             "version: STSv1\nmx: mx1.example.test\nmax_age: 86400\n",
+		"two modes":           "version: STSv1\nmode: testing\nmode: enforce\nmx: mx1.example.test\nmax_age: 86400\n",
+		"no max_age":          "version: STSv1\nmode: enforce\nmx: mx1.example.test\n",
+		"two max_ages":        "version: STSv1\nmode: enforce\nmx: mx1.example.test\nmax_age: 86400\nmax_age: 1\n",
+		"a max_age of words":  "version: STSv1\nmode: enforce\nmx: mx1.example.test\nmax_age: a week\n",
+		"a negative max_age":  "version: STSv1\nmode: enforce\nmx: mx1.example.test\nmax_age: -1\n",
+		"enforce with no mx":  "version: STSv1\nmode: enforce\nmax_age: 86400\n",
+		"testing with no mx":  "version: STSv1\nmode: testing\nmax_age: 86400\n",
+		"not a policy at all": "<html>not found</html>\n",
+	} {
+		f, _ := policyServer(t, body, http.StatusOK)
+		got := f.Fetch(context.Background(), testDomain)
+		if !got.Fetched {
+			t.Errorf("%s: not fetched: %s", name, got.Reason)
+		}
+		if got.Invalid == "" {
+			t.Errorf("%s: read as a policy: %+v", name, got)
+		}
+		if got.Mode != "" || got.MaxAge != 0 || len(got.MX) != 0 {
+			t.Errorf("%s: something in an invalid file was kept: %+v", name, got)
+		}
+	}
+
+	// None needs no mx, and a zero max_age is a number.
+	for name, body := range map[string]string{
+		"none with no mx": "version: STSv1\nmode: none\nmax_age: 86400\n",
+		"a zero max_age":  "version: STSv1\nmode: testing\nmx: mx1.example.test\nmax_age: 0\n",
+	} {
+		f, _ := policyServer(t, body, http.StatusOK)
+		if got := f.Fetch(context.Background(), testDomain); got.Invalid != "" || got.Mode == "" {
+			t.Errorf("%s: a valid policy was refused: %+v", name, got)
+		}
 	}
 }
 
