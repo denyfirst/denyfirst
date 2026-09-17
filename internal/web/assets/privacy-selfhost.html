@@ -1,0 +1,163 @@
+<article class="prose">
+
+    <!--
+      The privacy page of an installation somebody runs themselves.
+
+      The public demonstration has its own, written about a machine this
+      project runs. Read on a self-hosted copy it described somebody else's
+      server and promised things this build does differently — it asks
+      certificate authorities for revocation lists, it reads pages where
+      control was proven, it can keep results. The 2026-09-16 audit (A21) found
+      the two mixed. This one is filled in from how this installation was
+      started, so it says what this copy does.
+    -->
+
+    <h1>What this installation keeps,<br>and what it does.</h1>
+
+    <p class="lede">
+      This is a copy of {{.Tool}} somebody runs on their own machine. It keeps
+      almost nothing, and this page says exactly what, from how it was started.
+      If a scan from here reached your server, <a href="#scans">what a scan
+      does</a> is the section you want.
+    </p>
+
+    <nav class="jump">
+      <a href="#kept">What is kept</a>
+      <a href="#scans">What a scan does</a>
+      <a href="#asked">Who else is asked</a>
+      <a href="#stopping">Stopping a scan</a>
+      <a href="#promises">What is not promised</a>
+      <a href="#browser">Your browser</a>
+    </nav>
+
+    <h2 id="kept">What is kept</h2>
+
+    <p>
+      <strong>No record of requests.</strong> Nothing writes down which name
+      was checked, by whom, or when. The service prints a line when it starts
+      and when it stops, and one when a result could not be kept — naming the
+      operation and the system's reason, never the name.
+    </p>
+
+    <p>
+      <strong>Your address</strong> is held in memory to enforce a rate limit,
+      and dropped about three minutes after your last request. Never written to
+      disk, never in a response.
+    </p>
+
+    <p>
+      <strong>The names checked</strong> are held only as a short keyed hash,
+      for about half a minute to five, so one server is not scanned in bulk.
+      Refusal starts after at least {{.Threshold}} scans of one host in a short
+      window.
+    </p>
+
+    <p>
+      <strong>Counts</strong> of scans and of refusals, by check and by reason,
+      are kept in memory, written to a file only if the installation was started
+      with one, and served at <code>/api/v1/stats</code>. Nothing in them
+      points at a name or a person.
+    </p>
+
+    <p>
+      <strong>Results</strong>:
+      {{if .Keeps}}kept on this machine, because it was started with a results
+      directory: per name and per check, the date, the verdict, the rule set
+      and the rules raised. No time of day and nothing about who asked. They are
+      never served over HTTP.{{else}}not kept. Close the page and the report is
+      gone, unless you saved its JSON.{{end}}
+    </p>
+
+    {{if .Verified}}
+    <p>
+      <strong>A verification secret</strong> is kept in a file readable by its
+      owner alone. Every record a domain publishes to prove it is theirs is
+      derived from it. Which domains have proven anything is not kept: it is
+      asked again on every scan, so deleting the record ends it.
+    </p>
+    {{end}}
+
+    <h2 id="scans">What a scan does</h2>
+
+    <p>
+      {{if .Verified}}Only names whose domain publishes this installation's
+      record at <code>_porch-challenge.&lt;domain&gt;</code> are checked; the
+      check page shows the record to publish.{{else}}<strong>This installation
+      checks any public name it is given.</strong> Without proof, it listens
+      beyond this machine's own loopback address only when its operator said so
+      with <code>-open</code>.{{end}}
+      Private, loopback and reserved addresses are refused whatever is asked.
+    </p>
+
+    <ul class="plain">
+      <li><strong>Transport</strong>: TLS handshakes at each protocol version,
+        closed as soon as each finishes, on ports that speak TLS from the first
+        byte. No application data is sent.</li>
+      <li><strong>Reach</strong>: one <code>GET /</code> over HTTPS and one over
+        HTTP, following redirects a bounded number of times.
+        {{if .ReadsPages}}The final page is read, once, to one megabyte, and
+        only a short list of facts is kept from it.{{else}}No page body is
+        read.{{end}}
+        Query values in a redirect address are not kept in the report.</li>
+      <li><strong>Mail</strong>: DNS lookups for the sender policy, DMARC, TLS
+        reporting, MTA-STS, the mail exchangers, their DANE records and signing
+        keys under documented selectors.
+        {{if .Verified}}For a proven domain it also fetches the MTA-STS policy
+        file, and asks each mail exchanger on port 25 whether it offers
+        STARTTLS: greeting, EHLO, STARTTLS, handshake, QUIT. No sender,
+        recipient or message is ever named.{{else}}No mail server is
+        contacted.{{end}}
+        A mail address may be typed; everything before the <code>@</code> is
+        dropped in the browser and again by the service.</li>
+    </ul>
+
+    <p>
+      No authentication is attempted, no path is guessed, no exploit or
+      malformed packet is sent. Each host has its own scan budget, whoever asks.
+    </p>
+
+    <h2 id="asked">Who else is asked</h2>
+
+    <ul class="plain">
+      <li><strong>The DNS resolver</strong> this machine uses, or the one it was
+        started with, sees every name checked. That is true of anything that
+        resolves a name.</li>
+      <li><strong>The certificate authority</strong> named in a certificate is
+        asked for its revocation list. It learns a list was fetched, not which
+        certificate was being looked at, because one list covers thousands.</li>
+      {{if .Verified}}<li><strong>The host itself</strong> may be asked for
+        <code>/.well-known/porch-challenge</code> when its domain publishes no
+        record, as the other way of proving a site is yours.</li>{{end}}
+      <li>No certificate transparency log and no revocation responder is
+        asked by this service.</li>
+    </ul>
+
+    <h2 id="stopping">Stopping a scan</h2>
+
+    <p>
+      This copy is run by whoever runs this machine, not by the people who
+      write {{.Tool}}. To stop scans from it, contact whoever answers for the
+      address they came from. The project can exclude a domain from every
+      future release, but it cannot reach into a copy somebody else is
+      running.
+    </p>
+
+    <h2 id="promises">What is not promised</h2>
+
+    <p>
+      A report describes what a server negotiated at one moment, graded
+      against a published rule set. It is not an audit, not a certification,
+      and not a statement that anything is safe. The software is provided
+      without warranty, under the AGPL-3.0.
+    </p>
+
+    <h2 id="browser">Your browser</h2>
+
+    <p>
+      No cookies, no analytics, no fonts or scripts from elsewhere. Pages load
+      one stylesheet from this machine, and the ones that check something one
+      script from it too. Nothing is written to the clipboard: a record to
+      publish is selected for you to copy yourself.
+    </p>
+
+</article>

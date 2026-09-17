@@ -334,7 +334,7 @@ func TestEmptyFindingsDistinguishesCleanFromAbsent(t *testing.T) {
 // how to stop it — and a reader worried about privacy needs a third. All must
 // be on this page rather than a link away.
 func TestPrivacyPageAnswersEveryUrgentQuestion(t *testing.T) {
-	page := strings.ToLower(strings.Join(strings.Fields(get(t, "/privacy").Body.String()), " "))
+	page := strings.ToLower(strings.Join(strings.Fields(demoPrivacy(t)), " "))
 
 	required := []string{
 		// Somebody who found this page from a log entry.
@@ -378,7 +378,7 @@ func TestPrivacyPageAnswersEveryUrgentQuestion(t *testing.T) {
 // The jump links are what make one long page usable for a reader who wants
 // one section. Every one has to land somewhere.
 func TestJumpLinksHaveTargets(t *testing.T) {
-	body := get(t, "/privacy").Body.String()
+	body := demoPrivacy(t)
 
 	for _, anchor := range []string{"kept", "logs", "scans", "stopping", "promises"} {
 		if !strings.Contains(body, `href="#`+anchor+`"`) {
@@ -404,4 +404,15 @@ func TestTermsPlaceResponsibility(t *testing.T) {
 			t.Errorf("the terms do not address %q", required)
 		}
 	}
+}
+
+// demoPrivacy is the demonstration's privacy page, which a self-hosted build
+// serves its own page in place of (audit A21).
+func demoPrivacy(t *testing.T) string {
+	t.Helper()
+	body, err := render(pages["/privacy"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(body)
 }

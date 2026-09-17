@@ -28,10 +28,7 @@ func FuzzNextURL(f *testing.F) {
 	f.Add("", "https://example.com/")
 
 	f.Fuzz(func(t *testing.T, from, location string) {
-		next, stopped := nextURL(
-			Hop{Status: http.StatusFound, Headers: map[string][]string{"Location": {location}}},
-			from,
-		)
+		next, stopped := nextURL(http.StatusFound, location, from)
 
 		if next != "" && stopped != "" {
 			t.Fatalf("both an address (%q) and a reason not to follow (%q)", next, stopped)

@@ -65,3 +65,16 @@ func TestTheDemonstrationPageSaysWhatItIsAndWhereTheToolIs(t *testing.T) {
 		}
 	}
 }
+
+// The demonstration serves its own privacy page, written about the machine
+// this project runs, and never the self-hosted one (audit A21).
+func TestTheDemonstrationKeepsItsOwnPrivacyPage(t *testing.T) {
+	page := get(t, "/privacy").Body.String()
+	if !strings.Contains(page, "abuse@denyfirst.dev") || strings.Contains(page, "What this installation keeps") {
+		t.Error("the demonstration does not serve its own privacy page")
+	}
+	Configure(true, true)
+	if strings.Contains(get(t, "/privacy").Body.String(), "What this installation keeps") {
+		t.Error("configuring the demonstration replaced its privacy page")
+	}
+}

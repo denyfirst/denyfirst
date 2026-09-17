@@ -131,6 +131,12 @@ func (s *Store) Put(check, target string, verdict, policy string, findings []str
 		return err
 	}
 
+	unlock, err := lock(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	record := Record{
 		Date:     s.today(),
 		Check:    check,
@@ -179,8 +185,12 @@ func (s *Store) History(check, target string) ([]Record, error) {
 		return nil, err
 	}
 
-	// #nosec G304 -- as above.
-	body, err := os.ReadFile(path)
+	// Under this process's writers' lock, so a read here never lands
+	// between a trim's truncate and its write where the rename could not be
+	// used. Another process's writer is not waited for: see readLock.
+	defer readLock(path)()
+
+	body, err := readTail(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -241,7 +251,7 @@ func (s *Store) trim(path string) error {
 		rebuilt.WriteByte('\n')
 	}
 
-	return os.WriteFile(path, []byte(rebuilt.String()), fileMode)
+	return replace(path, []byte(rebuilt.String()))
 }
 
 // pathFor builds the file one target's history lives in.

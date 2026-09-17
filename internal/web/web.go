@@ -25,6 +25,7 @@ import (
 	"strconv"
 
 	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/denyfirst/internal/httpapi"
 	"github.com/denyfirst/denyfirst/internal/policy"
 )
 
@@ -421,6 +422,7 @@ func init() {
 	// moment the package loads, including in a test that never calls Configure.
 	if !demo.Enabled {
 		rendered["/"] = renderConsole(false, false)
+		rendered["/privacy"] = renderPrivacy(false, false)
 	}
 }
 
@@ -485,6 +487,9 @@ func render(p *page) ([]byte, error) {
 // look at a flag.
 func Configure(verified, keeps bool) {
 	rendered["/"] = renderConsole(verified, keeps)
+	if !demo.Enabled {
+		rendered["/privacy"] = renderPrivacy(verified, keeps)
+	}
 }
 
 // renderConsole builds the tool surface.
@@ -604,4 +609,41 @@ func setHeaders(w http.ResponseWriter, r *http.Request) {
 	if r.TLS != nil {
 		h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
 	}
+}
+
+// privacyPage is what assets/privacy-selfhost.html reads.
+type privacyPage struct {
+	Tool       string
+	Verified   bool
+	ReadsPages bool
+	Keeps      bool
+	Threshold  int
+}
+
+// renderPrivacy builds the privacy page of an installation somebody runs.
+//
+// The demonstration's page is written about a machine this project runs, and
+// read on a self-hosted copy it promised things that copy does differently.
+// This one is filled in from how the installation was started, like the
+// console, and the demonstration keeps its own (audit A21).
+func renderPrivacy(verified, keeps bool) []byte {
+	p := &page{
+		Title:       "Privacy, and what a scan does — " + ToolName,
+		Description: "What this installation keeps, what a scan sends, and who else is asked anything.",
+		Fragment:    "assets/privacy-selfhost.html",
+		Method:      defaultMethodPage,
+		Data: privacyPage{
+			Tool:       ToolName,
+			Verified:   verified,
+			ReadsPages: verified,
+			Keeps:      keeps,
+			Threshold:  httpapi.TargetThreshold(),
+		},
+	}
+
+	body, err := render(p)
+	if err != nil {
+		panic("rendering the privacy page: " + err.Error())
+	}
+	return body
 }

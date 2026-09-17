@@ -328,6 +328,10 @@ type Hop struct {
 	// (R4), which is why this is a pointer and Facts carries Read.
 	Markup *markup.Facts `json:"markup,omitempty"`
 
+	// location is the Location header as sent, which the chain follows. The
+	// recorded one is redacted; see redactAddress.
+	location string
+
 	// Err is why this hop produced no response. Non-empty means Status and
 	// Headers are unset, which is different from a response with no headers.
 	//
@@ -498,7 +502,7 @@ func (p *Prober) chain(ctx context.Context, client *http.Client, start string, w
 			return out
 		}
 
-		loc, why := nextURL(hop, next)
+		loc, why := nextURL(hop.Status, hop.location, next)
 		if why != "" {
 			out.Stopped = why
 			out.Unfollowed = why == errTooLongToFollow
@@ -540,7 +544,7 @@ func hostOf(raw string) string {
 
 // fetch performs one request and records what came back.
 func (p *Prober) fetch(ctx context.Context, client *http.Client, target string) Hop {
-	hop := Hop{URL: target, TLS: strings.HasPrefix(target, "https://")}
+	hop := Hop{URL: redactAddress(target), TLS: strings.HasPrefix(target, "https://")}
 
 	ctx, cancel := context.WithTimeout(ctx, p.requestTimeout())
 	defer cancel()
@@ -565,6 +569,7 @@ func (p *Prober) fetch(ctx context.Context, client *http.Client, target string) 
 
 	hop.Status = resp.StatusCode
 	hop.Headers = recorded(resp.Header)
+	hop.location = resp.Header.Get("Location")
 	hop.Cookies = cookies(resp.Header.Values("Set-Cookie"))
 	hop.Markup = p.pageFacts(resp, hostOf(target))
 	return hop
@@ -631,15 +636,11 @@ func isHTML(contentType string) bool {
 // or a reason when this probe declines to follow. Declining is recorded
 // rather than silent: a reader who cannot tell "it stopped here" from "it was
 // not followed" cannot interpret the chain at all.
-func nextURL(hop Hop, from string) (next, stopped string) {
-	if hop.Status < 300 || hop.Status > 399 {
+func nextURL(status int, raw, from string) (next, stopped string) {
+	if status < 300 || status > 399 {
 		return "", ""
 	}
 
-	raw := ""
-	if v := hop.Headers["Location"]; len(v) > 0 {
-		raw = v[0]
-	}
 	if raw == "" {
 		return "", ""
 	}
@@ -722,6 +723,11 @@ func recorded(h http.Header) map[string][]string {
 		// Copied. Values returns the slice the header map holds, and a caller
 		// mutating a report would otherwise reach into the response.
 		out[name] = append([]string(nil), v...)
+		if name == "Location" {
+			for i := range out[name] {
+				out[name][i] = redactAddress(out[name][i])
+			}
+		}
 	}
 	return out
 }
