@@ -27,6 +27,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/demo"
 	"github.com/denyfirst/denyfirst/internal/httpapi"
 	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/denyfirst/internal/webprobe"
 )
 
 //go:embed assets
@@ -252,7 +253,7 @@ var pages = map[string]*page{
 		Description: "Exactly what a web check sends to a server, how to read the report it produces, and the limits of the method.",
 		Fragment:    "assets/web-method.html",
 		Method:      "/web/method",
-		Data:        methodPage{Limits: policy.WebStandingLimits(), Demo: demo.Enabled},
+		Data:        methodPage{Limits: policy.WebStandingLimits(), Demo: demo.Enabled, UserAgent: webprobe.DefaultUserAgent},
 	},
 
 	// The mail check's, the third beside the other two.
@@ -357,6 +358,13 @@ type methodPage struct {
 	//
 	// It says both either way, and this decides which one it says first.
 	Demo bool
+
+	// UserAgent is what the web check calls itself, on the page that says
+	// what it sent. It was printed under every Reach report instead, where it
+	// was a line about this program in the middle of a report about a server.
+	// Read from webprobe, so the page cannot name a string the probe no
+	// longer sends. Empty on the pages of the other checks.
+	UserAgent string
 }
 
 // moved are paths that used to be pages of their own, or that a reader is

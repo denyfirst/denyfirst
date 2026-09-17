@@ -25,6 +25,13 @@
     </p>
 
     <p>
+      <strong>Every request names itself.</strong> The
+      <code>User-Agent</code> header reads
+      <code>{{.UserAgent}}</code>, from every installation of the tool, so a
+      line in your log leads here.
+    </p>
+
+    <p>
       <strong>One <code>GET</code> of <code>/</code>, over HTTPS and over
       plaintext.</strong> Nothing else was requested. No path was constructed
       by this program at any point: there is no attempt at
