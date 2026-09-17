@@ -149,7 +149,7 @@ func TestACheckWithNoScansHasNoBlock(t *testing.T) {
 func TestOnlyKnownChecksAreCounted(t *testing.T) {
 	s := New(offlineScanner(), Limits{Burst: 1000, Refill: time.Nanosecond}, nil)
 
-	s.counts.record("mail", policy.Strong)
+	s.counts.record("dns", policy.Strong)
 	s.counts.record("192.0.2.7", policy.Strong)
 	s.counts.record("", policy.Strong)
 
@@ -164,7 +164,7 @@ func TestOnlyKnownChecksAreCounted(t *testing.T) {
 //
 // The second half of A7, applied to this map. A counter that cannot move is
 // not a low number; it is silence, and an operator reads silence as nothing
-// happening. Both checks have an address now, so both are driven here; a check
+// happening. Every check has an address, so each is driven here; a check
 // added later and left undriven fails this rather than shipping a figure that
 // is permanently zero.
 func TestEveryCountedCheckCanOccur(t *testing.T) {
@@ -173,6 +173,7 @@ func TestEveryCountedCheckCanOccur(t *testing.T) {
 
 	post(t, s, `{"target":"one.test"}`)
 	postWeb(t, s, `{"target":"two.test"}`)
+	postMail(t, s, `{"target":"three.test"}`)
 
 	produced := s.Stats().Checks
 	for _, name := range checkNames {

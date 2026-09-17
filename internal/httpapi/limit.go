@@ -45,6 +45,38 @@ type limiter struct {
 	// for different reasons: one bounds routine housekeeping, the other
 	// bounds work an attacker can ask for.
 	lastForced time.Time
+
+	// idle sweeps while the map holds anything, so an address is dropped on
+	// time even when nobody else arrives to trigger a sweep.
+	idle idleSweep
+}
+
+// idleSweep runs a limiter's sweep on a timer while it holds anything.
+//
+// Sweeping only when a request arrives made the retention period a promise
+// about busy services: a client that was the last one to call was held until
+// the next one did, which on a quiet installation is days. The 2026-09-16 audit
+// (A22) found an entry still present twenty-four hours later. The timer is
+// armed when an entry is added and re-armed only while entries remain, so an
+// empty limiter runs nothing.
+type idleSweep struct {
+	// after is time.AfterFunc, replaceable so a test can fire it.
+	after func(time.Duration, func()) *time.Timer
+	armed bool
+}
+
+// armLocked starts the timer if it is not running. The caller holds the
+// limiter's lock; run takes it.
+func (s *idleSweep) armLocked(every time.Duration, run func()) {
+	if s.armed {
+		return
+	}
+	s.armed = true
+	after := s.after
+	if after == nil {
+		after = time.AfterFunc
+	}
+	after(every, run)
 }
 
 type bucket struct {
@@ -87,6 +119,7 @@ func (l *limiter) allow(key string) bool {
 			return false
 		}
 		l.buckets[key] = &bucket{tokens: l.burst - 1, seen: now}
+		l.idle.armLocked(l.sweepEvery, l.idleTick)
 		return true
 	}
 
@@ -124,6 +157,20 @@ func (l *limiter) sweepLocked(now time.Time) {
 		if now.Sub(b.seen) > idle {
 			delete(l.buckets, key)
 		}
+	}
+}
+
+// idleTick is the timer's sweep: due by construction, since the timer waited
+// sweepEvery, and re-armed while anything is left to forget.
+func (l *limiter) idleTick() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.idle.armed = false
+	l.lastSweep = time.Time{}
+	l.sweepLocked(l.now())
+	if len(l.buckets) > 0 {
+		l.idle.armLocked(l.sweepEvery, l.idleTick)
 	}
 }
 
@@ -179,8 +226,8 @@ func (l *limiter) idlePeriod() time.Duration {
 // page can state a number rather than a feeling.
 //
 // A bucket is dropped once it has been idle for burst × refill × 2, and the
-// sweep runs at most once a minute, so the worst case is that plus one sweep
-// interval.
+// sweep runs once a minute while anything is held, whether or not requests
+// arrive, so the worst case is that plus one sweep interval.
 func (l *limiter) RetentionPeriod() time.Duration {
 	return l.idlePeriod() + l.sweepEvery
 }

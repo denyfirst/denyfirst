@@ -198,6 +198,9 @@ type targetLimiter struct {
 	mu        sync.Mutex
 	buckets   map[uint16]*bucket
 	lastSweep time.Time
+
+	// idle sweeps while the map holds anything; see idleSweep.
+	idle idleSweep
 }
 
 func newTargetLimiter(now func() time.Time) *targetLimiter {
@@ -261,6 +264,7 @@ func (l *targetLimiter) allow(host, port string) bool {
 			return false
 		}
 		l.buckets[key] = &bucket{tokens: l.burstFor(key) - 1, seen: now}
+		l.idle.armLocked(targetSweepEvery, l.idleTick)
 		return true
 	}
 
@@ -292,9 +296,7 @@ func (l *targetLimiter) allow(host, port string) bool {
 // intervals instead would have held a scanned host's bucket for five minutes
 // to no purpose, which is four and a half minutes of state nobody needs.
 func (l *targetLimiter) sweepLocked(now time.Time) {
-	const sweepEvery = 30 * time.Second
-
-	if now.Sub(l.lastSweep) < sweepEvery {
+	if now.Sub(l.lastSweep) < targetSweepEvery {
 		return
 	}
 	l.lastSweep = now
@@ -304,6 +306,22 @@ func (l *targetLimiter) sweepLocked(now time.Time) {
 		if refilled >= l.burstFor(key) {
 			delete(l.buckets, key)
 		}
+	}
+}
+
+// targetSweepEvery is how often refilled buckets are looked for.
+const targetSweepEvery = 30 * time.Second
+
+// idleTick is the timer's sweep, as for the client limiter.
+func (l *targetLimiter) idleTick() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.idle.armed = false
+	l.lastSweep = time.Time{}
+	l.sweepLocked(l.now())
+	if len(l.buckets) > 0 {
+		l.idle.armLocked(targetSweepEvery, l.idleTick)
 	}
 }
 

@@ -255,6 +255,20 @@ above. It has to be an address and a port, not a name:
 
 The addresses a scan connects to are still resolved by the machine.
 
+Where the mail check asks each exchanger on port 25, it introduces itself with
+EHLO. Unless told otherwise that name is this machine's fully qualified host
+name or, failing that, its address — behind NAT, a private one — and the
+exchanger's operator reads it. `-helo` sets it instead, on the service as on
+the command line, and a name that could not be sent stops the service at start
+rather than being quietly replaced by the machine's own:
+
+```sh
+./porchd -listen 127.0.0.1:8080 -helo scanner.example.com
+```
+
+Some providers refuse an EHLO that names no real host. A name that resolves to
+the address the scan leaves from is the one least likely to be turned away.
+
 ---
 
 ## In a container
