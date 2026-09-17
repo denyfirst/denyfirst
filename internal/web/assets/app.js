@@ -243,11 +243,6 @@ function summary(data) {
   const address = data.tls && data.tls.address;
   const meta = [];
   if (address) meta.push(address);
-  // The negotiated application protocol, when one was agreed. It costs a
-  // word and answers a question a reader would otherwise open a terminal
-  // for. Attacker-chosen, like every other value here, and reaching
-  // textContent rather than a parser for the same reason.
-  if (data.tls && data.tls.alpn) meta.push(data.tls.alpn);
   if (data.policy) meta.push("graded by " + data.policy);
   if (meta.length) left.appendChild(el("p", "summary-meta", meta.join("  ·  ")));
   left.appendChild(downloadLink(data));

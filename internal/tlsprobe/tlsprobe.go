@@ -44,6 +44,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -180,7 +181,11 @@ type Report struct {
 	// typically because fewer than two suites were available to compare.
 	PreferenceKnown bool `json:"preferenceKnown"`
 
-	ALPN string `json:"alpn,omitempty"`
+	// There is no ALPN field. No handshake here offers an application
+	// protocol, so a server never names one, and a field that is always empty
+	// reads as "this server supports none" (audit A19). One comes back with a
+	// handshake that asks.
+
 	// PostQuantum is the answer to the one extra handshake this probe makes
 	// beyond version and suite enumeration.
 	PostQuantum PostQuantum `json:"postQuantum"`
@@ -440,7 +445,6 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 		report.Certificates = state.PeerCertificates
 		report.AlternateChains = differingChains(states, results, i)
 		report.Address = addrs[i]
-		report.ALPN = state.NegotiatedProtocol
 		report.OCSPStapled = len(state.OCSPResponse) > 0
 		report.OCSPResponse = state.OCSPResponse
 		report.SCTCount = len(state.SignedCertificateTimestamps)
@@ -497,7 +501,7 @@ func (p *Prober) Probe(ctx context.Context, host, port string) (*Report, error) 
 
 	for _, alt := range report.AlternateChains {
 		report.observe(fmt.Sprintf(
-			"%s is served a different certificate from the one described above. Both were graded and the "+
+			"%s is served a different certificate chain from the one described above. Both were graded and the "+
 				"worse of the two set the verdict; the details shown are the newest handshake's.", alt.Version))
 	}
 
@@ -629,23 +633,26 @@ func suiteCoverageApplies(results []VersionResult) bool {
 }
 
 // differingChains returns every chain served at a version other than primary
-// whose leaf is not the primary leaf.
+// that is not the primary chain.
 //
-// The comparison is over the leaf's own DER bytes. Anything less — a subject,
-// a serial, a set of names — is a field a server can repeat across two
-// genuinely different certificates, and the question here is whether the
-// bytes an old client is handed are the bytes this report describes.
+// The comparison is over every certificate's own DER bytes, in order. Anything
+// less — a subject, a serial, a set of names — is a field a server can repeat
+// across two genuinely different certificates, and the question here is
+// whether the bytes an old client is handed are the bytes this report
+// describes. The leaf alone was compared until the 2026-09-16 audit (A19),
+// which missed one leaf served with a different intermediate — a SHA-1
+// cross-sign kept for old clients looks exactly like that.
 //
-// One entry per distinct leaf. A server that serves the same second
-// certificate to TLS 1.1 and TLS 1.0 has one alternate configuration, not
-// two, and grading it twice would say the same thing twice.
+// One entry per distinct chain. A server that serves the same second chain to
+// TLS 1.1 and TLS 1.0 has one alternate configuration, not two, and grading it
+// twice would say the same thing twice.
 func differingChains(states []*tls.ConnectionState, results []VersionResult, primary int) []AlternateChain {
 	if states[primary] == nil || len(states[primary].PeerCertificates) == 0 {
 		return nil
 	}
 
 	seen := map[[sha256.Size]byte]bool{
-		sha256.Sum256(states[primary].PeerCertificates[0].Raw): true,
+		chainSum(states[primary].PeerCertificates): true,
 	}
 
 	var out []AlternateChain
@@ -653,7 +660,7 @@ func differingChains(states []*tls.ConnectionState, results []VersionResult, pri
 		if i == primary || state == nil || len(state.PeerCertificates) == 0 {
 			continue
 		}
-		sum := sha256.Sum256(state.PeerCertificates[0].Raw)
+		sum := chainSum(state.PeerCertificates)
 		if seen[sum] {
 			continue
 		}
@@ -1190,3 +1197,18 @@ func (r *Report) unsettled(text string) { r.Notes = append(r.Notes, policy.Unset
 // be written here without being in policy.StandingLimits() — and therefore on
 // the page that explains them.
 func (r *Report) standing(l policy.StandingLimit) { r.Notes = append(r.Notes, l.Note()) }
+
+// chainSum is a digest of a chain as presented: each certificate's length and
+// bytes, in order, so no two different chains share one by concatenation.
+func chainSum(chain []*x509.Certificate) [sha256.Size]byte {
+	h := sha256.New()
+	var n [8]byte
+	for _, c := range chain {
+		binary.BigEndian.PutUint64(n[:], uint64(len(c.Raw)))
+		h.Write(n[:])
+		h.Write(c.Raw)
+	}
+	var out [sha256.Size]byte
+	h.Sum(out[:0])
+	return out
+}
