@@ -4,9 +4,23 @@
   "/" stood in for the TLS check until there was a front page to put there;
   this is it. The team and what it makes, in short, with each product's own
   page carrying the detail. Nothing here is a claim about a scan, so nothing
-  here needs the script.
+  here needs the script that runs one. hero.js only opens the lens over the
+  opening, and the page is whole without it.
 -->
 <section class="hero">
+  <div class="hero-lens" aria-hidden="true">
+    <span class="lens-1">TLS 1.3</span>
+    <span class="lens-2">HSTS</span>
+    <span class="lens-3">DMARC p=reject</span>
+    <span class="lens-4">CAA</span>
+    <span class="lens-5">SPF -all</span>
+    <span class="lens-6">MTA-STS</span>
+    <span class="lens-7">DANE</span>
+    <span class="lens-8">X25519MLKEM768</span>
+    <span class="lens-9">DKIM</span>
+    <span class="lens-10">CT</span>
+    <span class="lens-big lens-11">Look closer.</span>
+  </div>
   <p class="eyebrow eyebrow-dot">Independent security and privacy tools</p>
   <h1>Security.<br><span class="hero-soft">On your terms.</span></h1>
   <div class="hero-bottom">
@@ -106,3 +120,5 @@
   </div>
   <a class="button button-secondary arrow-e" href="/docs">Read the docs</a>
 </section>
+
+<script src="/hero.js" defer></script>

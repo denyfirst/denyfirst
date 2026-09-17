@@ -2069,3 +2069,77 @@ main > .band:last-child { border-bottom: 0; }
 .colophon-row { align-items: center; }
 .colophon .colophon-row p { margin: 0; }
 .colophon .tally { margin: 1.2rem 0 0; }
+
+/*
+  The lens on the front page.
+
+  A layer under the opening's text, masked to a circle around the pointer:
+  a faint wash of the brand colour, a grid of points, and the names of what
+  the checks read, all in the quietest ink the page has. Closed, the circle
+  has no radius, so nothing is drawn; hero.js opens it while a pointer is
+  over the opening. The radius is a registered property so that it can ease
+  open and shut; a browser without @property opens it at once.
+*/
+@property --lens-r {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+.hero {
+  position: relative;
+  isolation: isolate;
+}
+
+.hero-lens {
+  --lens-x: 70%;
+  --lens-y: 40%;
+  position: absolute;
+  inset: 0 0 3rem;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle 16rem at var(--lens-x) var(--lens-y),
+      color-mix(in srgb, var(--brand) 13%, transparent), transparent 70%),
+    radial-gradient(circle, color-mix(in srgb, var(--ink-faint) 55%, transparent) 1px, transparent 1.6px);
+  background-size: 100% 100%, 22px 22px;
+  -webkit-mask-image: radial-gradient(circle var(--lens-r) at var(--lens-x) var(--lens-y), #000 0%, rgb(0 0 0 / 0.6) 50%, transparent 100%);
+  mask-image: radial-gradient(circle var(--lens-r) at var(--lens-x) var(--lens-y), #000 0%, rgb(0 0 0 / 0.6) 50%, transparent 100%);
+  transition: --lens-r 0.45s ease;
+}
+
+.hero-lit .hero-lens { --lens-r: 15rem; }
+
+.hero-lens span {
+  position: absolute;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.hero-lens .lens-big {
+  font-family: var(--sans);
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: color-mix(in srgb, var(--ink-faint) 70%, transparent);
+}
+
+.lens-1  { top: 12%; left: 58%; }
+.lens-2  { top: 22%; left: 80%; }
+.lens-3  { top: 34%; left: 66%; }
+.lens-4  { top: 46%; left: 88%; }
+.lens-5  { top: 52%; left: 55%; }
+.lens-6  { top: 64%; left: 74%; }
+.lens-7  { top: 8%;  left: 90%; }
+.lens-8  { top: 76%; left: 60%; }
+.lens-9  { top: 28%; left: 46%; }
+.lens-10 { top: 70%; left: 92%; }
+.lens-11 { top: 38%; left: 74%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-lens { transition: none; }
+}
