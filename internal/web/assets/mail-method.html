@@ -1,0 +1,130 @@
+<article class="prose">
+
+    <h1>What the mail check<br>reads, and what it cannot see.</h1>
+
+    <p class="lede">
+      The mail check reads what a domain publishes about its mail: who may
+      send as it, what a receiver should do with a message that fails, where
+      its mail is delivered and how that delivery is protected. This page
+      says what it reads, how to read the report, and the limits that apply
+      to every check it runs.
+    </p>
+
+    <nav class="jump">
+      <a href="#read">What is read</a>
+      <a href="#reading">How to read a report</a>
+      <a href="#exchangers">When an exchanger does not answer</a>
+      {{range .Limits}}<a href="#{{.ID}}">{{.Title}}</a>
+      {{end}}
+      <a href="#elsewhere">What else is written down</a>
+    </nav>
+
+    <h2 id="read">What is read</h2>
+
+    <p>
+      <strong>DNS records the domain published for strangers to
+      read.</strong> The sender policy (SPF) and every name it includes, the
+      DMARC record at <code>_dmarc</code>, the mail exchangers (MX), the
+      MTA-STS and TLS reporting records at <code>_mta-sts</code> and
+      <code>_smtp._tls</code>, the DANE records of each exchanger, and signing
+      keys (DKIM) under the selectors the report names. The questions go to
+      the resolver the scanning machine already uses, so the domain being
+      checked is not contacted for any of this.
+    </p>
+
+    <p>
+      <strong>Two connections, and only where they are allowed.</strong>
+      Where a zone announces an MTA-STS policy, the policy file is fetched
+      from the one address RFC 8461 fixes for it. And each exchanger, at most
+      eight, is asked on port 25 whether it accepts an encrypted connection:
+      a greeting, <code>EHLO</code>, <code>STARTTLS</code>, the handshake and
+      <code>QUIT</code>. No sender, recipient or message is named, so nothing
+      is delivered and nothing is asked about a person.
+      {{if .Demo}}This deployment makes neither connection: both are made
+      only by an installation that has been shown control of the domain, and
+      by the command line.{{else}}This installation makes them for the
+      domains it has been shown control of; one started without proof of
+      control makes neither.{{end}}
+    </p>
+
+    <h2 id="reading">How to read a report</h2>
+
+    <p>
+      <strong>Findings</strong> are graded, and only where a standard calls
+      something an error: more than one SPF record, more than ten lookups to
+      evaluate one, <code>+all</code>, two DMARC records, a policy file no
+      sending server would apply. Each finding names its rule and cites the
+      document.
+    </p>
+
+    <p>
+      <strong>Observed</strong> is what the check established and deliberately
+      does not grade. <code>~all</code> is the staging position,
+      <code>p=none</code> is the monitoring position, and a domain may
+      reasonably choose MTA-STS, DANE, both or neither. A report that marked
+      those down would be calling a correct decision a fault. The number of
+      lookups a sender policy costs is reported before it is a fault, because
+      a domain at nine of ten is one provider change away from losing its
+      policy.
+    </p>
+
+    <p>
+      <strong>Not established for this host</strong> is what this particular
+      check could not settle: a record the resolver would not answer, an
+      exchanger that would not talk, a selector list that found no key.
+      Nothing read is never reported as nothing published, because the two
+      send an operator to opposite places.
+    </p>
+
+    <p>
+      <strong>Limits of this method</strong> are below. They are true of every
+      mail check, so they are stated once, here.
+    </p>
+
+    <h2 id="exchangers">When an exchanger does not answer</h2>
+
+    <p>
+      An exchanger may refuse the greeting of the machine asking, before
+      encryption comes up. The most common reason is the address that
+      machine connects from: many mail services turn away an address with no
+      reverse DNS name, and a home or VPN connection usually has none. The
+      report says the exchanger's offer was not established, never that it
+      was refused, because the refusal was of the scanner and not of
+      encryption.
+    </p>
+
+    <p>
+      Running your own copy, give the server's address a reverse DNS name
+      that resolves back to it, and pass that name with <code>-helo</code>.
+      A network that blocks outbound port 25, as many cloud providers do by
+      default, is reported as that and not as a fault of the exchanger.
+    </p>
+
+    {{range .Limits}}
+    <h2 id="{{.ID}}">{{.Title}}</h2>
+
+    <p>{{.Text}}</p>
+    {{end}}
+
+    <h2 id="elsewhere">What else is written down</h2>
+
+    <p>
+      This check has its own rule set, separate from the ones that grade a
+      TLS handshake and a website. What those can and cannot see is on
+      <a href="/tls/method">the Transport page</a> and
+      <a href="/web/method">the Reach page</a>.
+    </p>
+
+    <p>
+      Every property this project holds itself to is in
+      <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/invariants.md">docs/invariants.md</a>,
+      and the mail check's is N13. What changed between rule sets is in
+      <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/policy-changes.md">docs/policy-changes.md</a>.
+    </p>
+
+    <p>
+      What is recorded about a check here, and how to have a domain excluded,
+      are on the <a href="/privacy">privacy page</a>.
+    </p>
+
+</article>

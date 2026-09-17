@@ -38,7 +38,7 @@ func TestLimitsOpenOnlyWhenTheyAreTheWholeReport(t *testing.T) {
 	// insecure one means, and a check over the whole source read that as this
 	// block opening for insecure again.
 	body := source
-	if i := strings.Index(body, "function notes(list, verdict)"); i >= 0 {
+	if i := strings.Index(body, "function notes(list, verdict, methodPage)"); i >= 0 {
 		body = body[i:]
 	} else {
 		t.Fatal("the script has no notes renderer")
@@ -164,13 +164,22 @@ func TestTheStandingLimitsAreNamedAndLinked(t *testing.T) {
 	}
 	source := string(script)
 
+	// Read from the page, a link is the first check's on a page that runs three.
+	if strings.Contains(source, "CHECK.methodPage") {
+		t.Error("a method link is read from the page rather than from the check that drew it")
+	}
 	if strings.Contains(source, `kind: "standing"`) {
 		t.Error("the script still renders the standing limits as a section of every report")
 	}
 	for _, required := range []string{
 		`methodPage: "/tls/method"`,
 		`methodPage: "/web/method"`,
-		"const METHOD_PAGE = CHECK.methodPage",
+		`methodPage: "/mail/method"`,
+		"notes(data.notes, verdict, CHECKS.tls.methodPage)",
+		"notes(data.notes, verdict, CHECKS.web.methodPage)",
+		"notes(data.notes, verdict, CHECKS.mail.methodPage)",
+		"a.href = methodPage;",
+		"a.href = CHECKS.web.methodPage;",
 		"limits of this method apply to every scan",
 		"standing.length",
 	} {

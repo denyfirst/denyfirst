@@ -36,11 +36,14 @@ func TestTheProjectsPagesStayAtTheRootAndTheChecksDoNot(t *testing.T) {
 		project["/porch"] = true
 	}
 
-	// The question this test was written to ask ahead of time. There are two
+	// The question this test was written to ask ahead of time. There are three
 	// checks now, so the answer is a list rather than one prefix — and a
-	// third check added without an entry here fails rather than quietly
+	// fourth check added without an entry here fails rather than quietly
 	// putting a page at the root.
-	checks := []string{"/tls", "/web"}
+	//
+	// Mail has a method page and no page of its own: it is run from the console
+	// and the Porch page, which run every check.
+	checks := []string{"/tls", "/web", "/mail"}
 
 	underACheck := func(path string) bool {
 		for _, prefix := range checks {
@@ -57,7 +60,7 @@ func TestTheProjectsPagesStayAtTheRootAndTheChecksDoNot(t *testing.T) {
 		case underACheck(path):
 		default:
 			t.Errorf("%s is neither one of the project's own pages nor under a check; "+
-				"decide which it is before a third check makes the question urgent", path)
+				"decide which it is", path)
 		}
 	}
 
@@ -71,7 +74,7 @@ func TestTheProjectsPagesStayAtTheRootAndTheChecksDoNot(t *testing.T) {
 	//
 	// The limits of a TLS handshake are not the limits of a header check, and
 	// a page trying to be both would be true of neither.
-	for _, path := range []string{"/tls", "/tls/method", "/web/method"} {
+	for _, path := range []string{"/tls", "/tls/method", "/web/method", "/mail/method"} {
 		if w := get(t, path); w.Code != http.StatusOK {
 			t.Errorf("GET %s returned %d", path, w.Code)
 		}
@@ -287,13 +290,7 @@ func TestEachCheckCallsItsOwnPaths(t *testing.T) {
 	}{
 		{"tls", "/api/v1/tls/scan", "/tls/method"},
 		{"web", "/api/v1/web/scan", "/web/method"},
-
-		// The mail check has no method page of its own yet, so its row
-		// declares none. An empty string rather than a borrowed page: the
-		// console prints that check's limits in full instead, which is the
-		// same decision the command line made. A URL for a page nobody has
-		// written is worse than no URL, because a reader follows it.
-		{"mail", "/api/v1/mail/scan", ""},
+		{"mail", "/api/v1/mail/scan", "/mail/method"},
 	} {
 		for _, want := range []string{
 			`endpoint: "` + tc.endpoint + `"`,

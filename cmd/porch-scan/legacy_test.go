@@ -86,14 +86,18 @@ func TestTheHandWrittenHellosArePrintedWithWhatTheyFound(t *testing.T) {
 	_, suites := legacyOutput(t, l)
 	for _, want := range []string{
 		"Obsolete suites, asked for directly",
-		"one hand-built hello",
+		"Each family was offered on its own",
+		"Refused means the server accepted none of them.",
 		"TLS_RSA_EXPORT_WITH_DES40_CBC_SHA at TLS 1.0",
 		"insecure",
 		"not measured   the server did not answer in time",
 		// A row each for the two families Go's client implements none of. A
 		// sabotage dropping the DHE row escaped on 2026-09-14, before these.
-		"    DHE       refused",
-		"    anonymous accepted       insecure  TLS_DH_anon_WITH_AES_128_CBC_SHA at TLS 1.2",
+		"    Finite-field DHE           refused",
+		"    Anonymous, no certificate  accepted       insecure  TLS_DH_anon_WITH_AES_128_CBC_SHA at TLS 1.2",
+		"    Export-grade ",
+		"    NULL, no encryption ",
+		"    Downgrade signal           not honoured",
 		"not honoured",
 		"claiming only TLS 1.2",
 	} {
