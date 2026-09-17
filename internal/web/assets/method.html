@@ -12,6 +12,7 @@
 
     <nav class="jump">
       <a href="#reading">How to read a report</a>
+      <a href="#obsolete-suites">Obsolete suites, asked for directly</a>
       {{range .Limits}}<a href="#{{.ID}}">{{.Title}}</a>
       {{end}}
     </nav>
@@ -59,6 +60,50 @@
       measurement. Where a list was cut short the verdict is
       <em>ungraded</em> rather than <em>strong</em>, and the command line
       exits <code>4</code> for it rather than <code>0</code>.
+    </p>
+
+    <h2 id="obsolete-suites">Obsolete suites, asked for directly</h2>
+
+    <p>
+      The list of accepted cipher suites is built by offering suites one at a
+      time, through the TLS library this program is written with, Go's. That
+      library leaves the obsolete families out on purpose, so it cannot offer
+      them, and a server that still accepted one would never appear in the
+      list. So each family is asked about on its own, with a hello this
+      program writes byte by byte, offering every suite in the family at
+      once. <em>Refused</em> means the server accepted none of them;
+      <em>accepted</em> names the suite it chose, and grades it like any other.
+      Because the whole family is offered in one hello, an acceptance shows
+      that one of them is accepted, not every one.
+    </p>
+
+    <dl class="terms">
+      <dt>Export-grade</dt>
+      <dd>Suites weakened in the 1990s to 40- and 56-bit keys to satisfy
+      export rules. Breakable today, and the root of attacks such as FREAK
+      and Logjam.</dd>
+      <dt>NULL, no encryption</dt>
+      <dd>Suites that authenticate the server but do not encrypt: everything
+      after the handshake travels in the clear.</dd>
+      <dt>Finite-field DHE</dt>
+      <dd>Key exchange over classic Diffie-Hellman groups rather than
+      elliptic curves. RFC 10015 prohibits offering or selecting these suites
+      in TLS 1.2; the groups are often weak or shared.</dd>
+      <dt>Anonymous, no certificate</dt>
+      <dd>Suites in which the server presents no certificate, so anyone on
+      the path can pose as it.</dd>
+      <dt>Downgrade signal</dt>
+      <dd>A hello that claims an older version and carries
+      <code>TLS_FALLBACK_SCSV</code>, the mark RFC 7507 defines for a client
+      retrying lower. A server that speaks something newer should refuse it,
+      which stops a connection being pushed down to an older version.
+      <em>Honoured</em> means it was refused. Reported, not graded: the
+      version it would land on is graded in the version table.</dd>
+    </dl>
+
+    <p>
+      SSL 3.0 is asked for the same way, and is a protocol version rather
+      than a family of suites, so it appears in the version table.
     </p>
 
     {{range .Limits}}

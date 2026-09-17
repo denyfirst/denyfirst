@@ -53,20 +53,22 @@ func printLegacySuites(w io.Writer, l tlsprobe.Legacy) {
 	// title, "Asked with a hand-written hello", over a list that repeated
 	// SSL 3.0, read as a second list of versions.
 	fmt.Fprint(w, "\n  Obsolete suites, asked for directly\n")
-	fmt.Fprint(w, "    Go cannot offer these, so each family was asked for in one hand-built hello\n")
-	fmt.Fprint(w, "    offering all of it. Refused means none of that family was accepted.\n")
+	// Why they are asked this way is for -limits to say; the note says how to
+	// read a row.
+	fmt.Fprint(w, "    Each family was offered on its own, every suite in it at once.\n")
+	fmt.Fprint(w, "    Refused means the server accepted none of them.\n")
 	for _, q := range []struct {
 		label  string
 		answer tlsprobe.LegacyAnswer
 	}{
-		{"export", l.Export},
-		{"NULL", l.Null},
-		{"DHE", l.FFDHE},
-		{"anonymous", l.Anonymous},
+		{"Export-grade", l.Export},
+		{"NULL, no encryption", l.Null},
+		{"Finite-field DHE", l.FFDHE},
+		{"Anonymous, no certificate", l.Anonymous},
 	} {
-		fmt.Fprintf(w, "    %-9s %s\n", q.label, legacyLine(q.answer))
+		fmt.Fprintf(w, "    %-26s %s\n", q.label, legacyLine(q.answer))
 	}
-	fmt.Fprintf(w, "    %-9s %s\n", "fallback", fallbackLine(l.Fallback))
+	fmt.Fprintf(w, "    %-26s %s\n", "Downgrade signal", fallbackLine(l.Fallback))
 }
 
 func legacyLine(a tlsprobe.LegacyAnswer) string {

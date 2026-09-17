@@ -57,12 +57,8 @@ const CHECKS = {
     label: "Mail",
     says: "what the domain's DNS says about its mail",
 
-    // No method page of its own yet. The console prints the standing limits
-    // in full rather than pointing at a page nobody has written, which is the
-    // same decision the command line made — a URL for a page that does not
-    // exist is worse than no URL, because a reader follows it.
     endpoint: "/api/v1/mail/scan",
-    methodPage: "",
+    methodPage: "/mail/method",
     working: "Reading the sender policy, the DMARC record, the mail exchangers and what protects them.",
     build: (data) => buildMail(data),
   },
@@ -467,13 +463,20 @@ function legacy(tls) {
 
   const frag = document.createDocumentFragment();
   // What this section is, said under its title. It read as a second list of
-  // versions with SSL 3.0 in it twice; it is the suite families Go's client
-  // cannot offer, each asked for in one hello of its own. SSL 3.0 is a
-  // version and stays in the version table.
+  // versions with SSL 3.0 in it twice; it is the suite families the ordinary
+  // enumeration cannot offer, each asked for in one hello of its own. SSL 3.0
+  // is a version and stays in the version table.
+  //
+  // Why they are asked this way is the method page's to say, not the
+  // report's: the note says how to read a row, and the link says the rest.
   frag.appendChild(sectionTitle("Obsolete suites, asked for directly"));
-  frag.appendChild(el("p", "section-note",
-    "Go cannot offer these, so each family was asked for in one hand-built hello " +
-    "offering all of it. Refused means none of that family was accepted."));
+  const note = el("p", "section-note",
+    "Each family was offered on its own, every suite in it at once. " +
+    "Refused means the server accepted none of them. ");
+  const why = el("a", "notes-method-link", "Why these are asked separately");
+  why.href = CHECKS.tls.methodPage + "#obsolete-suites";
+  note.appendChild(why);
+  frag.appendChild(note);
 
   const table = el("table", "rows");
   const body = el("tbody");
@@ -487,16 +490,18 @@ function legacy(tls) {
       suite ? suite.verdict + "  ·  " + suite.name + " at " + a.version : "—"));
     body.appendChild(row);
   };
-  answer("export", l.export);
-  answer("NULL", l.null);
-  // The same rows the terminal prints, in its words (R16). Older reports carry
-  // neither field, so each is drawn only where it was sent.
-  if (l.ffdhe) answer("DHE", l.ffdhe);
-  if (l.anonymous) answer("anonymous", l.anonymous);
+  // The same rows the terminal prints, in its words (R16). Named for what
+  // each family is, because "export" and "NULL" alone meant nothing to a
+  // reader who had not met them. Older reports carry neither ffdhe nor
+  // anonymous, so each is drawn only where it was sent.
+  answer("Export-grade", l.export);
+  answer("NULL, no encryption", l.null);
+  if (l.ffdhe) answer("Finite-field DHE", l.ffdhe);
+  if (l.anonymous) answer("Anonymous, no certificate", l.anonymous);
 
   const f = l.fallback;
   const row = el("tr");
-  row.appendChild(el("td", null, "fallback"));
+  row.appendChild(el("td", null, "Downgrade signal"));
   row.appendChild(el("td", f.measured ? null : "mark-faint",
     f.measured ? (f.honoured ? "honoured" : "not honoured") : "not measured"));
   row.appendChild(el("td", null, f.measured
@@ -805,8 +810,10 @@ const NOTE_SECTIONS = [
 // hiding them.
 // Which page, per check: what a TLS handshake cannot establish is not what a
 // header check cannot establish, and a link that pointed at one from the other
-// would send a reader to limits that are not theirs.
-const METHOD_PAGE = CHECK.methodPage;
+// would send a reader to limits that are not theirs. So each builder passes its
+// own. It was read from the page once, which held while a page ran one check;
+// the Porch page runs three, and its Reach and Mail reports pointed at the
+// limits of Transport.
 
 // notes renders each kind under its own heading.
 //
@@ -821,7 +828,7 @@ const METHOD_PAGE = CHECK.methodPage;
 // Both sections fold. Every fact in them is already on the face of the
 // report, so what folds is the reasoning; the counts stay in the summaries,
 // and an ungraded verdict opens them because then there is nothing else.
-function notes(list, verdict) {
+function notes(list, verdict, methodPage) {
   const frag = document.createDocumentFragment();
   if (!list || !list.length) return frag;
 
@@ -863,7 +870,7 @@ function notes(list, verdict) {
       : standing.length + " limits of this method apply to every scan and are the same here as anywhere. "));
 
     const a = el("a", "notes-method-link", "What this can see, and what it cannot");
-    a.href = METHOD_PAGE;
+    a.href = methodPage;
     p.appendChild(a);
 
     frag.appendChild(p);
@@ -902,7 +909,7 @@ function buildTLS(data) {
   frag.appendChild(legacy(data.tls));
   frag.appendChild(addresses(data.tls));
   frag.appendChild(certificate(data.certificate, data.tls, data.issuance, data.stapling, data));
-  frag.appendChild(notes(data.notes, verdict));
+  frag.appendChild(notes(data.notes, verdict, CHECKS.tls.methodPage));
   return frag;
 }
 
@@ -1013,7 +1020,7 @@ function chains(observed) {
     const p = el("p", "group-note");
     p.appendChild(document.createTextNode("Requested as " + observed.userAgent + ". "));
     const a = el("a", "notes-method-link", "What was sent, in full");
-    a.href = CHECK.methodPage;
+    a.href = CHECKS.web.methodPage;
     p.appendChild(a);
     frag.appendChild(p);
   }
@@ -1028,7 +1035,7 @@ function buildWeb(data) {
   frag.appendChild(summary(data));
   frag.appendChild(findings(data.findings, verdict));
   frag.appendChild(chains(data.observed));
-  frag.appendChild(notes(data.notes, verdict));
+  frag.appendChild(notes(data.notes, verdict, CHECKS.web.methodPage));
   return frag;
 }
 
@@ -1048,7 +1055,7 @@ function buildMail(data) {
   frag.appendChild(summary(data));
   frag.appendChild(findings(data.findings, verdict));
   frag.appendChild(zone(data.observed));
-  frag.appendChild(notes(data.notes, verdict));
+  frag.appendChild(notes(data.notes, verdict, CHECKS.mail.methodPage));
   return frag;
 }
 

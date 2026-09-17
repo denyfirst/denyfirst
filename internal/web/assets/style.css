@@ -2016,3 +2016,30 @@ main > .band:last-child { border-bottom: 0; }
   font-weight: 400;
   color: var(--ink-soft);
 }
+
+/* A glossary inside prose: the term, then what it means, indented under it. */
+.prose .terms {
+  margin: 1.2rem 0;
+}
+
+.prose .terms dt {
+  margin-top: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.prose .terms dd {
+  margin: 0.2rem 0 0 1.1rem;
+  color: var(--ink-soft);
+}
+
+/* Four cards: two rows of two until there is room for one row. */
+.cards-four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+@media (min-width: 72rem) {
+  .cards-four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 52rem) {
+  .cards-four { grid-template-columns: 1fr; }
+}

@@ -24,7 +24,7 @@
     <p class="band-note">Each check has its own rules and its own limits. These
     pages explain both.</p>
   </div>
-  <div class="cards">
+  <div class="cards cards-four">
     <a class="card card-link" href="/tls/method">
       <span class="card-symbol" aria-hidden="true">⌁</span>
       <h3 class="card-name arrow-ne">Transport</h3>
@@ -39,11 +39,17 @@
       check sends to a server.</p>
       <span class="card-foot">Rule set {{.Web}}</span>
     </a>
+    <a class="card card-link" href="/mail/method">
+      <span class="card-symbol" aria-hidden="true">✉</span>
+      <h3 class="card-name arrow-ne">Mail</h3>
+      <p>What the domain's DNS says about its mail, what the check connects
+      to, and why an exchanger may not answer.</p>
+      <span class="card-foot">Rule set {{.Mail}}</span>
+    </a>
     <a class="card card-link" href="https://github.com/denyfirst/denyfirst/blob/main/docs/policy-changes.md">
       <span class="card-symbol" aria-hidden="true">⊞</span>
       <h3 class="card-name arrow-ne">What changed</h3>
-      <p>Every rule set version and what it grades differently, including the
-      mail rules ({{.Mail}}).</p>
+      <p>Every rule set version, and what each one grades differently.</p>
       <span class="card-foot">On GitHub</span>
     </a>
   </div>
