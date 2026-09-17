@@ -85,7 +85,8 @@ func TestTheHandWrittenHellosArePrintedWithWhatTheyFound(t *testing.T) {
 
 	_, suites := legacyOutput(t, l)
 	for _, want := range []string{
-		"hand-written hello",
+		"Obsolete suites, asked for directly",
+		"one hand-built hello",
 		"TLS_RSA_EXPORT_WITH_DES40_CBC_SHA at TLS 1.0",
 		"insecure",
 		"not measured   the server did not answer in time",
@@ -124,7 +125,44 @@ func TestTheReportCarriesTheHandWrittenHellos(t *testing.T) {
 	if !strings.Contains(versions.String(), "SSL 3.0") || !strings.Contains(versions.String(), "accepted") {
 		t.Errorf("the version list does not carry SSL 3.0:\n%s", versions.String())
 	}
-	if !strings.Contains(ciphers.String(), "hand-written hello") {
+	if !strings.Contains(ciphers.String(), "Obsolete suites, asked for directly") {
 		t.Errorf("the suites section does not carry what the hand-written hellos found:\n%s", ciphers.String())
+	}
+}
+
+// SSL 3.0 has one row, in the version list, and it carries the suite.
+//
+// The suites section listed it again, which made that section read as a second
+// list of versions.
+func TestSSL3HasOneRowAndItNamesTheSuite(t *testing.T) {
+	grade := policy.GradeVersion(policy.VersionSSL30)
+	suite := policy.GradeCipher("TLS_RSA_WITH_RC4_128_SHA")
+	l := tlsprobe.Legacy{
+		Asked: true,
+		SSL3: tlsprobe.LegacyAnswer{Measured: true, Accepted: true, Version: "SSL 3.0", VersionGrade: &grade,
+			Suite: &tlsprobe.CipherResult{CipherFinding: suite}},
+		Export: tlsprobe.LegacyAnswer{Measured: true, Refused: true},
+	}
+	versions, suites := legacyOutput(t, l)
+	if strings.Contains(suites, "SSL 3.0") {
+		t.Errorf("the suites section lists SSL 3.0 again:\n%s", suites)
+	}
+	if !strings.Contains(versions, "TLS_RSA_WITH_RC4_128_SHA") {
+		t.Errorf("the SSL 3.0 row does not name the suite it was accepted with: %q", versions)
+	}
+}
+
+// A refusal is the word alone, on every version row.
+func TestARefusedVersionIsTheWordAlone(t *testing.T) {
+	report := &tlsprobe.Report{Versions: []tlsprobe.VersionResult{
+		{Name: "TLS 1.0", Refused: true, Error: "server refused TLS 1.0"},
+	}}
+	var out bytes.Buffer
+	printVersions(&out, report)
+	if strings.Contains(out.String(), "server refused") {
+		t.Errorf("a refused row repeats itself:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "TLS 1.0   refused\n") {
+		t.Errorf("a refused row is not the word alone:\n%q", out.String())
 	}
 }

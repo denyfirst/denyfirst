@@ -20,6 +20,9 @@ func printLegacyVersion(w io.Writer, l tlsprobe.Legacy) {
 
 	a := l.SSL3
 	switch {
+	case a.Accepted && a.VersionGrade != nil && a.Suite != nil:
+		// With the suite, since this is the only row SSL 3.0 has.
+		fmt.Fprintf(w, "    %-9s accepted       %s  %s\n", "SSL 3.0", a.VersionGrade.Verdict, a.Suite.Name)
 	case a.Accepted && a.VersionGrade != nil:
 		fmt.Fprintf(w, "    %-9s accepted       %s\n", "SSL 3.0", a.VersionGrade.Verdict)
 	case a.Accepted:
@@ -46,12 +49,16 @@ func printLegacySuites(w io.Writer, l tlsprobe.Legacy) {
 		return
 	}
 
-	fmt.Fprint(w, "\n  Asked with a hand-written hello\n")
+	// Titled for what it is, and SSL 3.0 left in the version list. The old
+	// title, "Asked with a hand-written hello", over a list that repeated
+	// SSL 3.0, read as a second list of versions.
+	fmt.Fprint(w, "\n  Obsolete suites, asked for directly\n")
+	fmt.Fprint(w, "    Go cannot offer these, so each family was asked for in one hand-built hello\n")
+	fmt.Fprint(w, "    offering all of it. Refused means none of that family was accepted.\n")
 	for _, q := range []struct {
 		label  string
 		answer tlsprobe.LegacyAnswer
 	}{
-		{"SSL 3.0", l.SSL3},
 		{"export", l.Export},
 		{"NULL", l.Null},
 		{"DHE", l.FFDHE},

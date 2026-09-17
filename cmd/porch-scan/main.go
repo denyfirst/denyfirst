@@ -547,7 +547,9 @@ func printVersions(w io.Writer, t *tlsprobe.Report) {
 		case v.Supported:
 			fmt.Fprintf(w, "    %-9s accepted       %s\n", v.Name, v.Grade.Verdict)
 		case v.Refused:
-			fmt.Fprintf(w, "    %-9s refused        %s\n", v.Name, v.Error)
+			// The word alone. The probe's sentence beside it only said it
+			// again, "server refused TLS 1.0", and the SSL 3.0 row has none.
+			fmt.Fprintf(w, "    %-9s refused\n", v.Name)
 		default:
 			// Not "refused". The word is a claim about the server, and the
 			// sentence printed beside it frequently said the opposite —

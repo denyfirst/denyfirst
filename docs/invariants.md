@@ -2796,6 +2796,7 @@ are not the same finding either.
 (`outcomeCell`, `ciphers`, `transparencyText`),
 `cmd/porch-scan.printVersions`, `cmd/porch-scan.printCiphers`
 *Guarded by:* `TestOnlyAServerRefusalIsCalledOne`,
+`TestARefusedVersionIsTheWordAlone`,
 `TestATruncatedListSaysSoWhereItIsShown`,
 `TestAVersionThatCouldNotBeMeasuredIsNotCalledRefused`,
 `TestATruncatedCipherListIsMarkedOnTheTable`,
@@ -3071,6 +3072,7 @@ reached a reader of the JSON and no one else. They are collected now.
 `TestThePageReadsTheLegacyFieldsTheAPISends`,
 `TestSSL3IsAVersionRowInTheSameWords`,
 `TestTheHandWrittenHellosArePrintedWithWhatTheyFound`,
+`TestSSL3HasOneRowAndItNamesTheSuite`, `TestTheLegacySectionMatchesTheTerminal`,
 `TestNothingIsPrintedForAQuestionNotAsked`,
 `TestThePageReadsTheExchangerFieldsTheAPISends`,
 `TestEachExchangerIsARowInThePagesWords`,
