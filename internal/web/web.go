@@ -409,6 +409,7 @@ var files = map[string]struct {
 	"/style.css":    {"assets/style.css", "text/css; charset=utf-8"},
 	"/app.js":       {"assets/app.js", "text/javascript; charset=utf-8"},
 	"/theme.js":     {"assets/theme.js", "text/javascript; charset=utf-8"},
+	"/hero.js":      {"assets/hero.js", "text/javascript; charset=utf-8"},
 	"/favicon.svg":  {"assets/favicon.svg", "image/svg+xml"},
 	SecurityTxtPath: {"assets/security.txt", "text/plain; charset=utf-8"},
 
