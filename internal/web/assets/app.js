@@ -1604,3 +1604,146 @@ if (consoleForm) {
     }
   });
 }
+
+// ── The Porch page ──────────────────────────────────────────────────────
+
+/*
+  Every check on one name, each in a tab of its own.
+
+  A tab per check rather than one long page, because the three answer
+  different questions over different evidence and a reader usually wants one
+  of them. Each tab carries its own state — running, a verdict, not graded, not
+  run — so a TLS result is never read as saying anything about mail, and a
+  check that failed says so without hiding the two that did not.
+
+  The report inside a tab is the one every other page draws, built by the
+  same functions from the same JSON (R16). Only the arrangement is new.
+*/
+const porchForm = document.getElementById("porch-form");
+const porchTarget = document.getElementById("porch-target");
+const porchButton = document.getElementById("porch-submit");
+const porchResults = document.getElementById("porch-results");
+
+function porchTabs(target, chosen) {
+  clear(porchResults);
+  porchResults.hidden = false;
+
+  const head = el("div", "porch-report-head");
+  head.appendChild(el("p", "eyebrow", "Live report"));
+  head.appendChild(el("h2", "porch-report-title", target));
+  porchResults.appendChild(head);
+
+  const tabs = el("div", "tabs");
+  tabs.setAttribute("role", "tablist");
+  tabs.setAttribute("aria-label", "Checks");
+  porchResults.appendChild(tabs);
+
+  const entries = chosen.map(name => {
+    const spec = CHECKS[name];
+
+    const tab = el("button", "tab");
+    tab.type = "button";
+    tab.id = "tab-" + name;
+    tab.setAttribute("role", "tab");
+    tab.setAttribute("aria-controls", "panel-" + name);
+    tab.appendChild(el("span", "tab-name", spec.label));
+    const state = el("span", "tab-state", "running");
+    tab.appendChild(state);
+    tab.appendChild(el("span", "tab-says", spec.says));
+    tabs.appendChild(tab);
+
+    const panel = el("div", "tab-panel");
+    panel.id = "panel-" + name;
+    panel.setAttribute("role", "tabpanel");
+    panel.setAttribute("aria-labelledby", tab.id);
+    panel.appendChild(el("p", "working", spec.working));
+    porchResults.appendChild(panel);
+
+    return { spec, tab, state, panel };
+  });
+
+  const select = index => {
+    entries.forEach((entry, i) => {
+      const on = i === index;
+      entry.tab.setAttribute("aria-selected", String(on));
+      entry.tab.tabIndex = on ? 0 : -1;
+      entry.panel.hidden = !on;
+    });
+  };
+
+  entries.forEach((entry, i) => entry.tab.addEventListener("click", () => select(i)));
+
+  // The arrow keys move between tabs, as a tab list is expected to.
+  tabs.addEventListener("keydown", event => {
+    const at = entries.findIndex(entry => entry.tab === document.activeElement);
+    if (at < 0) return;
+    let next = at;
+    if (event.key === "ArrowRight") next = (at + 1) % entries.length;
+    else if (event.key === "ArrowLeft") next = (at - 1 + entries.length) % entries.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = entries.length - 1;
+    else return;
+    event.preventDefault();
+    select(next);
+    entries[next].tab.focus();
+  });
+
+  select(0);
+  return entries;
+}
+
+async function runPorchEntry(entry, target) {
+  try {
+    const data = await check(target, entry.spec);
+    clear(entry.panel);
+    entry.panel.appendChild(entry.spec.build(data));
+
+    const verdict = verdictOf(data);
+    entry.state.textContent = data.verdict ? verdict : "not graded";
+    entry.state.className = "tab-state " + verdictClass("stamp", verdict);
+  } catch (err) {
+    clear(entry.panel);
+    const hint = err.status === 429
+      ? "Wait a moment before trying again. Each host has its own budget, whoever asks."
+      : err.status === 503
+        ? "Several checks are running. Try again shortly."
+        : null;
+    entry.panel.appendChild(failure(err.message || "The check did not complete.", hint));
+    entry.state.textContent = "not run";
+    entry.state.className = "tab-state stamp-ungraded";
+  }
+}
+
+if (porchForm) {
+  porchForm.addEventListener("submit", async event => {
+    event.preventDefault();
+
+    const target = porchTarget.value.trim();
+    const chosen = selectedChecks();
+    if (!target || chosen.length === 0) {
+      clear(porchResults);
+      porchResults.hidden = false;
+      porchResults.appendChild(failure(target ? "Choose at least one check." : "Choose a domain to check."));
+      return;
+    }
+
+    porchButton.disabled = true;
+    const label = porchButton.textContent;
+    porchButton.textContent = "Checking";
+
+    try {
+      const entries = porchTabs(target, chosen);
+      const still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      porchResults.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+
+      // One at a time, as the console runs them: each check spends from the
+      // host's budget, and three at once is the shape the budget discourages.
+      for (const entry of entries) {
+        await runPorchEntry(entry, target);
+      }
+    } finally {
+      porchButton.disabled = false;
+      porchButton.textContent = label;
+    }
+  });
+}

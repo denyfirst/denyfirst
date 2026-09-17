@@ -1,0 +1,104 @@
+<!--
+  Porch, on the demonstration.
+
+  What the tool is, a live run of it against the one domain this deployment may
+  reach, and the report that run produces — every check in one place, each in
+  its own tab with its own verdict, because a TLS result says nothing about how
+  mail is delivered. The pages at /tls and /web still answer, for the reports
+  and notices that already point at them.
+-->
+<section class="porch-hero">
+  <div>
+    <p class="eyebrow">Porch by denyfirst</p>
+    <h1>Look closer.<br><span class="hero-soft">Know what answers.</span></h1>
+    <p class="lede">What your infrastructure presents to the outside world:
+    the TLS handshake and certificate, how the site is reached, and what the
+    domain's DNS says about its mail. Each finding cites the rule behind it,
+    and what could not be measured is said.</p>
+    <p class="chips"><span>TLS &amp; certificates</span><span>Web reach</span><span>Mail policy</span></p>
+    <a class="text-link" href="#how">How it works</a>
+  </div>
+
+  <section class="check-panel" aria-labelledby="check-heading">
+    <p class="eyebrow">Try it · live</p>
+    <h2 id="check-heading" class="check-panel-title">Our domain.<br>A real result.</h2>
+
+    <form id="porch-form" autocomplete="off">
+      <label class="field-label" for="porch-target">Domain</label>
+      <select class="field" id="porch-target" name="target" aria-describedby="porch-help">
+        {{range .Hosts}}<option value="{{.Host}}">{{.Host}} &mdash; {{.Shows}}</option>{{end}}
+      </select>
+
+      <fieldset class="checks">
+        <legend class="field-label">Checks</legend>
+        {{range .Checks}}
+        <label class="check">
+          <input type="checkbox" name="check" value="{{.ID}}" checked>
+          <span class="check-name">{{.Label}}</span>
+          <span class="check-says">{{.Says}}</span>
+          <span class="check-policy">{{.Policy}}</span>
+        </label>
+        {{end}}
+      </fieldset>
+
+      <button class="submit submit-wide" type="submit" id="porch-submit">Run the checks</button>
+    </form>
+
+    <p class="field-help" id="porch-help">
+      This deployment checks only the domains this project runs. To check
+      yours, <a href="https://github.com/denyfirst/denyfirst/blob/main/docs/self-host.md">run
+      Porch yourself</a>. <a href="/privacy#scans">What a check sends</a>
+      and the <a href="/terms">terms</a> are written out in full.
+    </p>
+    <noscript>
+      <p class="noscript">Running a check needs JavaScript, because the result
+      is fetched and drawn in the page. The command line tool needs nothing but
+      Go.</p>
+    </noscript>
+  </section>
+</section>
+
+<section class="porch-report" id="porch-results" aria-live="polite" hidden></section>
+
+<section class="band" id="how">
+  <div class="band-head">
+    <div>
+      <p class="eyebrow">How it works</p>
+      <h2 class="band-title">From connection<br>to clarity.</h2>
+    </div>
+    <p class="band-note">Here it checks our own domain. Run it yourself for the
+    infrastructure you are responsible for.</p>
+  </div>
+  <div class="columns">
+    <article>
+      <p class="index">01 / Connect</p>
+      <h3>Ask what a client asks.</h3>
+      <p>Handshakes at each TLS version, one request for the front page, and
+      the DNS records a mail server reads. Nothing is sent that a browser or a
+      mail server would not send.</p>
+    </article>
+    <article>
+      <p class="index">02 / Examine</p>
+      <h3>Grade against a named rule set.</h3>
+      <p>Each check has its own rule set, and every finding cites the standard
+      it rests on. Where no standard sets a line, the fact is reported rather
+      than graded.</p>
+    </article>
+    <article>
+      <p class="index">03 / Understand</p>
+      <h3>Start with what matters.</h3>
+      <p>Each check leads with its verdict and its findings. The tables and
+      limits are underneath, and the full report downloads as JSON.</p>
+    </article>
+  </div>
+</section>
+
+<section class="cta">
+  <div>
+    <p class="eyebrow">For your own infrastructure</p>
+    <h2 class="cta-title">Run Porch where you work.</h2>
+    <p>Self-hosted, with proof of control for every domain, and nothing sent
+    to us.</p>
+  </div>
+  <a class="button button-secondary" href="https://github.com/denyfirst/denyfirst/blob/main/docs/self-host.md">Self-hosting guide</a>
+</section>

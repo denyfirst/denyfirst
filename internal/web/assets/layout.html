@@ -14,7 +14,12 @@
 <body>
 
 <header class="masthead">
-  {{if .Brand}}<a class="wordmark" href="/"><span class="wordmark-deny">deny</span>first.</a>{{else}}<a class="wordmark" href="/">porch</a>{{end}}
+  {{if .Brand}}<a class="wordmark" href="/"><span class="wordmark-deny">deny</span>first.</a>
+  <nav class="masthead-nav" aria-label="Main">
+    <a href="/#products">Products</a>
+    <a href="/porch">Porch</a>
+    <a href="/privacy">Privacy</a>
+  </nav>{{else}}<a class="wordmark" href="/">porch</a>{{end}}
   <button class="theme-toggle" id="theme-toggle" type="button" hidden>Dark</button>
 </header>
 
