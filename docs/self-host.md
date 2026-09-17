@@ -52,6 +52,9 @@ anything else. The boundary is proof of control, it is one flag, and
 porchd -listen 0.0.0.0:8443 -verification-secret-file /etc/porch/secret
 ```
 
+The file is created on the first start if it is not there. Without it, `porchd`
+refuses to listen anywhere but loopback unless it is also given `-open`.
+
 `porchd -version` says which of the two you have, so a deploy can read it
 rather than trust a filename:
 
@@ -277,16 +280,104 @@ The image has **no base system**: no package manager, no shell, no libc.
 There is nothing in it to update and nothing in it to take. It also builds
 nothing — a builder stage would produce bytes nobody has checked, and the
 argument of this project is that the release is signed and reproducible. So
-the image is a wrapper around the binary **you verified**.
+the image is a wrapper around a binary **you verified**, or built yourself.
 
-```sh
-curl -fsSLO https://github.com/denyfirst/denyfirst/releases/download/v0.13.0/porchd_v0.13.0_linux_amd64
-# verify it — docs/verify.md
-mv porchd_v0.13.0_linux_amd64 porchd
-docker compose up -d
+### On a server, step by step
+
+1. Get the code and a binary. Either the release, verified — `docs/verify.md` —
+   or built from this checkout on any machine with Go, which fetches nothing
+   else:
+
+   ```sh
+   git clone https://github.com/denyfirst/denyfirst
+   cd denyfirst
+   CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o porchd ./cmd/porchd
+   ```
+
+   Built elsewhere, copy `porchd` into the checkout on the server.
+
+2. Make the data directory and give it to the user the container runs as.
+   There is no shell in the image to do this from inside:
+
+   ```sh
+   mkdir -p porch-data && sudo chown 65534:65534 porch-data
+   ```
+
+3. Start it:
+
+   ```sh
+   docker compose up -d --build
+   docker compose logs
+   ```
+
+   The first start writes a verification secret to `porch-data/secret` and
+   says so. Keep that file: it is what every domain's record is derived from,
+   and a new one means every domain publishing its record again.
+
+4. Open it. The example publishes the service on the server's own loopback,
+   so nothing is reachable from outside. From your computer:
+
+   ```sh
+   ssh -L 8080:127.0.0.1:8080 you@your-server
+   ```
+
+   and open `http://localhost:8080`.
+
+5. Check a name. The first time, the page shows a TXT record to add at your
+   DNS provider — `_porch-challenge.<domain>` and its value — and a button to
+   check again once it is published. After that the checks run, and they run
+   for every name under that domain without asking again, for as long as the
+   record is there. Delete the record and the domain is refused again.
+
+### Proof of control is on, and has to be
+
+A container listens beyond loopback by construction, and `porchd` refuses to
+do that while scanning whatever it is given: it will not start without
+`-verification-secret-file` or an explicit `-open`. The image and the compose
+file both turn proof on. `-open` exists for a network nobody else can reach,
+and it is the setting to think about twice.
+
+**Why showing the record is safe.** The value is derived from this
+installation's secret and the one domain. It proves something only once it is
+published in that domain's DNS, which only whoever runs the domain can do.
+Copied to another domain it is the wrong value, because that domain's value is
+different; copied into another installation it is the wrong value, because
+that installation's secret is different. Somebody who sees your record in
+public DNS learns nothing that lets them scan anything with your installation
+or theirs.
+
+**What it does not prove** is who owns the addresses a name points at. Whoever
+runs a zone can point a name at anything. That is DNS, not this record, and it
+is bounded by the rest of this page: private and reserved addresses are
+refused, each host has a budget, and a scan sends what a browser or a mail
+server would.
+
+### A public address, with a certificate
+
+`porchd` reads a certificate from disk and reloads it when it is renewed. With
+one from Let's Encrypt for `scan.example.com`:
+
+```yaml
+    command:
+      - "-listen"
+      - "0.0.0.0:8443"
+      - "-verification-secret-file"
+      - "/data/secret"
+      - "-tls-cert"
+      - "/certs/live/scan.example.com/fullchain.pem"
+      - "-tls-key"
+      - "/certs/live/scan.example.com/privkey.pem"
+    ports:
+      - "443:8443"
+    volumes:
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - ./porch-data:/data
+      - /etc/letsencrypt:/certs:ro
 ```
 
-Then `https://localhost` — or whatever certificate you put in front of it.
+The key has to be readable by user 65534. Nothing listens on port 80 — see
+`docs/invariants.md`, P5 — so obtain the certificate with a DNS challenge, or
+with `certbot certonly --standalone` while this service is stopped.
 
 ### The trust store comes from your machine
 
@@ -308,8 +399,9 @@ confident nonsense.
 ### What the compose file takes away
 
 `read_only: true`, `no-new-privileges:true`, `cap_drop: ALL`, and an
-unprivileged user. The container binds 8443 and the host publishes 443, so
-nothing inside needs the capability to bind a privileged port.
+unprivileged user. The container binds a port above 1024 and the host
+publishes it, so nothing inside needs the capability to bind a privileged port.
+The data directory is the only writable path.
 
 ---
 

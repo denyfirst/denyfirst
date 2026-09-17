@@ -1453,6 +1453,116 @@ async function runCheck(name, target) {
   }
 }
 
+/*
+  Proof of control, on an installation that requires it.
+
+  Asked before anything runs, so a name nobody proved anything about gets the
+  record to publish rather than three refusals. The dialog stays until the
+  record is seen or the person gives up, and the checks run the moment it is
+  seen. Nothing here decides anything: the service asks the same question
+  again on every scan, and this only saves a round of refusals.
+*/
+const proofDialog = document.getElementById("proof-dialog");
+const VERIFY = { endpoint: "/api/v1/verify" };
+
+function fillProof(records) {
+  const level = document.getElementById("proof-level");
+  clear(level);
+  records.forEach((r, i) => {
+    const option = el("option", null, r.domain);
+    option.value = String(i);
+    level.appendChild(option);
+  });
+  const pick = () => {
+    const r = records[Number(level.value)] || records[0];
+    document.getElementById("proof-name").textContent = r.name;
+    document.getElementById("proof-value").textContent = r.value;
+  };
+  level.onchange = pick;
+  // The broadest domain by default: one record then covers every name an
+  // operator is likely to check. The list is most specific first.
+  level.value = String(records.length - 1);
+  pick();
+}
+
+// waitForProof resolves true once the record is seen, false if abandoned.
+function waitForProof(target, first) {
+  const status = document.getElementById("proof-status");
+  const again = document.getElementById("proof-check");
+  const cancel = document.getElementById("proof-cancel");
+
+  fillProof(first.records || []);
+  status.textContent = "";
+  proofDialog.showModal();
+
+  return new Promise(resolve => {
+    const finish = ok => {
+      again.onclick = null;
+      cancel.onclick = null;
+      proofDialog.oncancel = null;
+      if (proofDialog.open) proofDialog.close();
+      resolve(ok);
+    };
+
+    cancel.onclick = () => finish(false);
+    proofDialog.oncancel = () => finish(false);
+
+    again.onclick = async () => {
+      again.disabled = true;
+      status.textContent = "Looking for the record…";
+      try {
+        const answer = await check(target, VERIFY);
+        if (answer.verified) {
+          status.textContent = "Found. Running the checks.";
+          finish(true);
+          return;
+        }
+        status.textContent = "Not there yet. DNS can take a few minutes; check again shortly.";
+      } catch (err) {
+        status.textContent = err.status === 429
+          ? "Asked too often. Wait a few seconds and check again."
+          : (err.message || "The record could not be looked up.");
+      } finally {
+        again.disabled = false;
+      }
+    };
+  });
+}
+
+if (proofDialog) {
+  proofDialog.addEventListener("click", event => {
+    const button = event.target.closest("[data-copy]");
+    if (!button) return;
+    // Selected, not written to the clipboard. The record names the domain, and
+    // the clipboard is shared with every process on the machine and sometimes
+    // synced off it — the same reason a report is never offered there. One
+    // keystroke copies a selection, and the person makes that choice.
+    const range = document.createRange();
+    range.selectNodeContents(document.getElementById(button.dataset.copy));
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    button.textContent = "Selected";
+    setTimeout(() => { button.textContent = "Select"; }, 1500);
+  });
+}
+
+// proven says whether the checks may run, asking for proof first where it is
+// required. A failure to ask is shown in the results and ends the run.
+async function proven(target) {
+  if (!consoleForm || consoleForm.dataset.proof !== "required" || !proofDialog) return true;
+
+  let answer;
+  try {
+    answer = await check(target, VERIFY);
+  } catch (err) {
+    consoleResults.appendChild(failure(err.message || "Whether this name is proven could not be checked."));
+    return false;
+  }
+  if (!answer.required || answer.verified) return true;
+  return waitForProof(target, answer);
+}
+
 if (consoleForm) {
   consoleForm.addEventListener("submit", async event => {
     event.preventDefault();
@@ -1482,6 +1592,8 @@ if (consoleForm) {
     consoleResults.hidden = false;
 
     try {
+      if (!(await proven(target))) return;
+
       // Awaited one at a time on purpose. See the note above.
       for (const name of chosen) {
         await runCheck(name, target);

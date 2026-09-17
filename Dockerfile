@@ -16,7 +16,11 @@
 #   curl -fsSLO https://github.com/denyfirst/denyfirst/releases/download/vX.Y.Z/porchd_vX.Y.Z_linux_amd64
 #   # ... verify it, then:
 #   mv porchd_vX.Y.Z_linux_amd64 porchd
-#   docker build -t denyfirst .
+#   docker compose up -d
+#
+# Or build it yourself from this checkout, which fetches nothing but Go:
+#
+#   CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o porchd ./cmd/porchd
 #
 # The binary is built with CGO_ENABLED=0, so it needs no dynamic loader and no
 # libc, which is what makes an empty image possible at all.
@@ -31,10 +35,15 @@ USER 65534:65534
 
 COPY --chmod=0555 porchd /porchd
 
-# Above 1024, so no capability is needed to bind it. Port 443 is reached by
+# Above 1024, so no capability is needed to bind it. A public port is reached by
 # publishing this one, which keeps the binding privilege in the container
 # runtime rather than in the program.
-EXPOSE 8443
+EXPOSE 8080
 
 ENTRYPOINT ["/porchd"]
-CMD ["-listen", "0.0.0.0:8443"]
+
+# Proof of control on by default. porchd refuses to scan anything for anyone
+# beyond loopback without it, and inside a container every address is beyond
+# loopback. The secret is created in /data on the first start, so /data has to
+# be a writable volume owned by 65534 — see docker-compose.yml.
+CMD ["-listen", "0.0.0.0:8080", "-verification-secret-file", "/data/secret"]

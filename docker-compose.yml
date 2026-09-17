@@ -2,16 +2,41 @@
 #
 # Read it before running it. Every line that is not a port or a path is there
 # to take something away.
+#
+# Before the first start, make the data directory and give it to the user the
+# container runs as — there is no shell in the image to do it from inside:
+#
+#   mkdir -p porch-data && sudo chown 65534:65534 porch-data
+#
+# docs/self-host.md walks through the rest, including a public address with a
+# certificate.
 
 services:
-  denyfirst:
+  porch:
     build: .
-    image: denyfirst
+    image: porch
 
-    # 443 on the host, 8443 in the container. The container never binds a
-    # privileged port, so it needs no capability to do so.
+    # Proof of control is on. The secret is created in the data directory on
+    # the first start and kept there; every domain is then asked to publish
+    # this installation's record before it is scanned, and the page shows the
+    # record. A service that scans anything is refused beyond loopback, and
+    # inside a container every address is beyond loopback.
+    command:
+      - "-listen"
+      - "0.0.0.0:8080"
+      - "-verification-secret-file"
+      - "/data/secret"
+
+    # Published on this machine's loopback only. Reach it from your own
+    # computer through SSH:
+    #
+    #   ssh -L 8080:127.0.0.1:8080 you@this-server
+    #
+    # and open http://localhost:8080. Nothing about the service is exposed to
+    # anyone who cannot log in to this machine. For a public address, see the
+    # certificate section of docs/self-host.md; that is where "443:8443" goes.
     ports:
-      - "443:8443"
+      - "127.0.0.1:8080:8080"
 
     # The trust store comes from this machine, not from the image.
     #
@@ -24,15 +49,18 @@ services:
     # The service refuses to start if it cannot find one, because an empty
     # store does not fail — it reports every certificate as untrusted, which
     # reads as a finding about the scanned server.
+    #
+    # porch-data holds the verification secret, and results if you ask for
+    # them with -results-dir /data/results. It is the only thing written to.
     volumes:
       - /etc/ssl/certs:/etc/ssl/certs:ro
+      - ./porch-data:/data
 
     environment:
       SSL_CERT_DIR: /etc/ssl/certs
 
-    # Nothing in the image is written to. The counter file is the only thing
-    # this program ever writes, and it is not enabled here; add a volume and
-    # -stats-file if you want one.
+    # Nothing in the image is written to. The data directory above is the
+    # only writable path.
     read_only: true
 
     # A process in here cannot gain privileges it did not start with, whatever

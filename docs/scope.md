@@ -82,7 +82,7 @@ established at run time. Five properties decide whether it works.
 | | default | why |
 |---|---|---|
 | `porch-scan`, in a terminal | off | whoever runs it already has the machine |
-| `porchd`, a service | **on** | anything anyone can reach must not scan arbitrary hosts |
+| `porchd`, a service | **on** beyond loopback; `-open` turns it off | anything anyone can reach must not scan arbitrary hosts |
 
 A protection that must be switched on is one that is eventually forgotten,
 which is the same argument `AllowAnyPort` and `safedial` already make.

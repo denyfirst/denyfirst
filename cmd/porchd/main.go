@@ -17,12 +17,15 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/netip"
@@ -137,8 +140,17 @@ func run() int {
 		// The secret is what every token is derived from, so a deployment that
 		// leaked it is a deployment anyone can add domains to.
 		verifySecretFile = flag.String("verification-secret-file", "",
-			"path to a file holding this deployment's verification secret; when set,\n"+
-				"\tonly domains that have published the matching challenge are scanned")
+			"path to a file holding this deployment's verification secret, created if\n"+
+				"\tabsent; when set, only domains that have published the matching challenge\n"+
+				"\tare scanned, and the page shows the record to publish")
+
+		// Stated rather than implied. Without it porchd refuses to listen
+		// beyond loopback unless a secret is given, because a service anyone can
+		// reach and that scans anything is an open scanner with this machine's
+		// address on it.
+		allowOpen = flag.Bool("open", false,
+			"listen beyond loopback without -verification-secret-file, scanning any\n"+
+				"\tpublic name it is given. Only for a network nobody else can reach")
 
 		verifyToken = flag.String("verification-token", "",
 			"print what the named domain must publish at "+verify.Label+", then exit")
@@ -252,8 +264,32 @@ func run() int {
 	// The alternative is a service that was asked to require proof, could not,
 	// and scanned whatever it was given — the failure mode this whole boundary
 	// exists to prevent, arriving through a typo in a path.
+	// A path that names no file gets a new secret, so turning proof on is one
+	// flag rather than a flag and a command to remember. Created exclusively
+	// and readable by this user alone. A mistyped path therefore means a new
+	// secret and every existing record refused, which fails closed: nothing is
+	// scanned that was not proven to this secret. Here and not under -version,
+	// which is a question and writes nothing.
+	if *verifySecretFile != "" {
+		if err := createSecret(*verifySecretFile); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+	}
+
 	scope, err := verificationScope(*verifySecretFile, *resolver)
 	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+
+	// An open service is refused anywhere but loopback.
+	//
+	// docs/scope.md said proof was on by default for a service and the code
+	// did not (audit A01): a porchd bound to a public interface with no secret
+	// scanned whatever anyone asked. Loopback stays open, because only this
+	// machine can reach it; anything else needs proof, or -open said out loud.
+	if err := openAllowed(*listen, scope != nil || demo.Enabled, *allowOpen); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
@@ -837,13 +873,10 @@ func reach(scoped bool) string {
 
 // verificationScope reads the deployment secret, or reports why it could not.
 //
-// Nil and no error means no proof is required, which is what an unconfigured
-// deployment gets today. That is the state docs/scope.md calls the open one:
-// a service anyone can reach that will scan anything it is asked to. It is
-// opt-in for now and says so loudly at startup, because turning it on by
-// default would stop every deployment that has not published a record yet —
-// and a change that stops a running service is a change to make deliberately
-// rather than as a side effect of an upgrade.
+// Nil and no error means no proof is required. That is the state docs/scope.md
+// calls the open one, and openAllowed keeps it to loopback unless the operator
+// says -open: a service beyond loopback that scans anything was the default
+// until the 2026-09-16 audit (A01) found the page promising otherwise.
 //
 // The secret is read from a file rather than a flag: a flag value is in the
 // process list, where every user on the machine reads it.
@@ -880,4 +913,59 @@ func verificationScope(path, resolver string) (*verify.Scope, error) {
 		// the same name.
 		Fetcher: &challenge.Fetcher{},
 	}, nil
+}
+
+// secretOut is where the creation of a secret is announced.
+var secretOut io.Writer = os.Stderr
+
+// createSecret writes 32 random bytes, base64-encoded, to path if nothing is
+// there. An existing file is left alone, whatever it holds: reading and judging
+// it is verificationScope's job.
+func createSecret(path string) error {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return fmt.Errorf("a verification secret could not be generated: %w", err)
+	}
+
+	// #nosec G304 -- operator-supplied path, never request-supplied
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("the verification secret could not be created: %w", err)
+	}
+	if _, err := f.Write([]byte(base64.StdEncoding.EncodeToString(raw) + "\n")); err != nil {
+		f.Close() //nolint:errcheck,gosec // the write error is the one worth reporting
+		return fmt.Errorf("the verification secret could not be written: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("the verification secret could not be written: %w", err)
+	}
+	fmt.Fprintln(secretOut, "a new verification secret was written; every domain has to publish its record again")
+	return nil
+}
+
+// openAllowed refuses a service that would scan anything on an address other
+// than loopback, unless the operator said -open.
+//
+// An address that does not parse is left for the listener to refuse, which
+// says so better than this could.
+func openAllowed(listen string, scoped, open bool) error {
+	if scoped || open {
+		return nil
+	}
+	host, _, err := net.SplitHostPort(listen)
+	if err != nil {
+		return nil
+	}
+	if host == "localhost" {
+		return nil
+	}
+	if ip, err := netip.ParseAddr(host); err == nil && ip.IsLoopback() {
+		return nil
+	}
+	return errors.New("porchd will not listen beyond loopback without proof of control: " +
+		"anyone who can reach it could point it at any host, from this machine's address. " +
+		"Add -verification-secret-file, or -open if no one else can reach this network")
 }
