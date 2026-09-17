@@ -500,7 +500,7 @@ func Configure(verified, keeps bool) {
 // rather than a blank response.
 func renderConsole(verified, keeps bool) []byte {
 	p := &page{
-		Title:       ToolName + " — check a name you run",
+		Title:       ToolName,
 		Description: "Run this project's checks against one name: the handshake and certificate, how the site is reached, and what the domain's DNS says about its mail.",
 		Fragment:    "assets/console.html",
 		Script:      true,
