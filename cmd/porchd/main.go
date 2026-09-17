@@ -41,6 +41,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/results"
 	"github.com/denyfirst/denyfirst/internal/scan"
+	"github.com/denyfirst/denyfirst/internal/smtptls"
 	"github.com/denyfirst/denyfirst/internal/truststore"
 	"github.com/denyfirst/denyfirst/internal/verify"
 	"github.com/denyfirst/denyfirst/internal/web"
@@ -164,6 +165,14 @@ func run() int {
 		resultsKeep = flag.Int("results-keep", 0,
 			"how many results to keep per target, oldest dropped first; 0 keeps all")
 
+		// The name the mail check gives each exchanger with EHLO. The default is
+		// this machine's own name or address, which an exchanger's operator then
+		// reads; behind NAT that is a private address. The same flag porch-scan
+		// has (audit A26).
+		heloName = flag.String("helo", "",
+			"the `name` the mail check gives each mail exchanger with EHLO. Empty means\n"+
+				"\tthis machine's fully qualified host name, or its address, as RFC 5321 says")
+
 		// Which resolver the lookups this service makes itself are asked: CAA,
 		// the mail records, and the proof-of-control challenge.
 		//
@@ -219,6 +228,11 @@ func run() int {
 		// what this deployment is rather than what the build alone decides. A
 		// -version describing a deployment it has not yet configured would be
 		// guessing at the one thing it exists to state.
+		if err := smtptls.CheckHeloName(*heloName); err != nil {
+			fmt.Fprintln(os.Stderr, "-helo: "+err.Error())
+			return 2
+		}
+
 		scope, err := verificationScope(*verifySecretFile, *resolver)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -312,6 +326,7 @@ func run() int {
 	// piece of configuration here: a service that could start keeping records
 	// while running would be one whose promise depends on when somebody looked.
 	api.KeepResults(&results.Store{Dir: *resultsDir, Keep: *resultsKeep})
+	api.UseHeloName(*heloName)
 
 	if *statsFile != "" {
 		if snapshot, err := loadStats(*statsFile); err == nil {

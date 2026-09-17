@@ -45,6 +45,7 @@ import (
 	"github.com/denyfirst/denyfirst/internal/policy"
 	"github.com/denyfirst/denyfirst/internal/results"
 	"github.com/denyfirst/denyfirst/internal/scan"
+	"github.com/denyfirst/denyfirst/internal/smtptls"
 	"github.com/denyfirst/denyfirst/internal/tlsprobe"
 )
 
@@ -296,6 +297,13 @@ func run() int {
 	if len(targets) == 0 {
 		flag.Usage()
 		return exitError
+	}
+
+	// A name that would not be sent is refused rather than replaced by this
+	// machine's own, which is what setting it was meant to avoid.
+	if err := smtptls.CheckHeloName(*heloName); err != nil {
+		fmt.Fprintln(os.Stderr, "-helo: "+err.Error())
+		return 2
 	}
 
 	store := &results.Store{Dir: *resultsDir, Keep: *resultsKeep}

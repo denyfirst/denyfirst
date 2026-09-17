@@ -292,6 +292,12 @@ func (s *Server) mailCheck() check {
 }
 
 func parseMailTarget(raw string) (target, *refusal) {
+	// An address is its domain, and the rest is gone before anything below —
+	// a refusal included — can repeat it. The scanner has always taken an
+	// address; until the 2026-09-16 audit (A32) this parser refused one first,
+	// so the page's natural input was an error on the service alone.
+	raw, _ = mailscan.DropLocalPart(raw)
+
 	host, _, explicit, err := scan.SplitTargetPort(raw)
 	if err != nil {
 		return target{}, &refusal{http.StatusBadRequest, "invalid_target", mailTargetRule}

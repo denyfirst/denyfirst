@@ -1230,8 +1230,19 @@ function stsSays(facts) {
 
 // ── Submission ──────────────────────────────────────────────────────────
 
+// domainOnly reduces a mail address to its domain, at the last "@".
+//
+// The part before it is a person, and no check has any use for it. Dropped
+// here, in the browser, so it never reaches the service at all — the service
+// drops it too, and a promise kept in two places survives either being changed.
+function domainOnly(target) {
+  const at = target.lastIndexOf("@");
+  return at < 0 ? target : target.slice(at + 1);
+}
+
 async function check(target, spec) {
   spec = spec || CHECK;
+  target = domainOnly(target);
   // Addressed under the check it runs, like the page it is called from.
   //
   // /api/v1/scan is still served and answers identically, because a path in

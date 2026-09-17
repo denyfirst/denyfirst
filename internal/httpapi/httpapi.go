@@ -47,10 +47,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/netip"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -674,7 +676,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, c check) {
 	// problem to be told about.
 	if s.store.Enabled() {
 		if err := s.store.Put(c.name, t.historyName(), string(out.verdict), out.policy, out.findings); err != nil {
-			log.Printf("a result was not kept: %v", err)
+			fmt.Fprintln(notKeptLog, notKept(err))
 		}
 	}
 
@@ -808,6 +810,17 @@ func (s *Server) KeepResults(store *results.Store) {
 	s.store = store
 }
 
+// UseHeloName sets the name the mail check gives each exchanger with EHLO.
+//
+// Empty leaves the default, which is this machine's fully qualified name or,
+// failing that, its address as a literal — behind NAT, a private address the
+// exchanger's operator then reads. The command line could set it from the
+// start; until the 2026-09-16 audit (A26) the service could not. Call it before
+// serving, like KeepResults.
+func (s *Server) UseHeloName(name string) {
+	s.mail.HeloName = name
+}
+
 // UseWebScanner replaces the scanner behind the web check.
 //
 // Call it before serving; it is not safe once requests are being handled, for
@@ -843,4 +856,29 @@ func (s *Server) UseWebScanner(w *webscan.Scanner) {
 	}
 
 	s.web = w
+}
+
+// notKeptLog is where a failure to keep a result is said. Standard error,
+// without the timestamp the log package adds: a line saying a result was lost
+// at a given second is a line saying somebody scanned something at that
+// second, and a date is all this project keeps (P1).
+var notKeptLog io.Writer = os.Stderr
+
+// notKept says why a result was not kept, without saying which.
+//
+// The history file is named after the target, so an error from the file
+// system carries the target in its path, and a log line is the one place the
+// service writes that nobody set out to keep. The 2026-09-16 audit (A23). What
+// survives is the operation and the system's reason — "open: permission
+// denied" — which is what an operator needs to fix the directory.
+func notKept(err error) string {
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
+		return "a result was not kept: " + pathErr.Op + ": " + pathErr.Err.Error()
+	}
+	var linkErr *os.LinkError
+	if errors.As(err, &linkErr) {
+		return "a result was not kept: " + linkErr.Op + ": " + linkErr.Err.Error()
+	}
+	return "a result was not kept: the results store refused it"
 }

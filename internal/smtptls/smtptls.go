@@ -345,6 +345,20 @@ func (p *Prober) heloName(conn net.Conn) string {
 	return "localhost"
 }
 
+// CheckHeloName refuses a configured EHLO name that would not be sent.
+//
+// heloName passes over a name it cannot use and falls back to this machine's
+// own, which is right for a scan and wrong for a setting: an operator who gave a
+// name so as not to send their machine's is owed a refusal at start rather than
+// the very disclosure they configured away (audit A26). Empty is not a name,
+// and is accepted as the choice of the default.
+func CheckHeloName(name string) error {
+	if name != "" && validName(name) == "" {
+		return errors.New("the EHLO name must be a host name: letters, digits, hyphens and dots")
+	}
+	return nil
+}
+
 // validName returns a name that may be written into an SMTP command, or empty.
 //
 // The operator's configured name reaches a command line built by hand, so a

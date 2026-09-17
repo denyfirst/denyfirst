@@ -1243,6 +1243,10 @@ delivery is dropped rather than reported as unsatisfied (R6).
 at the last `@`, at the edge, before anything can log, count or report it. A
 local part is a person's identity and every question here is about the zone, so
 there is nowhere for it to go rather than a rule about not putting it there.
+The edge is three places: the scanner, the service's parser — which refused an
+address before the scanner saw it until the 2026-09-16 audit (A32) — and the
+page, which cuts it off before a request is built, so it never leaves the
+browser at all.
 
 **And every report says no message was sent.** No sender, recipient or message
 was ever named, and a DANE binding's correctness was not checked. A DKIM key is
@@ -1326,6 +1330,12 @@ every report.
 `TestDANEIsAskedOnlyBeneathTheExchangersTheDomainNamed`,
 `TestANullMXEndsTheQuestionsAboutDelivery`,
 `TestAnAddressIsAcceptedAndTheLocalPartIsDropped`,
+`TestAMailAddressIsAcceptedAsItsDomain`,
+`TestThePageSendsOnlyTheDomainOfAnAddress`,
+`TestAnUnusableEHLONameIsRefusedAtStart`,
+`TestTheEHLONameIsCheckedAndReachesTheService`,
+`TestAnUnusableEHLONameStopsTheCommand`,
+`TestTheEHLONameReachesTheMailCheck`,
 `TestTheAddressIsSplitWhereTheDomainBegins`,
 `TestTheMailPathIsDescribedAndNeverGraded`,
 `TestAnAnnouncedMTASTSPolicyIsNotAReadOne`,
@@ -1786,7 +1796,16 @@ to be found.
 ### P1 — Nothing about a request is recorded
 
 Not the target, not the client address, not the result. Addresses held for
-rate limiting live in memory and are swept as they go idle.
+rate limiting live in memory and are swept as they go idle — on a timer while
+anything is held, not only when the next request arrives. Until the 2026-09-16
+audit (A22) the sweep ran on a request, so the last client of a quiet day was
+held until the next day, whatever the privacy page said.
+
+**Where an operator asked for results to be kept, a failure to keep one is the
+one line this package writes**, and it names the operation and the system's
+reason and nothing else. The history file is named after the target, so a
+file-system error carries the target in its path; before the same audit (A23)
+it was logged whole, with a time of day.
 
 This includes the parts nobody wrote. Go's `http.Server` logs lines such as
 `http: panic serving 203.0.113.7` to standard error by default, so the server
@@ -1800,7 +1819,12 @@ unhappy ones.
 
 *Enforced by:* the absence of logging in `internal/httpapi`, and
 `httpapi.SilentErrorLog` passed to `http.Server.ErrorLog`
-*Guarded by:* `TestNothingIsLogged`, `TestClientAddressesAreForgotten`
+*Guarded by:* `TestNothingIsLogged`, `TestClientAddressesAreForgotten`,
+`TestAnIdleClientIsForgottenWithoutAnotherRequest`,
+`TestAnIdleTargetIsForgottenWithoutAnotherScan`,
+`TestTheTimerSweepsEvenJustAfterARequestDid`,
+`TestTheTargetTimerSweepsEvenJustAfterAScanDid`,
+`TestAResultNotKeptIsSaidWithoutTheTarget`, `TestNotKeptKeepsOnlyTheReason`
 
 ### P2 — The target travels in a request body, not a URL
 
@@ -3553,6 +3577,7 @@ clock is free for an integer and is not free for a map.
 `TestEveryCheckBlockNamesItsOwnRuleSet`,
 `TestAWebScanDoesNotMoveTheTLSFigures`, `TestACheckWithNoScansHasNoBlock`,
 `TestOnlyKnownChecksAreCounted`, `TestEveryCountedCheckCanOccur`,
+`TestAMailScanIsCountedAsOne`,
 `TestAFileWithoutCheckBlocksRestoresIntoTheTLSBlock`,
 `TestARollbackReadsTheTLSFiguresAndIgnoresTheRest`,
 `TestRestoreFiltersUnknownChecks`,
