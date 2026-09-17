@@ -44,6 +44,10 @@ type ContentFacts struct {
 	// seen, so an empty list is "none in the part that was read".
 	Truncated bool
 
+	// Incomplete is true when reading stopped on an error before the page
+	// ended. What came before was read; what came after was not seen.
+	Incomplete bool
+
 	// Blocking, Passive and Forms are the plaintext references found, each
 	// already reduced to a host by internal/markup. No path, no query, no
 	// userinfo, and no markup.
@@ -195,6 +199,13 @@ func GradeContent(f ContentFacts) WebResult {
 			"anything it loads further down was not established either way.")
 	}
 
+	// The same silence, for another reason: the read failed part way. Until
+	// the 2026-09-16 audit (A17) it was reported as a page that ended there.
+	if f.Incomplete && !f.Truncated {
+		out.unsettled("Reading the page stopped before it ended, so only its start was examined and " +
+			"anything it loads further down was not established either way.")
+	}
+
 	return out
 }
 
@@ -256,7 +267,9 @@ func alreadyVerified(verified []string) string {
 	}
 	return " " + strings.ToUpper(another(len(verified))[:1]) + another(len(verified))[1:] +
 		" on this page " + isAre(len(verified)) + " pinned this way already: " +
-		namedHosts(verified) + "."
+		namedHosts(verified) + ". That says the attribute is there; whether each hash is " +
+		"well formed and matches the file served was not checked, because this scan fetches " +
+		"none of them."
 }
 
 func isAre(n int) string {

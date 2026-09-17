@@ -399,6 +399,15 @@ about what may be read. So:
   dependencies, so what exists is a tag scanner. It follows that it sees less
   than a browser, and the limits say so rather than the report implying
   otherwise. Markup a script assembles at run time is invisible here.
+- **An address is read as a browser resolves it.** Character references in an
+  attribute are decoded, tabs and newlines inside an address are dropped, a
+  backslash is a slash for http and https, `http:host` is `http://host`, the
+  first `<base href>` moves every relative address after it, each address in a
+  `srcset` is read, a control's `formaction` is a form action, and `rel` is a
+  list of words. The page's own host over plaintext or on another port is
+  another origin. Before the 2026-09-16 audit (A17) `http&#58;//host/` was a
+  relative address, and a read that failed part way was reported as a page that
+  ended there; `Incomplete` now says only its start was seen.
 - **Off unless asked, and refused outright in a demonstration build.**
   `webprobe.Prober.ReadMarkup` is false in the zero value, so every caller
   that has not been changed keeps the old behaviour. `demo.Enabled` is a
@@ -516,6 +525,16 @@ nothing else to look for.
 `TestASchemeRelativeAddressIsReadAsThePagesOwnScheme`,
 `TestNothingOverTLSIsBlocked`,
 `TestAReferenceCanBeBothPlaintextAndAnotherOrigin`,
+`TestAnAddressIsReadAsABrowserResolvesIt`,
+`TestABaseElementMovesRelativeAddresses`,
+`TestAnEmptyAddressIsNotABaseReference`,
+`TestAnotherPortIsAnotherOrigin`,
+`TestEveryAddressInASrcsetIsRead`,
+`TestAFormActionOnAControlIsAFormAction`,
+`TestAStylesheetAmongOtherRelationsIsAStylesheet`,
+`TestAReadThatFailsPartWayIsWhatWasSeen`,
+`TestAnIncompleteReadSaysWhatItCouldNotSee`,
+`TestAnIncompletePageReachesTheGrading`,
 `TestWhatThePagePullsInFromElsewhereReachesTheReport`,
 `TestAPageLoadingItsOwnThingsIsToldNothing`,
 `TestPlaintextIsAnsweredBeforeIntegrity`,
@@ -1168,6 +1187,17 @@ fenced four ways, and each is a test:
 - **Not a mail server.** The policy host is a web host, and one GET is all it
   is sent.
 
+**A file that was fetched is not yet a policy.** RFC 8461 §3.2 requires
+`version: STSv1`, one of the three modes, a `max_age`, and an `mx` for a policy
+that enforces or tests; `version`, `mode` and `max_age` appear once. A file
+missing any of them, or larger than the bound, is one no sending server applies,
+so it is graded `mail.mta-sts-policy-invalid` with the reason and nothing in it
+is used. Until the 2026-09-16 audit (A18) a file with no version line was read
+as the enforcing policy its other lines described. A policy naming more
+patterns than are kept is not compared with the exchangers at all: a pattern
+past the bound might be the one that covers a host, so neither "uncovered" nor
+"every exchanger is matched" is established.
+
 **An exchanger is asked for encryption, and for nothing else.** Whether an MX
 offers STARTTLS, and what certificate it presents, is the fact an enforcing
 MTA-STS policy and a DANE record both depend on, and only the exchanger can
@@ -1325,6 +1355,12 @@ every report.
 `TestAnUnknownKeyDoesNotDiscardThePolicy`,
 `TestOnlyASuccessfulResponseIsAPolicy`,
 `TestAnEnormousBodyIsBounded`,
+`TestTooManyPatternsAreSaidToBeCut`,
+`TestAFileMissingWhatAPolicyNeedsIsNotAPolicy`,
+`TestAnInvalidPolicyIsGradedAndNotRead`,
+`TestACutPolicyIsNotComparedWithTheExchangers`,
+`TestAnInvalidPolicyIsGradedWithItsReason`,
+`TestCoverageIsClaimedOnlyFromAWholeList`,
 `TestAFailedFetchIsNotAnAbsentPolicy`,
 `TestAPolicyIsNotReadOverAnUntrustedConnection`,
 `TestTheCertificateMustNameThePolicyHost`,

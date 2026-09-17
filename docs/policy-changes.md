@@ -182,6 +182,13 @@ exchanger the policy does not match is graded under `enforce` and, under
 `testing`, named with the consequence of moving to `enforce` as it stands —
 nothing is failing yet, and that sentence is the reason to read the file at all.
 
+A file that was fetched and is not a valid policy — no `version: STSv1`, no
+mode or one RFC 8461 does not define, no `max_age`, no `mx` for a mode that
+needs one, a repeated field, or more than the size bound — is graded
+`mail.mta-sts-policy-invalid`, weak, with the reason, and nothing in it is used:
+a sending server applies no MTA-STS from it. A policy naming more host patterns
+than are kept is not compared with the exchangers, and the report says so.
+
 A policy that could not be fetched is reported with its reason and graded for
 nothing. A failure here looks the same whether the policy host is broken or this
 machine's egress is blocked, and no measurement available from here tells them
@@ -467,6 +474,16 @@ may not reach, or the redirect limit — is said as not followed rather than
 graded `reach.never-reaches-tls`, and a site whose reach was not established is
 ungraded rather than strong. And missing framing protection is said unless an
 enforcing header carries `frame-ancestors`. No rule identifier changed.
+
+**The page is read as a browser resolves its addresses (A17).** Character
+references in attributes are decoded, `<base href>`, `srcset` and `formaction`
+are read, `rel` is a list of words, and tabs, newlines and backslashes in an
+address are read as the URL standard reads them. So `http&#58;//host/app.js`
+is now the plaintext script it is, and can raise `content.mixed-blocked`. The
+page's own host over plaintext or on another port is another origin. A read that
+stopped part way now says so, as a truncated one did. The sentence naming
+origins that carry an integrity attribute now says the hashes themselves were
+not checked.
 
 **The check reads the cookies it was already collecting.** Every Set-Cookie a
 site sends has been in the report since the check shipped and no rule looked at

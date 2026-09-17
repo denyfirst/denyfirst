@@ -200,6 +200,14 @@ type MailFacts struct {
 	// including a leading "*." where the policy used one.
 	MTASTSPolicyMX []string `json:"mtaStsPolicyMX,omitempty"`
 
+	// MTASTSPolicyInvalid says why the policy file that was read is not a policy
+	// a sending server would apply. Empty when it is one.
+	MTASTSPolicyInvalid string `json:"mtaStsPolicyInvalid,omitempty"`
+
+	// MTASTSPolicyMXTruncated is true when the policy named more patterns than
+	// are kept, so which exchangers it covers was not established.
+	MTASTSPolicyMXTruncated bool `json:"mtaStsPolicyMXTruncated,omitempty"`
+
 	// MTASTSUncovered are exchangers published in DNS that no pattern in the
 	// policy matches.
 	//
@@ -410,6 +418,14 @@ func GradeMail(f MailFacts) MailFinding {
 	// graded: see MTASTSPolicyReason.
 	if f.MTASTSPolicyRead {
 		switch {
+		case f.MTASTSPolicyInvalid != "":
+			add("mail.mta-sts-policy-invalid", Weak,
+				"The MTA-STS policy is not a valid policy",
+				"The policy served at mta-sts.<domain>/.well-known/mta-sts.txt is not one RFC 8461 "+
+					"allows: "+f.MTASTSPolicyInvalid+". A sending server that cannot read the policy "+
+					"applies no MTA-STS at all, so the domain announces protection it does not have.",
+				rfc8461)
+
 		case f.MTASTSMode == "":
 			add("mail.mta-sts-policy-invalid", Weak,
 				"The MTA-STS policy names no mode",
@@ -928,6 +944,13 @@ func describeSTS(f MailFacts) []Note {
 		out = append(out, Unsettled("The policy names "+namedHosts(f.MTASTSPolicyMX)+". Whether "+
 			"that covers the domain's own mail exchangers was not established, because the MX "+
 			"records were not read."))
+
+	case f.MTASTSPolicyMXTruncated:
+		// Before "every exchanger is matched": with patterns dropped, an empty
+		// list of uncovered hosts means nobody compared, not that all matched.
+		out = append(out, Unsettled("The policy names more host patterns than this scan keeps, "+
+			"so whether it covers the domain's own mail exchangers was not established: a "+
+			"pattern past the ones kept might be the one that matches."))
 
 	case len(f.MTASTSUncovered) == 0 && len(f.MXHosts) > 0:
 		out = append(out, Observed("Every mail exchanger the domain publishes is matched by the "+
