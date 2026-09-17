@@ -97,3 +97,28 @@ func TestThePorchPageShowsOneHostAndOffersSeveral(t *testing.T) {
 		}
 	}
 }
+
+// The front page says what denyfirst makes, the about section who makes it,
+// and the footer only the promise.
+//
+// Each phrase once, where it belongs: the footer carried "Independent
+// security and privacy tools" beside the promise while the hero said "team",
+// and the section about the team was headed only "denyfirst".
+func TestEachDenyfirstPhraseIsSaidOnceWhereItBelongs(t *testing.T) {
+	if !demo.Enabled {
+		t.Skip("the front page is the demonstration's")
+	}
+	home := get(t, "/").Body.String()
+	for _, want := range []string{
+		`<p class="eyebrow eyebrow-dot">Independent security and privacy tools</p>`,
+		`<p class="eyebrow">03 / Independent security &amp; privacy team</p>`,
+		`<p class="colophon-line">Cites everything. Records nothing.</p>`,
+	} {
+		if !strings.Contains(home, want) {
+			t.Errorf("the front page does not carry %s", want)
+		}
+	}
+	if n := strings.Count(home, "Independent security and privacy tools"); n != 1 {
+		t.Errorf("the front page says what denyfirst makes %d times, want once", n)
+	}
+}
