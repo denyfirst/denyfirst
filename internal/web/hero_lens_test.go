@@ -48,6 +48,11 @@ func TestTheHeroLensIsDecorationAndNothingMore(t *testing.T) {
 		"initial-value: 0px;",
 		".hero-lit .hero-lens { --lens-r: 15rem; }",
 		"pointer-events: none;",
+		// Faded towards every edge, so the circle dissolves rather than being cut.
+		"linear-gradient(to right, transparent, #000 18%, #000 82%, transparent),",
+		"linear-gradient(to bottom, transparent, #000 22%, #000 78%, transparent);",
+		"mask-composite: intersect;",
+		"-webkit-mask-composite: source-in;",
 	} {
 		if !strings.Contains(string(css), want) {
 			t.Errorf("style.css no longer contains %q", want)
@@ -63,6 +68,15 @@ func TestTheHeroLensIsDecorationAndNothingMore(t *testing.T) {
 		}
 		if front && !strings.Contains(string(body), `<div class="hero-lens" aria-hidden="true">`) {
 			t.Errorf("the lens is missing, or read aloud")
+		}
+		if front {
+			_, lens, _ := strings.Cut(string(body), `<div class="hero-lens"`)
+			lens, _, _ = strings.Cut(lens, "</div>")
+			// Quiet words, not the names of what a check reads: those caught
+			// the eye as data where the layer is meant to be texture.
+			if !strings.Contains(lens, "Look closer.") || strings.Contains(lens, "TLS") || strings.Contains(lens, "DMARC") {
+				t.Errorf("the lens does not carry its quiet words:%s", lens)
+			}
 		}
 	}
 }
