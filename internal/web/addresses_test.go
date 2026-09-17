@@ -2,6 +2,7 @@ package web
 
 import (
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -361,47 +362,51 @@ func TestEachScanPageDeclaresItsCheck(t *testing.T) {
 	}
 }
 
-// A check's page sends a reader to that check's limits, footer included.
+// The footer leads to the documents, and to no one check's limits.
 //
-// The footer is the one piece of markup every page shares, and it carried one
-// address while there was one check. The moment there were two, /web served a
-// report and then offered "How a report is read" pointing at the limits of a
-// TLS handshake — which is the confusion the method pages are separate to
-// prevent, arriving through the only element that is on every page at once.
-//
-// Caught by looking at the rendered page rather than by reading the layout,
-// because what a reader clicks is the rendered href.
-func TestEachCheckPageSendsAReaderToItsOwnLimits(t *testing.T) {
-	for path, want := range map[string]string{
-		"/tls":        "/tls/method",
-		"/tls/method": "/tls/method",
-		"/web":        "/web/method",
-		"/web/method": "/web/method",
-	} {
-		body := string(rendered[path])
-		if body == "" {
-			t.Errorf("%s is not served", path)
+// It carried "How a report is read", pointing at the limits of the check a
+// page was about and at the Transport limits everywhere else. Once there were
+// three checks and pages that run all of them, a single link there was right
+// on a minority of pages. The method pages are reached from the reports that
+// need them and from /docs, which lists all three.
+func TestTheFooterLeadsToTheDocumentsAndNotOneChecksLimits(t *testing.T) {
+	for path, body := range rendered {
+		_, foot, ok := strings.Cut(string(body), `<footer class="colophon">`)
+		if !ok {
 			continue
 		}
-
-		other := "/tls/method"
-		if want == "/tls/method" {
-			other = "/web/method"
+		foot, _, _ = strings.Cut(foot, "</footer>")
+		links := regexp.MustCompile(`href="([^"]+)"`).FindAllStringSubmatch(foot, -1)
+		var got []string
+		for _, l := range links {
+			got = append(got, l[1])
 		}
-
-		if !strings.Contains(body, `href="`+want+`">How a report is read`) {
-			t.Errorf("%s does not point its footer at %s", path, want)
+		if strings.Join(got, " ") != "/docs /privacy /terms" {
+			t.Errorf("%s: the footer links %v, want /docs /privacy /terms", path, got)
 		}
-		if strings.Contains(body, `href="`+other+`">How a report is read`) {
-			t.Errorf("%s points its footer at %s, which is another check's limits", path, other)
+		if strings.Contains(foot, "How a report is read") {
+			t.Errorf("%s: the footer still offers one check's limits", path)
 		}
 	}
+}
 
-	// A page that is not a check's still points somewhere, because a reader
-	// who arrived from a report has to be able to get back to what it means.
-	for _, path := range []string{"/privacy", "/terms"} {
-		if !strings.Contains(string(rendered[path]), `>How a report is read`) {
-			t.Errorf("%s carries no link explaining how a report is read", path)
+// The footer's row sits in the middle of its band.
+//
+// It sat 29px under the rule and 48px above the bottom, because the band had
+// more padding below than above and the last paragraph kept its margin.
+func TestTheFooterRowIsCentredInItsBand(t *testing.T) {
+	css, err := assets.ReadFile("assets/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(css)
+	for _, want := range []string{
+		"  padding: 2rem 1.5rem;\n  border-top: 1px solid var(--rule);",
+		".colophon-row { align-items: center; }",
+		".colophon .colophon-row p { margin: 0; }",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("style.css no longer contains %q", want)
 		}
 	}
 }

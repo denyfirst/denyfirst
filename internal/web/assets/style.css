@@ -778,7 +778,7 @@ h1 {
 .colophon {
   max-width: var(--page);
   margin: 0 auto;
-  padding: 1.8rem 1.5rem 3rem;
+  padding: 2rem 1.5rem;
   border-top: 1px solid var(--rule);
   font-size: 0.82rem;
   color: var(--ink-faint);
@@ -2060,3 +2060,12 @@ main > .band:last-child { border-bottom: 0; }
 @media (max-width: 40rem) {
   .tabs { grid-template-columns: 1fr; }
 }
+
+/*
+  The footer's row sits in the middle of its band: the same space above and
+  below, the mark and the links on one centre line, and no paragraph margin
+  under the last line. It sat 29px from the rule and 48px from the bottom.
+*/
+.colophon-row { align-items: center; }
+.colophon .colophon-row p { margin: 0; }
+.colophon .tally { margin: 1.2rem 0 0; }

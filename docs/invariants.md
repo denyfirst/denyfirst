@@ -4000,14 +4000,15 @@ it from the path, because a path is a thing that moves and this project has
 moved two already; a script reading the URL would be wrong the day one moves
 again, quietly, by drawing a web report with the transport check's renderer.
 
-**And the footer goes to the check the reader is on.** The footer is the one
+**And the footer goes to no one check's limits.** The footer is the one
 piece of markup every page shares, so it carried a single method address while
 there was a single check — and the day `/web` served a report, "How a report
-is read" underneath it pointed at the limits of a TLS handshake. That is the
-confusion these pages are separate to prevent, arriving through the only
-element that is on every page at once. Each page names its own; a page that is
-not a check's takes a default, because a reader who arrived from a report has
-to be able to get back to what it means.
+is read" underneath it pointed at the limits of a TLS handshake. Each page then
+named its own, with the transport page as the default. That held until pages
+ran all three checks, where any one address was the wrong one for two of the
+reports above it. Since 2026-09-17 the footer carries no method link: each
+report links its own check's page, and `/docs` lists all three, which is
+where a reader who arrived from a report gets back to what it means.
 
 Privacy and terms are promises about everything this project runs, not about
 one scan, and a copy under each check would be several copies of a promise to
@@ -4052,7 +4053,7 @@ meant has never existed under that name.
 `TestTheRootStandsInAndSaysSoInTheStatusCode`,
 `TestEveryInternalLinkResolves`, `TestEachCheckCallsItsOwnPaths`,
 `TestEachScanPageDeclaresItsCheck`,
-`TestEachCheckPageSendsAReaderToItsOwnLimits`,
+`TestTheFooterLeadsToTheDocumentsAndNotOneChecksLimits`,
 `TestEveryAddressThisProjectSendsOutResolves`,
 `TestBothScanPathsAreServedAndNeitherRedirects`,
 `TestNeitherScanPathAnswersAGet`, `TestOldPathsRedirect`

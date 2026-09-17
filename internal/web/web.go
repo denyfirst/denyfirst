@@ -110,19 +110,6 @@ type page struct {
 	// which is the whole argument of R16, applied to a third renderer.
 	Data any
 
-	// Method is the page the footer's "How a report is read" link points at.
-	//
-	// It was one address in the layout while there was one check. The moment
-	// there were two, a shared footer meant a reader of a web report was sent
-	// to the limits of a TLS handshake — the exact confusion the method pages
-	// are separate to prevent, arriving through the one piece of markup every
-	// page has in common.
-	//
-	// Empty takes defaultMethodPage. A page that is not a check's has to point
-	// somewhere, and the transport check is the one this project has had
-	// longest and the one a reader is likeliest to have a report from.
-	Method string
-
 	// Brand is true on the demonstration, which is the denyfirst site and
 	// carries its wordmark; an installation somebody runs is porch, by
 	// denyfirst, and says so in the footer. Set by render from the build.
@@ -132,10 +119,6 @@ type page struct {
 	// is a file in this repository rather than anything a user supplied.
 	Body template.HTML
 }
-
-// defaultMethodPage is where a page that is not a check's own sends a reader
-// asking how to read a report.
-const defaultMethodPage = "/tls/method"
 
 // pages is the whole site.
 //
@@ -230,7 +213,6 @@ var pages = map[string]*page{
 		Description: "Check how a website is reached over HTTP and HTTPS: redirects, transport, and the policy a browser would end up holding. Nothing about the scan is recorded.",
 		Fragment:    "assets/web.html",
 		Script:      true,
-		Method:      "/web/method",
 		Data:        scanPage{Demo: demo.Enabled, Hosts: demo.Hosts()},
 	},
 
@@ -252,7 +234,6 @@ var pages = map[string]*page{
 		Title:       "What the web check sends, and what it cannot see — denyfirst",
 		Description: "Exactly what a web check sends to a server, how to read the report it produces, and the limits of the method.",
 		Fragment:    "assets/web-method.html",
-		Method:      "/web/method",
 		Data:        methodPage{Limits: policy.WebStandingLimits(), Demo: demo.Enabled, UserAgent: webprobe.DefaultUserAgent},
 	},
 
@@ -266,7 +247,6 @@ var pages = map[string]*page{
 		Title:       "What the mail check reads, and what it cannot see — denyfirst",
 		Description: "What the mail check reads and connects to, how to read the report it produces, and the limits of the method.",
 		Fragment:    "assets/mail-method.html",
-		Method:      "/mail/method",
 		Data:        methodPage{Limits: policy.MailStandingLimits(), Demo: demo.Enabled},
 	},
 }
@@ -499,9 +479,6 @@ func render(p *page) ([]byte, error) {
 		return nil, err
 	}
 
-	if p.Method == "" {
-		p.Method = defaultMethodPage
-	}
 	p.Brand = demo.Enabled
 
 	fragment, err := assets.ReadFile(p.Fragment)
@@ -568,7 +545,6 @@ func renderConsole(verified, keeps bool) []byte {
 		Description: "Run this project's checks against one name: the handshake and certificate, how the site is reached, and what the domain's DNS says about its mail.",
 		Fragment:    "assets/console.html",
 		Script:      true,
-		Method:      defaultMethodPage,
 		Data: consolePage{
 			Tool:   ToolName,
 			Checks: consoleChecks(),
@@ -695,7 +671,6 @@ func renderPrivacy(verified, keeps bool) []byte {
 		Title:       "Privacy, and what a scan does — " + ToolName,
 		Description: "What this installation keeps, what a scan sends, and who else is asked anything.",
 		Fragment:    "assets/privacy-selfhost.html",
-		Method:      defaultMethodPage,
 		Data: privacyPage{
 			Tool:       ToolName,
 			Verified:   verified,
