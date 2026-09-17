@@ -185,12 +185,7 @@ func TestALocationCarryingCredentialsIsStrippedBeforeItIsFollowed(t *testing.T) 
 	// Credentials in a redirect target would be sent by this program, into
 	// the access log of whatever answered. The hop is followed; the userinfo
 	// is not carried.
-	next, why := nextURL(
-		Hop{Status: http.StatusFound, Headers: map[string][]string{
-			"Location": {"https://user:secret@example.com/"},
-		}},
-		"https://example.com/",
-	)
+	next, why := nextURL(http.StatusFound, "https://user:secret@example.com/", "https://example.com/")
 	if why != "" {
 		t.Fatalf("the hop should be followed, not refused: %q", why)
 	}
@@ -204,10 +199,7 @@ func TestALocationCarryingCredentialsIsStrippedBeforeItIsFollowed(t *testing.T) 
 
 func TestAnOverlongLocationIsNotFollowed(t *testing.T) {
 	long := "https://example.com/" + strings.Repeat("a", maxLocationLength)
-	_, why := nextURL(
-		Hop{Status: http.StatusFound, Headers: map[string][]string{"Location": {long}}},
-		"https://example.com/",
-	)
+	_, why := nextURL(http.StatusFound, long, "https://example.com/")
 	if why == "" {
 		t.Fatal("an overlong Location must not be followed")
 	}

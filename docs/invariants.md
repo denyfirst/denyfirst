@@ -467,6 +467,14 @@ and none for saying nothing: a probe that hides is one an administrator can
 only be alarmed by, where one that identifies itself is one they can make a
 decision about.
 
+**A redirect is followed as sent and recorded without its values.** A password
+reset or a sign-on redirect carries a token in its query string, and a report is
+a thing people paste anywhere. The chain requests the address exactly as the
+server gave it, so what is measured is what a visitor gets; the report records
+each hop's address, and the Location header, with every query value replaced,
+no userinfo and no fragment. Until the 2026-09-16 audit (A27) the whole address
+went into the JSON.
+
 **And the address leads somewhere.** That promise is worth exactly as much as
 the page behind it, and `/web/method` answered 404 from the day the user agent
 first named it until the check had a service surface — at which point the
@@ -490,6 +498,7 @@ nothing else to look for.
 `TestARelativeLocationIsResolvedAgainstTheAddressThatSentIt`,
 `TestALocationWithAnotherSchemeIsNotFollowed`,
 `TestALocationCarryingCredentialsIsStrippedBeforeItIsFollowed`,
+`TestARedirectsTokenIsFollowedAndNotKept`, `TestRedactAddress`,
 `TestAnOverlongLocationIsNotFollowed`,
 `TestOnlyTheGradedHeadersAreRecorded`, `TestACookieValueIsNeverRecorded`,
 `TestCookieAttributesAreRead`, `TestTheScopeAttributesAreRead`,
@@ -1845,6 +1854,20 @@ reason and nothing else. The history file is named after the target, so a
 file-system error carries the target in its path; before the same audit (A23)
 it was logged whole, with a time of day.
 
+**What is kept is written one writer at a time.** A history is appended and
+then trimmed, and two writers interleaving those — two scans of one host
+finishing together, or `porchd` and `porch-scan` sharing a directory — could
+drop each other's lines (A24). A mutex per file covers one process and a lock
+file beside it covers several; a trim is written aside and renamed into place;
+and a history is read back from its newest end, to a bound, without deleting
+anything.
+
+**The privacy page of a self-hosted copy is that copy's.** The demonstration's
+page describes a machine this project runs; served by an installation somebody
+else runs it promised things that installation does differently (A21). A
+self-hosted build serves a page filled in from how it was started, and the
+demonstration keeps its own.
+
 This includes the parts nobody wrote. Go's `http.Server` logs lines such as
 `http: panic serving 203.0.113.7` to standard error by default, so the server
 must be given a discarding logger. A promise that depends on a library's
@@ -1862,7 +1885,13 @@ unhappy ones.
 `TestAnIdleTargetIsForgottenWithoutAnotherScan`,
 `TestTheTimerSweepsEvenJustAfterARequestDid`,
 `TestTheTargetTimerSweepsEvenJustAfterAScanDid`,
-`TestAResultNotKeptIsSaidWithoutTheTarget`, `TestNotKeptKeepsOnlyTheReason`
+`TestAResultNotKeptIsSaidWithoutTheTarget`, `TestNotKeptKeepsOnlyTheReason`,
+`TestConcurrentWritersKeepEveryRecord`, `TestALockIsWaitedForUnlessItIsStale`,
+`TestALargeHistoryIsReadFromItsNewestEnd`, `TestTrimmingLeavesNoTemporaryFile`,
+`TestATrimReplacesTheHistoryWhole`, `TestReadingAHistoryWritesNothing`,
+`TestAReadDoesNotWaitForAnotherProcess`,
+`TestASelfHostedCopySaysWhatItDoes`, `TestTheSelfHostedPrivacyPageFollowsTheConfiguration`,
+`TestTheSelfHostedPageStatesTheRealRetentionPeriod`, `TestTheDemonstrationKeepsItsOwnPrivacyPage`
 
 ### P2 — The target travels in a request body, not a URL
 
