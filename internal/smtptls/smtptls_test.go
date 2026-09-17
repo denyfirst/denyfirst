@@ -35,6 +35,12 @@ type script struct {
 
 	mu    sync.Mutex
 	heard []string
+
+	// talking counts the conversations still being served. Probe can return
+	// before the server has read the last line the client wrote, and a test
+	// reading what was heard at that moment misses it: it did, once, under the
+	// race detector.
+	talking sync.WaitGroup
 }
 
 func (s *script) record(line string) {
@@ -44,6 +50,7 @@ func (s *script) record(line string) {
 }
 
 func (s *script) commands() []string {
+	s.talking.Wait()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]string(nil), s.heard...)
@@ -109,7 +116,11 @@ func pipeProber(s *script, roots *x509.CertPool) *Prober {
 		Timeout:  3 * time.Second,
 		Dial: func(context.Context, string, string) (net.Conn, error) {
 			client, server := net.Pipe()
-			go s.serve(server)
+			s.talking.Add(1)
+			go func() {
+				defer s.talking.Done()
+				s.serve(server)
+			}()
 			return client, nil
 		},
 	}
