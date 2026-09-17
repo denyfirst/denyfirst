@@ -356,7 +356,11 @@ function outcomeCell(v) {
   const cell = el("td", v.supported ? null : "mark-faint");
   cell.appendChild(el("span", null,
     v.supported ? "accepted" : (v.refused ? "refused" : "not measured")));
-  if (!v.supported && v.error) cell.appendChild(el("p", "row-note", v.error));
+  // The reason only where it says something the word does not. Beside
+  // "refused" it repeated it — "refused  server refused TLS 1.0" — and the
+  // SSL 3.0 row, which carries no such sentence, read differently from the
+  // rows above it.
+  if (!v.supported && !v.refused && v.error) cell.appendChild(el("p", "row-note", v.error));
   return cell;
 }
 
@@ -399,8 +403,11 @@ function versions(tls) {
     const row = el("tr");
     row.appendChild(el("td", null, "SSL 3.0"));
     row.appendChild(outcomeCell({ supported: ssl3.accepted, refused: ssl3.refused, error: ssl3.reason }));
+    // The suite it was accepted with goes here too, since this is now the
+    // only row SSL 3.0 has.
     const grade = ssl3.accepted && ssl3.versionGrade ? ssl3.versionGrade.verdict : "";
-    row.appendChild(el("td", markClass(grade), grade || "—"));
+    const suite = ssl3.accepted && ssl3.suite ? "  ·  " + ssl3.suite.name : "";
+    row.appendChild(el("td", markClass(grade), grade ? grade + suite : "—"));
     body.appendChild(row);
   }
 
@@ -451,7 +458,14 @@ function legacy(tls) {
   if (!l || !l.asked) return document.createDocumentFragment();
 
   const frag = document.createDocumentFragment();
-  frag.appendChild(sectionTitle("Asked with a hand-written hello"));
+  // What this section is, said under its title. It read as a second list of
+  // versions with SSL 3.0 in it twice; it is the suite families Go's client
+  // cannot offer, each asked for in one hello of its own. SSL 3.0 is a
+  // version and stays in the version table.
+  frag.appendChild(sectionTitle("Obsolete suites, asked for directly"));
+  frag.appendChild(el("p", "section-note",
+    "Go cannot offer these, so each family was asked for in one hand-built hello " +
+    "offering all of it. Refused means none of that family was accepted."));
 
   const table = el("table", "rows");
   const body = el("tbody");
@@ -465,7 +479,6 @@ function legacy(tls) {
       suite ? suite.verdict + "  ·  " + suite.name + " at " + a.version : "—"));
     body.appendChild(row);
   };
-  answer("SSL 3.0", l.ssl3);
   answer("export", l.export);
   answer("NULL", l.null);
   // The same rows the terminal prints, in its words (R16). Older reports carry

@@ -124,7 +124,8 @@ a:hover { text-decoration-thickness: 2px; }
 /*
   The mark is a link home, and a link home is a target.
 
-  Measured at 106 by 26 pixels, which clears the 24 a pointer needs — by two
+  Measured at 106 by 26 pixels when it spelled denyfirst; it is narrower as
+  porch, and the height is what clears the 24 a pointer needs — by two
   pixels, and by accident: the height was the line box of a 1rem word, and
   nothing said it had to stay that. A font-size trimmed by a tenth of a rem
   one afternoon would have taken the target under the floor with it and
@@ -134,7 +135,7 @@ a:hover { text-decoration-thickness: 2px; }
   already taller; it holds the floor on the day the type shrinks. The
   inline-block is what lets a min-height apply at all, and an inline-block
   takes its baseline from its last line box, so the mark still sits on the
-  same baseline as the note beside it.
+  same baseline as the text around it.
 */
 .wordmark {
   display: inline-block;
@@ -148,25 +149,18 @@ a:hover { text-decoration-thickness: 2px; }
 }
 
 /*
-  The name explains itself when the first half is set apart: deny, then first.
-  The dot closes it, so the mark reads as a finished statement rather than a
-  word — which is what the project is.
+  The header names the tool and nothing else. It carried the denyfirst
+  wordmark and its slogan beside the console's own "porch", which on the first
+  screen of an installation was two names for one thing. The maker is named in
+  the footer instead, in the brand colour, so the mark is kept without
+  competing with the tool.
 
-  Red is also the colour of an insecure verdict, and the two appear on the same
-  screen. They do not read as the same thing: a verdict is boxed, capitalised
-  and widely spaced, and the masthead is none of those. The shape carries the
-  distinction, not the hue.
+  Red is also the colour of an insecure verdict. In the footer, in running
+  text, it does not read as one.
 */
-.wordmark-deny,
-.wordmark-dot {
+.colophon-brand {
   color: var(--brand);
-}
-
-.masthead-note {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--ink-faint);
-  letter-spacing: 0.01em;
+  font-weight: 600;
 }
 
 /* ── The ask ──────────────────────────────────────────────────────────── */
@@ -596,6 +590,15 @@ h1 {
   font-size: 0.76rem;
   line-height: 1.45;
   color: var(--weak);
+  margin: -0.25rem 0 0.6rem;
+  max-width: 42rem;
+}
+
+/* What a section is, under its title. Faint, because it explains and does not warn. */
+.section-note {
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--ink-faint);
   margin: -0.25rem 0 0.6rem;
   max-width: 42rem;
 }
