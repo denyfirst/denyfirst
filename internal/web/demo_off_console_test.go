@@ -187,3 +187,19 @@ func TestAKeptResultIsNotServedOverHTTP(t *testing.T) {
 		}
 	}
 }
+
+// The console is a field and the facts about the installation: the tool's
+// name is in the header and the tab, and the page's one heading is there for
+// assistive technology rather than repeated on the screen.
+func TestTheConsoleSaysItsNameOnce(t *testing.T) {
+	page := get(t, "/").Body.String()
+	if !strings.Contains(page, "<title>"+ToolName+"</title>") {
+		t.Errorf("the console's title is not the tool's name")
+	}
+	if n := strings.Count(page, "<h1"); n != 1 || !strings.Contains(page, `<h1 class="visually-hidden">`) {
+		t.Errorf("the console has %d headings of the first rank, want one, visually hidden", n)
+	}
+	if !strings.Contains(stylesheet(t), ".visually-hidden {") {
+		t.Error("nothing hides the console's heading from the screen")
+	}
+}

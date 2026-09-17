@@ -1,18 +1,14 @@
 <section class="console">
 
   <!--
-    No lede, and no headline making an argument.
+    A field, the checks, and the facts about this installation. Nothing else.
 
-    The pages at /tls and /web are written for somebody who arrived from a log
-    line and wants to know whether to worry. This one is written for the person
-    who installed it, who already decided. What they want on the first screen
-    is a field, and under it the facts about this installation that change how
-    a report should be read.
+    The header already names the tool, and the person here installed it; a
+    headline or a paragraph restating what a scan sends is text between them
+    and the field. What a scan sends is one link away, on the privacy page,
+    where it is written for whoever needs it.
   -->
-  <div class="console-head">
-    <h1 class="console-name">Check a name you run</h1>
-    <p class="console-where">{{.Tool}}, running on this machine</p>
-  </div>
+  <h1 class="visually-hidden">Check a name</h1>
 
   <form class="console-form" id="console-form" autocomplete="off"{{if .Verified}} data-proof="required"{{end}}>
     <label class="field-label" for="console-target">Hostname</label>
@@ -28,8 +24,7 @@
         autocapitalize="off"
         autocorrect="off"
         enterkeyhint="go"
-        autofocus
-        aria-describedby="console-help">
+        autofocus>
       <button class="submit" type="submit" id="console-submit">Check</button>
     </div>
 
@@ -50,13 +45,6 @@
       </label>
       {{end}}
     </fieldset>
-
-    <p class="field-help" id="console-help">
-      A bare hostname. Everything here reads what a server already serves to
-      anyone who asks: one <code>GET</code> of <code>/</code>, the handshakes a
-      client offers, and the records its domain publishes. No path is constructed, nothing is
-      sent that a browser would not send, and nothing is written to.
-    </p>
   </form>
 
   <div class="console-results" id="console-results" hidden></div>
@@ -74,9 +62,8 @@
   <dialog class="proof" id="proof-dialog" aria-labelledby="proof-title">
     <h2 class="section-title" id="proof-title">Show this domain is yours</h2>
     <p class="proof-lede">
-      This installation checks only domains whose DNS carries its record. Add
-      the TXT record below at your DNS provider, then check again. A new
-      record can take a few minutes to be seen.
+      Add this TXT record at your DNS provider, then check again. A new record
+      can take a few minutes to be seen.
     </p>
 
     <label class="field-label" for="proof-level">Publish under</label>
@@ -92,8 +79,7 @@
       <dd><code id="proof-value"></code> <button class="proof-copy" type="button" data-copy="proof-value">Select</button></dd>
     </dl>
     <p class="proof-hint">
-      Some providers want only the part of the name before your domain, and add
-      the rest themselves.
+      Some providers want only the part of the name before your domain.
     </p>
 
     <p class="proof-status" id="proof-status" role="status"></p>
@@ -106,7 +92,7 @@
   {{end}}
 
   <!--
-    The state of this installation, on the page rather than in a manual.
+    The state of this installation, one line each.
 
     An operator reading a report needs to know which of these were true when it
     was produced. A report that says nothing about mail because the check was
@@ -119,50 +105,30 @@
     <dl class="state-grid">
       <dt>Scope</dt>
       <dd>
-        {{if .Verified}}Only domains this installation has been shown control
-        of. A name nobody proved anything about is refused before anything is
-        dialled.{{else}}<strong>No proof of control is required.</strong> This
-        installation will scan any public name it is given. That is the right
-        setting for a machine only you can reach, and the wrong one for
-        anything a stranger can. See <a href="/privacy#scans">what a scan does</a>.{{end}}
+        {{if .Verified}}Only domains it has been shown control of.{{else}}<strong>No
+        proof of control is required.</strong> Any public name is scanned, so keep
+        it where only you can reach it.{{end}}
       </dd>
 
       <dt>Pages</dt>
       <dd>
-        {{if .ReadsPages}}Read, where control was proven — once, to a bound of
-        one megabyte, and nothing of the page is kept beyond a short list of
-        facts.{{else}}Not read. Without a proof of control this installation
-        takes headers only, so mixed content and a policy declared in the
-        markup are not established either way.{{end}}
+        {{if .ReadsPages}}Read where control was proven; only a few facts are
+        kept.{{else}}Not read. Headers only.{{end}}
       </dd>
 
       <dt>Results</dt>
       <dd>
-        {{if .Keeps}}Kept on this machine, because this installation was told
-        to keep them: the date, the verdict and which rules were raised, per
-        target and per check. Nothing is served back — read them with
-        <code>porch-scan -history</code>, which makes no connection. Nothing
-        about who asked is written down, here or anywhere.{{else}}Not kept.
-        Nothing about a scan is written to disk: not the name, not the verdict,
-        not the time. Close this page and the report is gone — save the JSON
-        from the report itself if you want to keep it, or start this
-        installation with <code>-results-dir</code>.{{end}}
+        {{if .Keeps}}Kept on this machine. Read them with
+        <code>porch-scan -history</code>. Nothing about who asked is written
+        down.{{else}}Not kept. Save a report's JSON, or start with
+        <code>-results-dir</code>.{{end}}
       </dd>
 
       <dt>Rule sets</dt>
       <dd>
         {{range .Checks}}<span class="state-policy">{{.Policy}}</span>{{end}}
-        Each check has its own, and they move independently. A report carries
-        the one that graded it, because a verdict from one means nothing under
-        another.
       </dd>
     </dl>
-
-    <p class="console-links">
-      <a href="/tls/method">What the transport check sends</a>
-      <a href="/web/method">What the reach check sends</a>
-      <a href="/privacy">Privacy, and what a scan does</a>
-    </p>
   </section>
 
 </section>
