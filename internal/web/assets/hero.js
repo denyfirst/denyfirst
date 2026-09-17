@@ -2,7 +2,7 @@
   The lens over the front page's opening, and nothing else.
 
   Where the pointer rests, a dim circle opens on what is under the surface: a
-  grid of points and the names of things the checks read. It is decoration,
+  faint grid of points and a few quiet words. It is decoration,
   so it asks for nothing and keeps nothing. The pointer's position inside the
   opening is written to two custom properties on one element and read by the
   stylesheet; it is not stored, not sent, and gone when the page is.
