@@ -6,13 +6,16 @@
 <title>{{.Title}}</title>
 <meta name="description" content="{{.Description}}">
 <meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark light">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/style.css">
+<script src="/theme.js"></script>
 </head>
 <body>
 
 <header class="masthead">
-  <a class="wordmark" href="/">porch</a>
+  {{if .Brand}}<a class="wordmark" href="/"><span class="wordmark-deny">deny</span>first.</a>{{else}}<a class="wordmark" href="/">porch</a>{{end}}
+  <button class="theme-toggle" id="theme-toggle" type="button" hidden>Dark</button>
 </header>
 
 <main>
@@ -20,12 +23,13 @@
 </main>
 
 <footer class="colophon">
-  <p class="colophon-by">porch, by <span class="colophon-brand">denyfirst</span>. Cites everything. Records nothing.</p>
+  {{if .Brand}}<p class="colophon-by"><span class="colophon-brand">denyfirst.</span> Independent security and privacy tools. Cites everything. Records nothing.</p>{{else}}<p class="colophon-by">porch, by <span class="colophon-brand">denyfirst</span>. Cites everything. Records nothing.</p>{{end}}
   <p class="tally" id="tally" hidden></p>
   <p class="colophon-links">
     <a href="{{.Method}}">How a report is read</a>
     <a href="/privacy">Privacy and what a scan does</a>
     <a href="/terms">Terms</a>
+    <a href="https://github.com/denyfirst/denyfirst/tree/main/docs">Documentation</a>
     <a href="https://github.com/denyfirst/denyfirst">Source</a>
     <a href="https://github.com/denyfirst/denyfirst/blob/main/SECURITY.md">Report a vulnerability</a>
   </p>
