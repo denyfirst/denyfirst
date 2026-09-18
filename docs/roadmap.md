@@ -31,6 +31,19 @@ project rests on it not being one.
 that needs an account is a feature of the tool other people run, not of the
 service we do.
 
+**A record at a domain covers every name under it.** Proving `example.com`
+proves `www.example.com` and every name added later, because a TXT record
+proves control of a zone. The pages ask for the name's own record unless the
+operator picks a domain above it, and say what that gives away (A04, D05).
+
+**The command line needs no proof.** Proof and a password protect a service:
+somebody else's machine and address, used by whoever reaches it. `porch-scan`
+runs on the machine of the person asking, from their address, under their
+responsibility, as `openssl` and `curl` do. A restriction there would be one
+line anyone could delete from source that is published to be read, and
+pretending otherwise would be the kind of claim this project does not make
+(A30).
+
 ---
 
 ## Next, in order
@@ -85,11 +98,11 @@ constructor now hands the boundary to every check it builds, `UseWebScanner`
 cannot drop it, and the test drives the `POST` routes read out of the source
 rather than a list somebody has to remember to extend.
 
-What is left is the default. `docs/scope.md` says it belongs **on** for a
-service, and turning it on stops every deployment that has not published a
-record yet — a change to make deliberately, with a release note, rather than
-as a side effect of an upgrade. Until then a service with no secret configured
-scans whatever it is asked to, and says so at startup.
+**The default is on.** Beyond loopback `porchd` will not start without a
+verification secret unless `-open` is said, nor without a password unless
+`-without-password` is; the image and the compose file carry both. The
+reviews of 2026-09-16 (A01, A07) and 2026-09-18 (D01) are closed by that, and
+v0.18.0 said so in its release note.
 
 **[`docs/scope.md`](scope.md) is the design**, settled: the two scopes and the
 one methodology they share, what a verified domain
@@ -180,19 +193,30 @@ of being able to write files.
 
 ### Later
 
-Nothing scheduled. The certificate's own responder can now be asked from the
-command line with `-ask-responder` (R3a).
+The certificate's own responder can now be asked from the command line with
+`-ask-responder` (R3a).
+
+**Checking a company's inside, if companies ask.** Every check here measures
+how the world reaches you, and a service refuses private and reserved
+addresses everywhere. An intranet's TLS is the one thing worth reading from
+inside, and doing it safely is more than a switch: an operator setting given at
+start, never a button a signed-in person presses, naming the networks allowed;
+never on the demonstration; and the company's own certificate authority read
+beside it, so an internal certificate is not graded against rules written for
+public ones. The review of 2026-09-16 raised both halves (A29, A33). Not built
+until somebody running this inside a company asks for it.
+
+**Two smaller bounds on the second hosts a proven domain names** (A05). A
+proven domain's MX records send the mail check to its exchangers, and a
+certificate sends the revocation check to the list it names; both are what a
+mail server and a browser do, and neither needs proof of its own. Still, a
+revocation list could be fetched only once the chain reaches a trusted root,
+and each exchanger could have a budget of its own across every domain naming
+it. Each changes what a report can say, so each waits for a rule-set version.
 
 ---
 
 ## Known defects
-
-**A self-hosted `porchd` requires no proof by default.** The boundary exists
-and is opt-in; the default is the remaining half of item 2 above. The page now
-says plainly what an unbounded service is, and `-version` says which of the two
-a running one is, so an operator can check rather than remember — but the
-default itself has not moved, and moving it would stop every deployment that
-has not published a record yet.
 
 **Each address of a name is asked one handshake, not scanned.** Every address
 a name resolves to — up to eight — is now asked on its own, and the report says
