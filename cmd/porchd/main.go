@@ -1058,14 +1058,71 @@ func createAccess(path string) error {
 	if err != nil {
 		return err
 	}
+	// Before the new key exists, what the old one sealed goes aside, or the
+	// new key meets it and cannot open it (audit 2026-09-18, D03 and D09).
+	retired, err := retireSealed(filepath.Dir(path), time.Now().UTC().Format("2006-01-02"))
+	if err != nil {
+		return err
+	}
 	if err := access.Create(path, password); err != nil {
 		return err
 	}
 	fmt.Fprintf(secretOut, "porchd: this installation's password is\n\n    %s\n\n"+
 		"Sign in with it and change it. It is shown once and written nowhere. If it is\n"+
-		"lost, delete %s and restart for a new one; what was kept under the old\n"+
-		"one can no longer be read.\n", password, path)
+		"lost, move %s aside and restart for a new one; what was kept under the\n"+
+		"old one can no longer be read with the new one.\n", password, path)
+	if retired != "" {
+		fmt.Fprintf(secretOut, "\nWhat the earlier password kept was moved, not deleted, to\n\n    %s\n\n"+
+			"It opens only with the earlier access file and its password. Delete the\n"+
+			"folder once you are sure nobody needs it.\n", retired)
+	}
 	return nil
+}
+
+// sealed names what an installation keeps under its data key, beside the
+// access file. The same names main makes the vault with.
+var sealed = []string{"history", "domains.sealed"}
+
+// retireSealed moves whatever an earlier key sealed into a new folder named
+// for the date, and says where; it returns "" when there was nothing.
+//
+// A new access file makes a new data key. What the old key sealed does not
+// open under it, and left in place it made the domain list refuse every
+// change and the history count files it could not see. Nothing is deleted:
+// whoever has the old access file and remembers its password can put both
+// back, and only the person who runs the machine decides the rest.
+func retireSealed(dir, today string) (string, error) {
+	var found []string
+	for _, name := range sealed {
+		if _, err := os.Lstat(filepath.Join(dir, name)); err == nil {
+			found = append(found, name)
+		} else if !os.IsNotExist(err) {
+			return "", fmt.Errorf("what the earlier password kept could not be read: %w", err)
+		}
+	}
+	if len(found) == 0 {
+		return "", nil
+	}
+	var to string
+	for i := 1; ; i++ {
+		to = filepath.Join(dir, "retired-"+today)
+		if i > 1 {
+			to += fmt.Sprintf("-%d", i)
+		}
+		err := os.Mkdir(to, 0o700)
+		if err == nil {
+			break
+		}
+		if !os.IsExist(err) {
+			return "", fmt.Errorf("what the earlier password kept could not be moved aside: %w", err)
+		}
+	}
+	for _, name := range found {
+		if err := os.Rename(filepath.Join(dir, name), filepath.Join(to, name)); err != nil {
+			return "", fmt.Errorf("what the earlier password kept could not be moved aside: %w", err)
+		}
+	}
+	return to, nil
 }
 
 // passwordAllowed refuses a service without a password on an address other

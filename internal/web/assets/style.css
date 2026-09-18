@@ -2647,6 +2647,8 @@ main > .band:last-child { border-bottom: 0; }
 .history-actions { text-align: right; white-space: nowrap; }
 .history-status:empty, .history-status[hidden] { display: none; }
 .history-empty { margin: 0; color: var(--ink-soft); }
+.history-note { margin: 0 0 0.8rem; color: var(--ink-soft); }
+.history-note[hidden] { display: none; }
 
 .history-open,
 .history-delete {

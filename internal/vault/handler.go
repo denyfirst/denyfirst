@@ -25,7 +25,7 @@ func (v *Vault) Handler() http.Handler {
 		id, one := strings.CutPrefix(rest, "/")
 		switch {
 		case rest == "" && r.Method == http.MethodGet:
-			entries, err := v.List()
+			entries, st, err := v.List()
 			if err != nil {
 				failed(w, err)
 				return
@@ -33,7 +33,7 @@ func (v *Vault) Handler() http.Handler {
 			if entries == nil {
 				entries = []Entry{}
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
+			writeJSON(w, http.StatusOK, map[string]any{"entries": entries, "status": st})
 		case one && r.Method == http.MethodGet:
 			rec, err := v.Get(id)
 			if err != nil {

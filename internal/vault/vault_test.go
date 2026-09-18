@@ -30,7 +30,7 @@ func TestAKeptReportComesBackWhole(t *testing.T) {
 	if err := v.Keep("tls", "example.com", "strong", "porch-tls-v7", []byte(report)); err != nil {
 		t.Fatal(err)
 	}
-	entries, err := v.List()
+	entries, _, err := v.List()
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("the list holds %d reports: %v", len(entries), err)
 	}
@@ -88,12 +88,12 @@ func TestWithoutTheKeyNothingIsKeptOrRead(t *testing.T) {
 
 	v, _ := newVault(t)
 	_ = v.Keep("tls", "example.com", "strong", "p", []byte(report))
-	entries, _ := v.List()
+	entries, _, _ := v.List()
 
 	other := make([]byte, 32)
 	other[0] = 1
 	stranger := &Vault{Dir: v.Dir, Key: func() []byte { return other }}
-	if list, _ := stranger.List(); len(list) != 0 {
+	if list, _, _ := stranger.List(); len(list) != 0 {
 		t.Error("another key lists the reports")
 	}
 	if _, err := stranger.Get(entries[0].ID); !errors.Is(err, ErrNotFound) {
@@ -107,7 +107,7 @@ func TestAReportMovedToAnotherNameDoesNotOpen(t *testing.T) {
 	v, _ := newVault(t)
 	_ = v.Keep("tls", "a.example", "strong", "p", []byte(`{"n":1}`))
 	_ = v.Keep("tls", "b.example", "weak", "p", []byte(`{"n":2}`))
-	entries, _ := v.List()
+	entries, _, _ := v.List()
 	a, b := v.path(entries[0].ID), v.path(entries[1].ID)
 	body, _ := os.ReadFile(a)
 	if err := os.WriteFile(b, body, 0o600); err != nil {
@@ -123,7 +123,7 @@ func TestDeleteRemovesTheReportAndOnlyIt(t *testing.T) {
 	v, _ := newVault(t)
 	_ = v.Keep("tls", "a.example", "strong", "p", []byte(`{"n":1}`))
 	_ = v.Keep("web", "a.example", "weak", "p", []byte(`{"n":2}`))
-	entries, _ := v.List()
+	entries, _, _ := v.List()
 
 	if err := v.Delete(entries[0].ID); err != nil {
 		t.Fatal(err)
@@ -131,7 +131,7 @@ func TestDeleteRemovesTheReportAndOnlyIt(t *testing.T) {
 	if _, err := os.Stat(v.path(entries[0].ID)); !os.IsNotExist(err) {
 		t.Error("a deleted report's file is still there")
 	}
-	left, _ := v.List()
+	left, _, _ := v.List()
 	if len(left) != 1 || left[0].ID != entries[1].ID {
 		t.Errorf("deleting one report touched another: %+v", left)
 	}
@@ -154,7 +154,7 @@ func TestTheHistoryIsNewestFirstAndBounded(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	entries, _ := v.List()
+	entries, _, _ := v.List()
 	var got []string
 	for _, e := range entries {
 		got = append(got, e.Target)
@@ -174,7 +174,7 @@ func TestTheHistoryIsNewestFirstAndBounded(t *testing.T) {
 func TestTheHandlerListsOpensAndDeletes(t *testing.T) {
 	v, _ := newVault(t)
 	_ = v.Keep("tls", "example.com", "strong", "p", []byte(report))
-	entries, _ := v.List()
+	entries, _, _ := v.List()
 	h := v.Handler()
 
 	do := func(method, path string, header map[string]string) *httptest.ResponseRecorder {
@@ -267,10 +267,82 @@ func TestAFileNameSaysNothingAndADateIsOnlyADate(t *testing.T) {
 			t.Errorf("two reports about one name share %q at the same place in their names", x[i:i+4])
 		}
 	}
-	entries, _ := v.List()
+	entries, _, _ := v.List()
 	for _, e := range entries {
 		if !regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`).MatchString(e.Date) {
 			t.Errorf("a report is kept with %q, which is more than a date", e.Date)
 		}
+	}
+}
+
+// What the list cannot show is counted, not passed over (audit 2026-09-18,
+// D09): reports sealed under an earlier key, and a damaged one, are neither
+// listed nor removed by the bound, and History is told how many there are
+// and what they take. A removal the bound could not make is counted too.
+func TestWhatTheListCannotShowIsCountedAndNeverTrimmed(t *testing.T) {
+	old, _ := newVault(t)
+	old.Limit = 2
+	for range 2 {
+		if err := old.Keep("tls", "old.example", "strong", "p", []byte(report)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	oldFiles, _ := os.ReadDir(old.Dir)
+
+	v, _ := newVault(t)
+	v.Dir, v.Limit = old.Dir, 2
+	if err := os.WriteFile(filepath.Join(v.Dir, strings.Repeat("ab", 16)+".sealed"), []byte("damaged"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if err := v.Keep("tls", "new.example", "strong", "p", []byte(report)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	entries, st, err := v.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Errorf("%d reports listed, want the bound of 2", len(entries))
+	}
+	for _, f := range oldFiles {
+		if _, err := os.Stat(filepath.Join(v.Dir, f.Name())); err != nil {
+			t.Errorf("a report sealed under the earlier key was removed: %v", err)
+		}
+	}
+	var size int64
+	for _, f := range oldFiles {
+		info, _ := f.Info()
+		size += info.Size()
+	}
+	size += int64(len("damaged"))
+	if st.Unreadable != 3 || st.UnreadableBytes != size || st.OverBound != 0 {
+		t.Errorf("status %+v, want 3 unreadable files of %d bytes and nothing over the bound", st, size)
+	}
+
+	// A removal that fails leaves the report counted over the bound, and the
+	// next report kept tries again.
+	remove = func(string) error { return errors.New("refused") }
+	err = v.Keep("tls", "new.example", "strong", "p", []byte(report))
+	remove = os.Remove
+	if err != nil {
+		t.Fatalf("the report was kept and Keep said %v", err)
+	}
+	if entries, st, _ := v.List(); len(entries) != 3 || st.OverBound != 1 {
+		t.Errorf("after a failed removal: %d listed, status %+v, want 3 and one over the bound", len(entries), st)
+	}
+	if err := v.Keep("tls", "new.example", "strong", "p", []byte(report)); err != nil {
+		t.Fatal(err)
+	}
+	if entries, st, _ := v.List(); len(entries) != 2 || st.OverBound != 0 {
+		t.Errorf("the next report did not trim again: %d listed, status %+v", len(entries), st)
+	}
+
+	// And over HTTP, beside the list.
+	rec := httptest.NewRecorder()
+	v.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/history", nil))
+	if !strings.Contains(rec.Body.String(), `"status":{"unreadable":3,`) {
+		t.Errorf("the list does not carry the status: %s", rec.Body.String())
 	}
 }
