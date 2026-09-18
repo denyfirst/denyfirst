@@ -70,6 +70,21 @@ type Entry struct {
 	Seq int64 `json:"seq"`
 }
 
+// Status is what the history holds that the list does not show.
+type Status struct {
+	// Unreadable counts the files in the history that do not open under
+	// this key, and what they take on disk: sealed under an earlier
+	// password, or damaged. The bound never removes them; they are not
+	// this key's to judge (audit 2026-09-18, D09). A new password moves the
+	// whole history aside before it is made, so these are rare.
+	Unreadable      int   `json:"unreadable"`
+	UnreadableBytes int64 `json:"unreadableBytes"`
+
+	// OverBound is how many reports past the bound are still here, because
+	// removing them failed. The next report kept tries again.
+	OverBound int `json:"overBound"`
+}
+
 // Record is a report as it was kept.
 type Record struct {
 	Entry
@@ -108,7 +123,7 @@ func (v *Vault) Keep(check, target, verdict, policy string, report []byte) error
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
-	entries, err := v.entries(gcm)
+	entries, _, err := v.entries(gcm)
 	if err != nil {
 		return err
 	}
@@ -144,34 +159,43 @@ func (v *Vault) Keep(check, target, verdict, policy string, report []byte) error
 		return err
 	}
 
-	// Past the bound, the oldest go.
-	keep := v.Limit
-	if keep <= 0 {
-		keep = DefaultKeep
-	}
-	if extra := len(entries) + 1 - keep; extra > 0 {
+	// Past the bound, the oldest go. A removal that fails leaves the report
+	// in place and counted in Status.OverBound, where History shows it; the
+	// report just kept was kept all the same, so it is not this call's error.
+	if extra := len(entries) + 1 - v.keep(); extra > 0 {
 		sortNewestFirst(entries)
 		for _, e := range entries[len(entries)-extra:] {
-			_ = os.Remove(v.path(e.ID))
+			_ = remove(v.path(e.ID))
 		}
 	}
 	return nil
 }
 
-// List returns what is kept, newest first.
-func (v *Vault) List() ([]Entry, error) {
+// remove is os.Remove, replaced in a test to make a removal fail.
+var remove = os.Remove
+
+func (v *Vault) keep() int {
+	if v.Limit <= 0 {
+		return DefaultKeep
+	}
+	return v.Limit
+}
+
+// List returns what is kept, newest first, and what is there besides.
+func (v *Vault) List() ([]Entry, Status, error) {
 	gcm, err := v.cipher()
 	if err != nil {
-		return nil, err
+		return nil, Status{}, err
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	entries, err := v.entries(gcm)
+	entries, st, err := v.entries(gcm)
 	if err != nil {
-		return nil, err
+		return nil, Status{}, err
 	}
+	st.OverBound = max(0, len(entries)-v.keep())
 	sortNewestFirst(entries)
-	return entries, nil
+	return entries, st, nil
 }
 
 // Get opens one report.
@@ -207,16 +231,18 @@ func (v *Vault) Delete(id string) error {
 	return nil
 }
 
-// entries opens every report and keeps what the list shows. A file that does
-// not open under this key is skipped: it was sealed under another one, or it
-// is not a report.
-func (v *Vault) entries(gcm cipher.AEAD) ([]Entry, error) {
+// entries opens every report and keeps what the list shows. A report file
+// that does not open under this key is counted rather than passed over in
+// silence: it was sealed under another one, or it is damaged, and it takes
+// space either way.
+func (v *Vault) entries(gcm cipher.AEAD) ([]Entry, Status, error) {
+	var st Status
 	names, err := os.ReadDir(v.Dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return nil, st, nil
 		}
-		return nil, fmt.Errorf("the history could not be read: %w", err)
+		return nil, st, fmt.Errorf("the history could not be read: %w", err)
 	}
 	var out []Entry
 	for _, n := range names {
@@ -226,11 +252,15 @@ func (v *Vault) entries(gcm cipher.AEAD) ([]Entry, error) {
 		}
 		r, err := v.open(gcm, id)
 		if err != nil {
+			st.Unreadable++
+			if info, err := n.Info(); err == nil {
+				st.UnreadableBytes += info.Size()
+			}
 			continue
 		}
 		out = append(out, r.Entry)
 	}
-	return out, nil
+	return out, st, nil
 }
 
 func (v *Vault) open(gcm cipher.AEAD, id string) (Record, error) {

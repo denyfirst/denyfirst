@@ -353,17 +353,26 @@ or of a backup, holds nothing readable without the password.
 **Every check is kept, and can be deleted.** Behind the password each report is
 kept whole in `porch-data/history`, one file per report under a random name,
 sealed with that key and dated but not timed. **History** lists them, opens
-any of them as it was drawn, and deletes one for good. At most a thousand are
-kept, the oldest dropped first.
+any of them as it was drawn, and deletes one for good. At most a thousand that
+the password opens are kept, the oldest dropped first. A file in the history it
+does not open — kept under an earlier password, or damaged — is never dropped
+by that bound; History says how many there are and how much space they take.
 
 **The domains you add are kept too**, in `porch-data/domains.sealed`, sealed the
 same way: the names and the date each was added. Whether each is proven is not
 kept. **Domains** asks DNS again every time it opens, so a record taken out of a
 zone reads as unproven straight away.
 
-**So a lost password cannot be recovered**, by anyone. Delete
-`porch-data/access` and restart: a new password is printed and a new key made,
-and what was kept under the old one stays unreadable.
+**So a lost password cannot be recovered**, by anyone. Move
+`porch-data/access` aside — to `porch-data/access.lost`, say — and restart: a
+new password is printed and a new key made. Before it is made, the history and
+the domain list kept under the old key are moved, not deleted, to
+`porch-data/retired-<date>/`, and the log says where. The new password starts
+with an empty history and an empty list of domains. What was moved opens only
+with the old access file and its password: if the password comes back to you,
+stop the service, put `access.lost` back as `access` and the contents of the
+retired folder back in `porch-data`, and start it again. Otherwise delete the
+folder once you are sure nobody needs it; porchd never does.
 
 **A session is a cookie** that no script can read and no other site can send,
 and it ends when you sign out, after twelve hours, or when the service

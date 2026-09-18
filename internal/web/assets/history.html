@@ -22,6 +22,7 @@
   {{if .Guarded}}
   <div class="panel history" id="history">
     <p class="history-status" id="history-status" role="status">Opening the history…</p>
+    <p class="history-note" id="history-note" hidden></p>
     <p class="history-empty" id="history-empty" hidden>Nothing is kept yet. Every check run from
     New check is kept here, encrypted, until you delete it.</p>
     <table class="rows history-table" id="history-table" hidden>
@@ -36,7 +37,7 @@
 
   <p class="work-help">
     Kept encrypted under a key your password seals, newest first, at most a
-    thousand. Deleting a report removes it for good; nobody can bring it back.
+    thousand that it opens. Deleting a report removes it for good; nobody can bring it back.
   </p>
   {{else}}
   <div class="panel">

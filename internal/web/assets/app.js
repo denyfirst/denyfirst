@@ -2125,11 +2125,37 @@ function showHistory(entries) {
   document.getElementById("history-empty").hidden = entries.length !== 0;
 }
 
+// What the history holds besides the list: files this password does not open,
+// which the bound never removes, and reports it could not remove. Said, so
+// that "at most a thousand" is never read as a promise about the disk.
+function historyNote(status) {
+  const note = document.getElementById("history-note");
+  if (!note) return;
+  const parts = [];
+  if (status && status.unreadable > 0) {
+    const size = status.unreadableBytes >= 1048576
+      ? (status.unreadableBytes / 1048576).toFixed(1) + " MB"
+      : Math.max(1, Math.round(status.unreadableBytes / 1024)) + " kB";
+    const one = status.unreadable === 1;
+    parts.push(status.unreadable + (one ? " file" : " files") + " in the history (" + size + ")" +
+      (one ? " does" : " do") + " not open with this password. Kept under another one, or " +
+      "damaged, " + (one ? "it is" : "they are") + " left for whoever runs the server to decide about.");
+  }
+  if (status && status.overBound > 0) {
+    const one = status.overBound === 1;
+    parts.push(status.overBound + (one ? " report" : " reports") + " past the bound could not " +
+      "be removed. The next check tries again.");
+  }
+  note.textContent = parts.join(" ");
+  note.hidden = parts.length === 0;
+}
+
 if (historyBox && historyReport) {
   historyRequest("GET", "/api/v1/history")
     .then(body => {
       historyStatus("");
       showHistory((body && body.entries) || []);
+      historyNote(body && body.status);
     })
     .catch(err => historyStatus(err.message));
 }

@@ -2018,7 +2018,19 @@ The demonstration refuses the flag. It is public by design and keeps nothing
 to protect, and a password in front of it would be a claim about a service it
 is not.
 
-*Enforced in:* `internal/access`, `internal/vault`, `cmd/porchd.createAccess`, `cmd/porchd.run`,
+A new password is a new key, and what the old key sealed is moved aside before
+the new one is made, never deleted. The review of 2026-09-18 found the guide's
+reset left `domains.sealed` in place (D03): the new key could not open it, so
+the domain list refused every addition until somebody found the file by hand.
+And the history passed over files it could not open (D09), so "at most a
+thousand" bounded the list and not the disk. Now `createAccess` moves the
+history and the domain list into `retired-<date>/` and says where; the old
+access file and its password still open them there, and only the person who
+runs the machine deletes them. A file the key does not open is never removed by
+the bound, because it is not that key's to judge; it is counted, with its size,
+and History says so, as it says when the bound could not remove a report.
+
+*Enforced in:* `internal/access`, `internal/vault`, `cmd/porchd.createAccess`, `cmd/porchd.retireSealed`, `cmd/porchd.run`,
 `internal/web.Configure`, `internal/web.PublicPaths`
 *Guarded by:* `TestNothingIsReachableWithoutSigningIn`,
 `TestTheRightPasswordOpensASession`, `TestASessionEnds`,
@@ -2047,7 +2059,9 @@ is not.
 `TestEveryShippedConfigurationCarriesAPassword`,
 `TestTheDomainListAddsListsAndRemoves`, `TestOnlyADomainIsAdded`,
 `TestTheDomainListIsSealed`, `TestTheDomainListIsBounded`, `TestTheDomainHandler`,
-`TestDomainsBehindAPasswordKeepsAListAndAsksEachOne`
+`TestDomainsBehindAPasswordKeepsAListAndAsksEachOne`,
+`TestANewPasswordMovesWhatTheOldOneKeptAside`,
+`TestWhatTheListCannotShowIsCountedAndNeverTrimmed`
 
 ## Correctness of the report
 
