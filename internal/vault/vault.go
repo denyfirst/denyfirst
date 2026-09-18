@@ -285,10 +285,19 @@ func (v *Vault) write(gcm cipher.AEAD, id string, body []byte) error {
 }
 
 func (v *Vault) cipher() (cipher.AEAD, error) {
-	if v == nil || v.Key == nil {
+	if v == nil {
 		return nil, ErrLocked
 	}
-	key := v.Key()
+	return sealer(v.Key)
+}
+
+// sealer is the AES-GCM instance the data key makes, or ErrLocked while
+// there is no key.
+func sealer(keyOf func() []byte) (cipher.AEAD, error) {
+	if keyOf == nil {
+		return nil, ErrLocked
+	}
+	key := keyOf()
 	if len(key) != 32 {
 		return nil, ErrLocked
 	}

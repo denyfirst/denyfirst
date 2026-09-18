@@ -51,6 +51,25 @@
     </div>
   </section>
 
+  {{if .Guarded}}
+  <!--
+    The domains added here, kept sealed like the history. Whether each is
+    proven is not kept: it is asked of DNS each time the page opens, so a
+    record taken out of a zone reads as unproven straight away.
+  -->
+  <h2 class="work-section">Your domains</h2>
+  <div class="panel domain-list" id="domain-list">
+    <p class="history-status" id="domain-list-status" role="status">Opening the list…</p>
+    <p class="history-empty" id="domain-list-empty" hidden>No domains yet. Add one above and it is kept here.</p>
+    <table class="rows history-table" id="domain-table" hidden>
+      <thead>
+        <tr><th scope="col">Domain</th><th scope="col">Added</th><th scope="col">Proof</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+      </thead>
+      <tbody id="domain-rows"></tbody>
+    </table>
+  </div>
+  {{end}}
+
   <p class="work-help">
     A proven domain does not prove another one, a place it redirects to, or a
     mail server run by someone else. A new record can take a few minutes to be

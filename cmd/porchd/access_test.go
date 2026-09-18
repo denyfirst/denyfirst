@@ -124,12 +124,15 @@ func TestTheHistoryExistsOnlyBehindThePassword(t *testing.T) {
 		"\t\tapi.KeepReports(history)\n" +
 		"\t\troot.Handle(\"/api/v1/history\", history.Handler())\n" +
 		"\t\troot.Handle(\"/api/v1/history/\", history.Handler())\n" +
+		"\t\tdomains := &vault.Domains{Path: filepath.Join(filepath.Dir(*accessFile), \"domains.sealed\"), Key: gate.Key}\n" +
+		"\t\troot.Handle(\"/api/v1/domains\", domains.Handler())\n" +
+		"\t\troot.Handle(\"/api/v1/domains/\", domains.Handler())\n" +
 		"\t}\n"
 	if !strings.Contains(src, block) {
 		t.Fatal("the vault is no longer made in the branch that makes the gate")
 	}
 	rest := strings.Replace(src, block, "", 1)
-	for _, never := range []string{"KeepReports(", "history.Handler()", "vault.Vault{"} {
+	for _, never := range []string{"KeepReports(", "history.Handler()", "vault.Vault{", "vault.Domains{", "domains.Handler()"} {
 		if strings.Contains(rest, never) {
 			t.Errorf("main.go uses %q outside the branch that makes the gate", never)
 		}
