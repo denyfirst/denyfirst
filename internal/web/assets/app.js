@@ -1867,3 +1867,121 @@ if (porchForm) {
     }
   });
 }
+
+/*
+  History, on an installation behind a password.
+
+  The list is asked for once the page has loaded, through the gate; nothing
+  of it is in the page itself. Each row opens its report with the same
+  builders New check draws with (R16), from the JSON that was kept, so a
+  report reopened is the report that was drawn. Delete asks first, then
+  removes the report for good.
+*/
+const historyBox = document.getElementById("history");
+const historyReport = document.getElementById("history-report");
+
+async function historyRequest(method, path) {
+  const response = await fetch(path, { method, credentials: "same-origin", cache: "no-store" });
+  if (response.status === 401) {
+    window.location.assign("/login");
+    throw new Error("Sign in to use this installation.");
+  }
+  if (response.status === 204) return null;
+  let body = null;
+  try {
+    body = await response.json();
+  } catch {
+    throw new Error("The installation sent something this page could not read.");
+  }
+  if (!response.ok) {
+    const error = body && body.error ? body.error : {};
+    throw new Error(error.message || "The history could not be read.");
+  }
+  return body;
+}
+
+function historyRow(entry) {
+  const spec = CHECKS[entry.check];
+  const row = el("tr");
+  row.appendChild(el("td", null, entry.date));
+  row.appendChild(el("td", "history-target", entry.target));
+  row.appendChild(el("td", null, spec ? spec.label : entry.check));
+  const verdict = VERDICTS.includes(entry.verdict) ? entry.verdict : "not graded";
+  row.appendChild(el("td", markClass(entry.verdict), verdict));
+
+  const actions = el("td", "history-actions");
+  const open = el("button", "history-open", "Open");
+  open.type = "button";
+  const remove = el("button", "history-delete", "Delete");
+  remove.type = "button";
+  actions.appendChild(open);
+  actions.appendChild(remove);
+  row.appendChild(actions);
+
+  open.addEventListener("click", async () => {
+    open.disabled = true;
+    try {
+      const record = await historyRequest("GET", "/api/v1/history/" + entry.id);
+      const view = CHECKS[record.check];
+      clear(historyReport);
+      const head = el("div", "porch-report-head");
+      // The report names its own target; the line above says which check
+      // and when, which the report does not.
+      head.appendChild(el("p", "eyebrow", (view ? view.label : record.check) + " · kept " + record.date));
+      historyReport.appendChild(head);
+      if (view) {
+        historyReport.appendChild(view.build(record.report));
+      } else {
+        historyReport.appendChild(failure("This report is from a check this build does not draw."));
+      }
+      historyReport.hidden = false;
+      historyReport.scrollIntoView({ block: "start" });
+    } catch (err) {
+      historyStatus(err.message);
+    } finally {
+      open.disabled = false;
+    }
+  });
+
+  remove.addEventListener("click", async () => {
+    if (!window.confirm("Delete the " + (spec ? spec.label : entry.check) + " report for " +
+        entry.target + " from " + entry.date + "? It cannot be brought back.")) return;
+    remove.disabled = true;
+    try {
+      await historyRequest("DELETE", "/api/v1/history/" + entry.id);
+      row.remove();
+      clear(historyReport);
+      historyReport.hidden = true;
+      if (!document.getElementById("history-rows").children.length) showHistory([]);
+      historyStatus("Deleted.");
+    } catch (err) {
+      historyStatus(err.message);
+      remove.disabled = false;
+    }
+  });
+  return row;
+}
+
+function historyStatus(text) {
+  const status = document.getElementById("history-status");
+  status.textContent = text;
+  status.hidden = !text;
+}
+
+function showHistory(entries) {
+  const table = document.getElementById("history-table");
+  const rows = document.getElementById("history-rows");
+  clear(rows);
+  for (const entry of entries) rows.appendChild(historyRow(entry));
+  table.hidden = entries.length === 0;
+  document.getElementById("history-empty").hidden = entries.length !== 0;
+}
+
+if (historyBox && historyReport) {
+  historyRequest("GET", "/api/v1/history")
+    .then(body => {
+      historyStatus("");
+      showHistory((body && body.entries) || []);
+    })
+    .catch(err => historyStatus(err.message));
+}

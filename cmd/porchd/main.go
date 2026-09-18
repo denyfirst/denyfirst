@@ -47,6 +47,7 @@ import (
 	"github.com/denyfirst/porch/internal/scan"
 	"github.com/denyfirst/porch/internal/smtptls"
 	"github.com/denyfirst/porch/internal/truststore"
+	"github.com/denyfirst/porch/internal/vault"
 	"github.com/denyfirst/porch/internal/verify"
 	"github.com/denyfirst/porch/internal/web"
 )
@@ -409,18 +410,31 @@ func run() int {
 	for _, path := range api.Paths() {
 		root.Handle(path, api)
 	}
+
+	// Behind a password, every report is kept whole in a vault sealed by it,
+	// beside the access file, and read back only through the gate. Without
+	// one nothing of the sort exists: no vault, no route to one.
+	var gate *access.Gate
+	if *accessFile != "" {
+		gate = access.NewGate(*accessFile, web.PublicPaths())
+		history := &vault.Vault{Dir: filepath.Join(filepath.Dir(*accessFile), "history"), Key: gate.Key}
+		api.KeepReports(history)
+		root.Handle("/api/v1/history", history.Handler())
+		root.Handle("/api/v1/history/", history.Handler())
+	}
+
 	// The pages are told what this installation is before any of them is
 	// served. The console says whether a boundary was configured, and an
 	// operator reading a report needs that to be true rather than plausible.
-	web.Configure(scope != nil, *resultsDir != "", *accessFile != "")
+	web.Configure(scope != nil, *resultsDir != "" || gate != nil, gate != nil)
 	root.Handle("/", web.Handler())
 
 	// The gate goes in front of everything, pages and API alike, so a route
 	// added later is behind it without anybody remembering to put it there.
 	// Only the sign-in page and what it draws with are open.
 	var handler http.Handler = root
-	if *accessFile != "" {
-		handler = access.NewGate(*accessFile, web.PublicPaths()).Wrap(root)
+	if gate != nil {
+		handler = gate.Wrap(root)
 	}
 
 	srv := &http.Server{

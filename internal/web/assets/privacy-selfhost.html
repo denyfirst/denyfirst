@@ -61,7 +61,11 @@
 
     <p>
       <strong>Results</strong>:
-      {{if .Keeps}}kept on this machine, because it was started with a results
+      {{if .Guarded}}every report, kept whole on this machine, encrypted under a
+      key the password seals, so they can be opened again or deleted under
+      History. Each is filed under a random name, dated but not timed, and
+      read back only by somebody signed in. At most a thousand are kept, the
+      oldest dropped first.{{else if .Keeps}}kept on this machine, because it was started with a results
       directory: per name and per check, the date, the verdict, the rule set
       and the rules raised. No time of day and nothing about who asked. They are
       never served over HTTP.{{else}}not kept. Close the page and the report is

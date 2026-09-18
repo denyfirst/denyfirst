@@ -2638,3 +2638,29 @@ main > .band:last-child { border-bottom: 0; }
 .work-heading + .work-section { margin-top: 0; }
 
 .password-form { margin-top: 0; }
+
+/* History: the list, and a report opened under it. */
+.history-table { width: 100%; }
+.history-table th { text-align: left; font-weight: 600; color: var(--ink-faint); font-size: 0.78rem; }
+.history-table td { font-family: var(--sans); white-space: nowrap; vertical-align: middle; }
+.history-target { font-weight: 600; white-space: normal; overflow-wrap: normal; }
+.history-actions { text-align: right; white-space: nowrap; }
+.history-status:empty, .history-status[hidden] { display: none; }
+.history-empty { margin: 0; color: var(--ink-soft); }
+
+.history-open,
+.history-delete {
+  margin-left: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.history-open:hover { color: var(--ink); border-color: var(--ink-faint); }
+.history-delete:hover { color: var(--insecure); border-color: var(--insecure); }
+#history-report { margin-top: 1.5rem; }

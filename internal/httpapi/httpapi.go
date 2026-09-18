@@ -166,6 +166,10 @@ type Server struct {
 
 	routes []route
 
+	// keeper keeps each report whole, where an installation behind a password
+	// keeps its history. Nil keeps nothing. See KeepReports.
+	keeper Keeper
+
 	// store keeps results, where the operator asked for them to be kept. Nil
 	// keeps nothing, which is the default and what the demonstration gets.
 	store *results.Store
@@ -711,6 +715,16 @@ func (s *Server) runCheck(ctx context.Context, w http.ResponseWriter, c check, t
 			fmt.Fprintln(notKeptLog, notKept(err))
 		}
 	}
+	// And the whole report, sealed, where the installation keeps a history
+	// behind a password. The same rule: losing the copy is logged here and
+	// never the requester's problem.
+	if s.keeper != nil {
+		if body, err := json.Marshal(out.body); err == nil {
+			if err := s.keeper.Keep(c.name, t.displayName(), string(out.verdict), out.policy, body); err != nil {
+				fmt.Fprintln(notKeptLog, notKept(err))
+			}
+		}
+	}
 
 	writeJSON(w, http.StatusOK, out.body)
 }
@@ -840,6 +854,19 @@ func SilentErrorLog() *log.Logger {
 // weaknesses is not something a service with no authentication should offer.
 func (s *Server) KeepResults(store *results.Store) {
 	s.store = store
+}
+
+// Keeper keeps a report whole. internal/vault is the one there is.
+type Keeper interface {
+	Keep(check, target, verdict, policy string, report []byte) error
+}
+
+// KeepReports tells this service to keep every report it answers with, whole,
+// in k. Called before serving, like KeepResults, and only where a password is
+// in front of the service: what is kept is read back over HTTP, and a history
+// of an estate's weaknesses is not something to serve to whoever asks (P6).
+func (s *Server) KeepReports(k Keeper) {
+	s.keeper = k
 }
 
 // UseHeloName sets the name the mail check gives each exchanger with EHLO.

@@ -639,7 +639,7 @@ func renderWorkspace(verified, keeps bool) {
 			Description: part.description,
 			Fragment:    part.fragment,
 			Section:     part.section,
-			Script:      part.section == "domains",
+			Script:      part.section == "domains" || (part.section == "history" && signedIn),
 			Data:        workspaceData(verified, keeps),
 		}
 		body, err := render(p)

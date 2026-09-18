@@ -36,7 +36,8 @@
 
       <dt>Results</dt>
       <dd>
-        {{if .Keeps}}Kept on this machine. Nothing about who asked is written
+        {{if .Guarded}}Kept whole and encrypted, to open again or delete under
+        <a href="/history">History</a>.{{else if .Keeps}}Kept on this machine. Nothing about who asked is written
         down.{{else}}Not kept. Start with <code>-results-dir</code> to keep them.{{end}}
       </dd>
 

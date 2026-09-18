@@ -354,3 +354,13 @@ func (t target) historyName() string {
 	}
 	return t.host + "_" + t.port
 }
+
+// displayName is what a kept report is listed under: the name as a person
+// would type it, with the port only where it is not the one the check assumes.
+// The vault names its files at random, so no filename rule applies here.
+func (t target) displayName() string {
+	if t.port == "" || t.port == scan.DefaultPort {
+		return t.host
+	}
+	return net.JoinHostPort(t.host, t.port)
+}
