@@ -322,3 +322,73 @@ func TestAPasswordIsTakenOnlyOverAPrivateTransport(t *testing.T) {
 		t.Error("a password change over plain HTTP to a public name went through")
 	}
 }
+
+// An address that tried to sign in is forgotten once its allowance has
+// refilled, on time even when nobody else arrives (audit 2026-09-18, D08). It
+// used to be kept until a thousand others came, which on a quiet installation
+// is for as long as it runs, while the privacy page promised minutes.
+func TestASignInAddressIsForgottenOnceItsAllowanceRefills(t *testing.T) {
+	g, _ := behind(t)
+	now := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	g.now = func() time.Time { return now }
+	t.Cleanup(func() {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		if g.sweeper != nil {
+			g.sweeper.Stop()
+		}
+	})
+	held := func(key string) bool {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		_, ok := g.attempts[key]
+		return ok
+	}
+
+	for range attemptBurst {
+		g.allow("192.0.2.1")
+	}
+	if g.allow("192.0.2.1") {
+		t.Fatal("the allowance is not spent after a burst")
+	}
+	g.mu.Lock()
+	armed := g.sweeper != nil
+	g.mu.Unlock()
+	if !armed {
+		t.Error("an address is held and nothing is set to forget it")
+	}
+
+	// Before it has refilled it is kept, so waiting does not buy a guesser
+	// a fresh burst sooner than refilling would.
+	now = now.Add(attemptBurst*attemptInterval - time.Second)
+	g.sweep()
+	if !held("192.0.2.1") {
+		t.Error("an address was forgotten before its allowance refilled")
+	}
+
+	// Then the timer's sweep drops it, with nobody else arriving.
+	now = now.Add(time.Second)
+	g.sweep()
+	if held("192.0.2.1") {
+		t.Error("an address is still held once its allowance has refilled")
+	}
+	g.mu.Lock()
+	armed = g.sweeper != nil
+	g.mu.Unlock()
+	if armed {
+		t.Error("a timer is still set with nothing to forget")
+	}
+
+	// And a later sign-in from elsewhere sweeps too: a day later, only the
+	// newcomer is held.
+	g.allow("192.0.2.1")
+	now = now.Add(24 * time.Hour)
+	g.allow("198.51.100.7")
+	if held("192.0.2.1") || !held("198.51.100.7") {
+		t.Error("a day-old address outlived a later sign-in")
+	}
+
+	if attemptsForgotten > 6*time.Minute {
+		t.Errorf("addresses are kept %v, longer than the privacy page says", attemptsForgotten)
+	}
+}

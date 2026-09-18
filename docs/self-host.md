@@ -352,8 +352,9 @@ or of a backup, holds nothing readable without the password.
 
 **Every check is kept, and can be deleted.** Behind the password each report is
 kept whole in `porch-data/history`, one file per report under a random name,
-sealed with that key and dated but not timed. **History** lists them, opens
-any of them as it was drawn, and deletes one for good. At most a thousand that
+sealed with that key. A report is kept as it was drawn, so it carries the
+name checked and the time it was measured; the list shows only the date.
+**History** lists them, opens any of them as it was drawn, and deletes one for good. At most a thousand that
 the password opens are kept, the oldest dropped first. A file in the history it
 does not open — kept under an earlier password, or damaged — is never dropped
 by that bound; History says how many there are and how much space they take.

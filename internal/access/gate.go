@@ -35,6 +35,13 @@ const (
 	attemptBurst    = 5
 	attemptInterval = time.Minute
 	maxTracked      = 1024
+
+	// attemptsForgotten is how long after its last attempt an address is
+	// dropped: by then its allowance has refilled, so forgetting it changes
+	// nothing. The privacy page says this number. The map used to keep an
+	// address until a thousand others arrived (audit 2026-09-18, D08), which
+	// on a quiet installation is for as long as it runs.
+	attemptsForgotten = attemptBurst * attemptInterval
 )
 
 // Gate decides which requests reach the installation, and holds its data key
@@ -48,6 +55,10 @@ type Gate struct {
 	key      []byte
 	sessions map[[32]byte]time.Time
 	attempts map[string]*bucket
+
+	// sweeper drops idle addresses on time while there are any, even when
+	// nobody else arrives to prompt it. Nil while the map is empty.
+	sweeper *time.Timer
 
 	// derive admits one password derivation at a time.
 	derive chan struct{}
@@ -349,6 +360,7 @@ func (g *Gate) allow(key string) bool {
 	}
 	b.tokens = min(attemptBurst, b.tokens+now.Sub(b.last).Seconds()/attemptInterval.Seconds())
 	b.last = now
+	g.sweepLocked()
 	if b.tokens < 1 {
 		return false
 	}
@@ -356,8 +368,36 @@ func (g *Gate) allow(key string) bool {
 	return true
 }
 
+// sweep drops every address idle for attemptsForgotten. The timer runs it.
+func (g *Gate) sweep() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.sweeper = nil
+	g.sweepLocked()
+}
+
+// sweepLocked drops idle addresses, and keeps a timer armed for as long as
+// any are left, so the last of them goes on time too.
+func (g *Gate) sweepLocked() {
+	now := g.now()
+	for key, b := range g.attempts {
+		if now.Sub(b.last) >= attemptsForgotten {
+			delete(g.attempts, key)
+		}
+	}
+	if len(g.attempts) > 0 && g.sweeper == nil {
+		g.sweeper = time.AfterFunc(attemptInterval, g.sweep)
+	}
+}
+
 // clientKey is the address a request came from, held in memory to count
 // attempts and never written down.
+//
+// The connection's address and never a forwarded header, which is the rule
+// porchd applies to scans too: it trusts no proxy, and has no setting that
+// would make it (see cmd/porchd). Behind a proxy every sign-in then shares
+// one allowance, which is the side to err on — a header any client can write
+// would hand each guess a fresh one.
 func clientKey(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

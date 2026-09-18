@@ -82,3 +82,40 @@ func TestTheSelfHostedPageStatesTheRealRetentionPeriod(t *testing.T) {
 		t.Errorf("the page says three minutes and the defaults hold an address for %v", got)
 	}
 }
+
+// Each mode says what it keeps (audit 2026-09-18, D11). Behind a password the
+// history keeps every report as it was drawn, which includes the time it was
+// measured, so that page does not say nothing records which name or when; a
+// results directory keeps the name and the date and says so; only a copy that
+// keeps nothing says it. Only the guarded page mentions sign-in addresses.
+func TestThePrivacyPageSaysWhatEachModeKeeps(t *testing.T) {
+	guarded := flatten(guardedAs(t, "/privacy"))
+	keeps := privacyAs(t, true, true)
+	open := privacyAs(t, false, false)
+	const nothing = "Nothing writes down which name was checked, by whom, or when."
+
+	for _, want := range []string{"No log of requests.", "the time it was measured", "within six minutes of its last attempt", "What this page cannot speak for"} {
+		if !strings.Contains(guarded, want) {
+			t.Errorf("behind a password the page does not say %q", want)
+		}
+	}
+	for _, never := range []string{nothing, "dated but not timed"} {
+		if strings.Contains(guarded, never) {
+			t.Errorf("behind a password the page still says %q", never)
+		}
+	}
+	if !strings.Contains(keeps, "Which name was checked, and on which date, is kept") || strings.Contains(keeps, nothing) {
+		t.Error("with a results directory the page does not say it keeps the name and the date")
+	}
+	if !strings.Contains(keeps, "What this page cannot speak for") {
+		t.Error("with a results directory the page does not say what it cannot speak for")
+	}
+	if !strings.Contains(open, nothing) || strings.Contains(open, "What this page cannot speak for") {
+		t.Error("a copy that keeps nothing does not say so plainly")
+	}
+	for name, page := range map[string]string{"a results directory": keeps, "nothing kept": open} {
+		if strings.Contains(page, "tries to sign in") {
+			t.Errorf("with %s the page talks about signing in", name)
+		}
+	}
+}
