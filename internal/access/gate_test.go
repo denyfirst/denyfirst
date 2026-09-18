@@ -1,6 +1,7 @@
 package access
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,6 +25,8 @@ func behind(t *testing.T) (*Gate, http.Handler) {
 func do(h http.Handler, method, path, body string, cookie *http.Cookie, header map[string]string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, path, strings.NewReader(body))
 	r.RemoteAddr = "192.0.2.10:5000"
+	// The browser at the near end of an SSH tunnel, as the guide sets it up.
+	r.Host = "localhost:8080"
 	if body != "" {
 		r.Header.Set("Content-Type", "application/json")
 	}
@@ -205,6 +208,7 @@ func TestAnotherSiteCannotUseTheSessionEndpoints(t *testing.T) {
 	}
 
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/session", strings.NewReader("password="+testPassword))
+	r.Host = "localhost:8080"
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
@@ -261,5 +265,60 @@ func TestOnlyThisPageMaySignIn(t *testing.T) {
 		if w.Code != http.StatusForbidden {
 			t.Errorf("a sign-in sent %s: %d, want 403", site, w.Code)
 		}
+	}
+}
+
+// A password never crosses the network in the clear: plain HTTP to a public
+// name is refused before the password is read, and a session set by hand on
+// such a request does not count. TLS works, and so does localhost, which is
+// what an SSH tunnel looks like to the browser.
+func TestAPasswordIsTakenOnlyOverAPrivateTransport(t *testing.T) {
+	_, h := behind(t)
+	send := func(host string, tlsOn bool, method, path, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r.RemoteAddr = "192.0.2.10:5000"
+		r.Host = host
+		if tlsOn {
+			r.TLS = &tls.ConnectionState{}
+		}
+		if body != "" {
+			r.Header.Set("Content-Type", "application/json")
+		}
+		if cookie != nil {
+			r.AddCookie(cookie)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	if w := send("scan.example.com", false, http.MethodPost, "/api/v1/session", `{"password":"`+testPassword+`"}`, nil); w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "insecure_transport") {
+		t.Errorf("a sign-in over plain HTTP to a public name: %d %s", w.Code, w.Body.String())
+	}
+	for _, host := range []string{"localhost:8080", "127.0.0.1:8080", "[::1]:8080", "LOCALHOST"} {
+		if w := send(host, false, http.MethodPost, "/api/v1/session", `{"password":"`+testPassword+`"}`, nil); w.Code != http.StatusNoContent {
+			t.Errorf("a sign-in over plain HTTP to %s: %d", host, w.Code)
+		}
+	}
+	w := send("scan.example.com", true, http.MethodPost, "/api/v1/session", `{"password":"`+testPassword+`"}`, nil)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("a sign-in over TLS: %d", w.Code)
+	}
+	var session *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == CookieName {
+			session = c
+		}
+	}
+	if session == nil {
+		t.Fatal("no session over TLS")
+	}
+	if w := send("scan.example.com", true, http.MethodGet, "/history", "", session); w.Body.String() != "inside" {
+		t.Error("a session over TLS did not reach the installation")
+	}
+	if w := send("scan.example.com", false, http.MethodGet, "/history", "", session); w.Body.String() == "inside" {
+		t.Error("a session sent by hand over plain HTTP to a public name reached the installation")
+	}
+	if w := send("scan.example.com", false, http.MethodPost, "/api/v1/password", `{"password":"`+testPassword+`","next":"a new long password"}`, session); w.Code == http.StatusNoContent {
+		t.Error("a password change over plain HTTP to a public name went through")
 	}
 }

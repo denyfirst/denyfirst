@@ -46,4 +46,8 @@ ENTRYPOINT ["/porchd"]
 # beyond loopback without it, and inside a container every address is beyond
 # loopback. The secret is created in /data on the first start, so /data has to
 # be a writable volume owned by 65534 — see docker-compose.yml.
-CMD ["-listen", "0.0.0.0:8080", "-verification-secret-file", "/data/secret"]
+#
+# And a password in front of it, for the same reason: porchd refuses to serve
+# anyone beyond loopback without one. It is printed once in the log on the
+# first start, and only a sealed key is written to /data.
+CMD ["-listen", "0.0.0.0:8080", "-verification-secret-file", "/data/secret", "-access-file", "/data/access"]

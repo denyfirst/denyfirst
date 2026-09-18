@@ -96,14 +96,21 @@ denyfirst.dev
   All graded by porch-tls-v7
 ```
 
-`porchd` takes the same two flags and writes to the same store, so a service
-scanning on a schedule and a person at a terminal build one history rather than
-two.
+`porchd` takes the same two flags, for a service that runs on this machine's
+loopback with no password — a schedule, say — and writes to the same store, so
+it and a person at a terminal build one history rather than two.
 
-**It is never served over HTTP.** A browsable history of an estate's weaknesses
-is a thing worth attacking, and `porchd` has no authentication at all. Reading
-it back is `porch-scan -history`, which runs on the machine, makes no
-connection and resolves nothing.
+**Behind a password, History is the history.** The compose file starts
+`porchd` with `-access-file`, and then every report is kept whole and encrypted
+under **History**, to open again or delete; see *One password, and what it
+seals* below. `-results-dir` beside a password is refused at start, because it
+would keep a second copy in the clear, under each checked name, of what the
+password is there to seal.
+
+**The plain store is never served over HTTP.** A browsable history of an
+estate's weaknesses is a thing worth attacking, so a service with no password
+does not offer one. Reading it back is `porch-scan -history`, which runs on
+the machine, makes no connection and resolves nothing.
 
 **Nothing is kept that a report does not already carry**: the date, the check,
 the rule set, the verdict, and which rules were raised. No time of day, no
@@ -119,37 +126,6 @@ happened.
 **No retention period is invented.** `-results-keep N` bounds a target's
 history and drops the oldest first; unset keeps everything. A number this
 project chose would be a threshold nobody can argue with, applied to your disk.
-
-### In Docker
-
-The container runs as `65534:65534` from a `scratch` image — there is no shell
-in it and nothing to `chown` — so the directory has to be owned before it is
-mounted:
-
-```sh
-mkdir -p porch-data && sudo chown 65534:65534 porch-data
-```
-
-```yaml
-services:
-  porch:
-    image: porch
-    ports:
-      - "443:8443"
-    volumes:
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - ./porch-data:/data
-    command:
-      - "-listen=0.0.0.0:8443"
-      - "-results-dir=/data/results"
-    read_only: true
-```
-
-`read_only: true` stays. It locks the container's own filesystem; a mounted
-volume is still writable, so nothing is given up to gain this.
-
-`command:` replaces `CMD` and not `ENTRYPOINT`, so `-listen` has to be repeated
-there or it reverts to the image's default.
 
 ---
 
@@ -343,7 +319,9 @@ A container listens beyond loopback by construction, and `porchd` refuses to
 do that while scanning whatever it is given: it will not start without
 `-verification-secret-file` or an explicit `-open`. The image and the compose
 file both turn proof on. `-open` exists for a network nobody else can reach,
-and it is the setting to think about twice.
+and it is the setting to think about twice. A password is the same: beyond loopback
+`porchd` wants `-access-file`, or `-without-password` said out loud, and the
+image and the compose file give it the first.
 
 **Why showing the record is safe.** The value is derived from this
 installation's secret and the one domain. It proves something only once it is
@@ -390,7 +368,9 @@ and what was kept under the old one stays unreadable.
 **A session is a cookie** that no script can read and no other site can send,
 and it ends when you sign out, after twelve hours, or when the service
 restarts. Changing the password ends every other session. Guessing is slowed
-per address and one guess is checked at a time.
+per address and one guess is checked at a time. A password is taken only over HTTPS
+or through the SSH tunnel to `localhost`; sent in plain HTTP to any other
+address it is refused before it is read.
 
 ### A public address, with a certificate
 
@@ -403,6 +383,8 @@ one from Let's Encrypt for `scan.example.com`:
       - "0.0.0.0:8443"
       - "-verification-secret-file"
       - "/data/secret"
+      - "-access-file"
+      - "/data/access"
       - "-tls-cert"
       - "/certs/live/scan.example.com/fullchain.pem"
       - "-tls-key"
@@ -414,6 +396,11 @@ one from Let's Encrypt for `scan.example.com`:
       - ./porch-data:/data
       - /etc/letsencrypt:/certs:ro
 ```
+
+A `command` replaces the one in the compose file, it is not added to it, so
+every argument has to be there: drop `-access-file` and the password goes, and
+`porchd` then refuses to start on a public address, because it will not serve
+anyone beyond loopback without a password unless told `-without-password`.
 
 The key has to be readable by user 65534. Nothing listens on port 80 — see
 `docs/invariants.md`, P5 — so obtain the certificate with a DNS challenge, or

@@ -211,6 +211,12 @@ func run() int {
 				"\tabsent; when set, nothing is served without signing in, and what is\n"+
 				"\tkept is encrypted under a key the password seals")
 
+		// Said out loud, like -open. A service beyond loopback with no password
+		// is one anyone who can reach it may use.
+		withoutPassword = flag.Bool("without-password", false,
+			"listen beyond loopback without -access-file, so anyone who can reach the\n"+
+				"\tservice may use it. Only for a network nobody else can reach")
+
 		showVersion = flag.Bool("version", false, "print the release and policy versions, then exit")
 	)
 
@@ -314,6 +320,27 @@ func run() int {
 	// machine can reach it; anything else needs proof, or -open said out loud.
 	if err := openAllowed(*listen, scope != nil || demo.Enabled, *allowOpen); err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+
+	// And a service beyond loopback has a password in front of it, or says out
+	// loud that it has none. Proof of control is about which domains may be
+	// checked, not who may ask: an example that dropped -access-file while
+	// adding a certificate (audit 2026-09-18, D01) made every proven domain
+	// scannable by anyone who could reach the address. The demonstration is
+	// public by design.
+	if err := passwordAllowed(*listen, *accessFile != "" || demo.Enabled, *withoutPassword); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+
+	// Behind a password the history is kept sealed. The results directory
+	// writes a plain copy beside it, under the checked name, and the two
+	// together kept in the clear what the password was there to seal (D02).
+	// Asked for together, they are refused rather than one quietly winning.
+	if *accessFile != "" && *resultsDir != "" {
+		fmt.Fprintln(os.Stderr, "-results-dir keeps results in the clear, and -access-file keeps them "+
+			"encrypted in History; use one. Existing files in the results directory are left as they are")
 		return 2
 	}
 
@@ -1039,4 +1066,26 @@ func createAccess(path string) error {
 		"lost, delete %s and restart for a new one; what was kept under the old\n"+
 		"one can no longer be read.\n", password, path)
 	return nil
+}
+
+// passwordAllowed refuses a service without a password on an address other
+// than loopback, unless the operator said -without-password. The same shape as
+// openAllowed: loopback is reachable only from this machine.
+func passwordAllowed(listen string, guarded, without bool) error {
+	if guarded || without {
+		return nil
+	}
+	host, _, err := net.SplitHostPort(listen)
+	if err != nil {
+		return nil
+	}
+	if host == "localhost" {
+		return nil
+	}
+	if ip, err := netip.ParseAddr(host); err == nil && ip.IsLoopback() {
+		return nil
+	}
+	return errors.New("porchd will not listen beyond loopback without a password: anyone who " +
+		"can reach it could use it. Add -access-file, or -without-password if no one else can " +
+		"reach this network")
 }
