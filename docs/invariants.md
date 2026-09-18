@@ -2000,8 +2000,11 @@ the history: every report the installation answers is kept whole by
 `internal/vault`, one file per report under a random name so a listing says
 nothing about which names were checked, sealed with AES-256-GCM with the
 file's own name authenticated beside it so a report moved to another name
-does not open, and dated but not timed. Without a key nothing is written, not
-even in the clear. It is read back only through the gate, and deleting a
+does not open. A report is kept as it was drawn, so it carries the time it
+was measured: the history is where this installation keeps what was checked
+and when, on purpose, and the privacy page says so rather than the
+demonstration's "nothing records when" (audit 2026-09-18, D11). Nothing
+records who asked. Without a key nothing is written, not even in the clear. It is read back only through the gate, and deleting a
 report removes its file for good. The domains somebody adds are kept the same way, in one
 sealed file: names and the date each was added, never whether each is proven,
 which is asked of DNS each time the list is shown. The
@@ -2086,7 +2089,9 @@ happened, and a failed sign-out stays on the page and says so.
 `TestDomainsBehindAPasswordKeepsAListAndAsksEachOne`,
 `TestANewPasswordMovesWhatTheOldOneKeptAside`,
 `TestWhatTheListCannotShowIsCountedAndNeverTrimmed`,
-`TestTheSessionScriptRecoversAndSignsOutOnlyOnSuccess`
+`TestTheSessionScriptRecoversAndSignsOutOnlyOnSuccess`,
+`TestASignInAddressIsForgottenOnceItsAllowanceRefills`,
+`TestThePrivacyPageSaysWhatEachModeKeeps`
 
 ## Correctness of the report
 

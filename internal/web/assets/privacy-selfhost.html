@@ -32,17 +32,34 @@
 
     <h2 id="kept">What is kept</h2>
 
+    <!--
+      Each mode says what it keeps, not the sentence the demonstration can
+      say. The 2026-09-18 review (D11) found this page promising that nothing
+      records which name was checked or when, above a history that keeps
+      both: a report is kept as it was drawn, and it carries the time it was
+      measured. The time is useful to whoever runs this, so it stays; the
+      sentence changed.
+    -->
     <p>
-      <strong>No record of requests.</strong> Nothing writes down which name
-      was checked, by whom, or when. The service prints a line when it starts
-      and when it stops, and one when a result could not be kept — naming the
-      operation and the system's reason, never the name.
+      {{if .Guarded}}<strong>No log of requests.</strong> Nothing writes down
+      who asked for a check. What was checked, and when, is kept in one place:
+      the encrypted history under Results, which is what it is
+      for.{{else if .Keeps}}<strong>No record of requests.</strong> Nothing
+      writes down who asked, or at what time. Which name was checked, and on
+      which date, is kept in the results directory under
+      Results.{{else}}<strong>No record of requests.</strong> Nothing writes
+      down which name was checked, by whom, or when.{{end}}
+      The service prints a line when it starts and when it stops, and one when
+      a result could not be kept — naming the operation and the system's
+      reason, never the name.
     </p>
 
     <p>
       <strong>Your address</strong> is held in memory to enforce a rate limit,
-      and dropped about three minutes after your last request. Never written to
-      disk, never in a response.
+      and dropped about three minutes after your last request.{{if .Guarded}}
+      An address that tries to sign in is held the same way, to limit guesses
+      at the password, and dropped within six minutes of its last attempt.{{end}}
+      Never written to disk, never in a response.
     </p>
 
     <p>
@@ -63,14 +80,23 @@
       <strong>Results</strong>:
       {{if .Guarded}}every report, kept whole on this machine, encrypted under a
       key the password seals, so they can be opened again or deleted under
-      History. Each is filed under a random name, dated but not timed, and
-      read back only by somebody signed in. At most a thousand are kept, the
-      oldest dropped first.{{else if .Keeps}}kept on this machine, because it was started with a results
+      History. Each is filed under a random name and read back only by
+      somebody signed in. A report is kept as it was drawn: the name checked,
+      what was measured, and the time it was measured. At most a thousand that
+      the password opens are kept, the oldest dropped first.{{else if .Keeps}}kept on this machine, because it was started with a results
       directory: per name and per check, the date, the verdict, the rule set
       and the rules raised. No time of day and nothing about who asked. They are
       never served over HTTP.{{else}}not kept. Close the page and the report is
       gone, unless you saved its JSON.{{end}}
     </p>
+
+    {{if or .Guarded .Keeps}}
+    <p>
+      <strong>What this page cannot speak for</strong>: the times the files
+      themselves carry, backups of this machine, and any proxy or container
+      log in front of it. Those belong to whoever runs it.
+    </p>
+    {{end}}
 
     {{if .Verified}}
     <p>
