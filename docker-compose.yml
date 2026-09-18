@@ -21,11 +21,20 @@ services:
     # this installation's record before it is scanned, and the page shows the
     # record. A service that scans anything is refused beyond loopback, and
     # inside a container every address is beyond loopback.
+    #
+    # A password is in front of it. The first start prints one to the log,
+    # once — read it with "docker compose logs" — and writes only a sealed key
+    # to /data/access. Docker keeps that log, so sign in and change it under
+    # This installation straight away. What
+    # is kept is encrypted under that key, so a lost password is lost history:
+    # delete /data/access and restart for a new one.
     command:
       - "-listen"
       - "0.0.0.0:8080"
       - "-verification-secret-file"
       - "/data/secret"
+      - "-access-file"
+      - "/data/access"
 
     # Published on this machine's loopback only. Reach it from your own
     # computer through SSH:
@@ -50,8 +59,9 @@ services:
     # store does not fail — it reports every certificate as untrusted, which
     # reads as a finding about the scanned server.
     #
-    # porch-data holds the verification secret, and results if you ask for
-    # them with -results-dir /data/results. It is the only thing written to.
+    # porch-data holds the verification secret, the sealed key, and results if
+    # you ask for them with -results-dir /data/results. It is the only thing
+    # written to.
     volumes:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - ./porch-data:/data

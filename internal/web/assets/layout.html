@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="/style.css">
 <script src="/theme.js"></script>
 </head>
-<body{{if .Brand}} data-site="demo"{{else}} class="workspace"{{end}}>
+<body{{if .Brand}} data-site="demo"{{else}} class="workspace{{if eq .Section "login"}} workspace-signin{{end}}"{{end}}>
 
 {{if not .Brand}}
 <!--
@@ -20,6 +20,7 @@
   is an address that works without the script, and the one marked current is
   said to assistive technology as well as drawn.
 -->
+{{if ne .Section "login"}}
 <aside class="rail">
   <p class="rail-identity"><a class="wordmark" href="/">porch</a> <span class="rail-tag">Self-host</span></p>
   <p class="rail-caption" id="rail-workspace">Workspace</p>
@@ -37,10 +38,12 @@
     <button class="theme-toggle" id="theme-toggle" type="button" hidden>Dark</button>
   </div>
 </aside>
+{{end}}
 <div class="workspace-main">
-<header class="topbar">
+{{if ne .Section "login"}}<header class="topbar">
   <p class="topbar-path"><span>{{if eq .Section "reference"}}Reference{{else}}Workspace{{end}}</span> <span class="topbar-slash" aria-hidden="true">/</span> <strong>{{.Heading}}</strong></p>
-</header>
+  {{if .SignedIn}}<button class="topbar-signout" id="sign-out" type="button">Sign out</button>{{end}}
+</header>{{end}}
 {{else}}
 <header class="masthead">
   <a class="wordmark" href="/"><span class="wordmark-deny">deny</span>first.</a>
@@ -82,16 +85,17 @@
       {{if .Brand}}<p class="colophon-mark"><span class="colophon-brand"><span class="wordmark-deny">deny</span>first.</span></p>
       <p class="colophon-line">Cites everything. Records nothing.</p>{{else}}<p class="colophon-line">by <span class="colophon-brand"><span class="wordmark-deny">deny</span>first.</span> Cites everything. Records nothing.</p>{{end}}
     </div>
-    <p class="colophon-links">
+    {{if ne .Section "login"}}<p class="colophon-links">
       <a href="/docs">Docs</a>
       <a href="/privacy">Privacy</a>
       <a href="/terms">Terms</a>
-    </p>
+    </p>{{end}}
   </div>
   {{if not .Brand}}<p class="tally" id="tally" hidden></p>{{end}}
 </footer>
 {{if not .Brand}}</div>{{end}}
 
 {{if .Script}}<script src="/app.js"></script>{{end}}
+{{if or .SignedIn (eq .Section "login")}}<script src="/session.js"></script>{{end}}
 </body>
 </html>

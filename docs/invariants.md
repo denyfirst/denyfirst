@@ -1959,6 +1959,60 @@ one listener
 *Guarded by:* `TestHeadersOnEveryResponse` covers the header; the absence of a
 second listener is enforced by there being no flag that would create one
 
+### P6 — An installation behind a password shows nothing to whoever cannot sign in, and what it keeps is sealed by the password
+
+An installation somebody runs keeps what nobody else should read: which names
+it checked and what it found on them, which is a map of an estate's
+weaknesses, and the domains somebody runs. So `-access-file` puts one password
+in front of all of it, and the compose file turns it on.
+
+**The gate is in front of the whole mux**, not beside the routes that happen
+to hold something today. A route added later is behind it without anybody
+remembering to put it there — N6's argument about where a guard goes, applied
+to reading rather than scanning. Unsigned, a page is sent to `/login` and
+anything else answers 401; only the sign-in page and what it draws and runs
+with are public, and none of them says anything about the installation.
+
+**The password is never written down.** The access file holds a random key
+sealed with AES-256-GCM under a key PBKDF2-SHA256 derives from the password at
+600,000 iterations; opening the seal is the check, so there is no separate
+hash to attack. The key is in memory from the first sign-in until the process
+stops, and what the workspace keeps is encrypted under it, so a copy of the
+disk or of a backup holds nothing of it readable without the password. The
+command line's `-results-dir` store is the operator's own file on their own
+machine and is not this. A forgotten password is
+therefore unrecoverable, by design, and the log line that prints the first one
+says so.
+
+**A session is a cookie no script can read and no other site can send**:
+HttpOnly, SameSite=Strict, Secure over TLS, twelve hours at most, held on the
+server by its hash and forgotten on restart. The session endpoints take JSON
+only and refuse a request another site made the browser send, so a form
+elsewhere cannot sign somebody in, out, or change their password. Changing it
+ends every other session, so a password changed because it leaked stops
+working wherever it leaked to. Guessing is held to a burst per address and one
+derivation at a time.
+
+The demonstration refuses the flag. It is public by design and keeps nothing
+to protect, and a password in front of it would be a claim about a service it
+is not.
+
+*Enforced in:* `internal/access`, `cmd/porchd.createAccess`, `cmd/porchd.run`,
+`internal/web.Configure`, `internal/web.PublicPaths`
+*Guarded by:* `TestNothingIsReachableWithoutSigningIn`,
+`TestTheRightPasswordOpensASession`, `TestASessionEnds`,
+`TestChangingThePasswordEndsOtherSessions`, `TestGuessingIsLimited`,
+`TestAnotherSiteCannotUseTheSessionEndpoints`, `TestTheSessionTableIsBounded`,
+`TestOnlyThePasswordOpensTheKey`, `TestThePasswordAndTheKeyAreNotOnDisk`,
+`TestAnAlteredFileDoesNotOpen`, `TestAnAccessFileIsNeverReplacedByCreate`,
+`TestChangingThePasswordKeepsTheKey`, `TestTheWorkFactorIsOWASPs`,
+`TestAMissingAccessFileIsCreatedAndItsPasswordSaidOnce`,
+`TestTheGateIsInFrontOfEverything`, `TestTheSignInPageShowsNothingBehindTheGate`,
+`TestOnlyTheSignInPageAndWhatItNeedsArePublic`,
+`TestEveryPageBehindAPasswordOffersAWayOut`, `TestTheSessionScriptDoesOnlyThat`,
+`TestAFileSealedAtALowerWorkFactorIsRefused`, `TestAPublicPathIsExact`,
+`TestAPasswordChangeNeedsALiveSession`, `TestOnlyThisPageMaySignIn`
+
 ## Correctness of the report
 
 ### R1 — Verdicts come from the policy package and name their version

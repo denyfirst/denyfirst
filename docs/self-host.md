@@ -314,6 +314,10 @@ the image is a wrapper around a binary **you verified**, or built yourself.
    says so. Keep that file: it is what every domain's record is derived from,
    and a new one means every domain publishing its record again.
 
+   It also prints this installation's password, once, in the log. The program
+   writes it nowhere else, but Docker keeps the log until the container is
+   recreated, which is one reason to change the password straight away.
+
 4. Open it. The example publishes the service on the server's own loopback,
    so nothing is reachable from outside. From your computer:
 
@@ -323,7 +327,11 @@ the image is a wrapper around a binary **you verified**, or built yourself.
 
    and open `http://localhost:8080`.
 
-5. Check a name. The first time, the page shows a TXT record to add at your
+5. Sign in with the password from the log, then change it under **This
+   installation**. Everything the installation serves, pages and API alike,
+   is behind it.
+
+6. Check a name. The first time, the page shows a TXT record to add at your
    DNS provider — `_porch-challenge.<domain>` and its value — and a button to
    check again once it is published. After that the checks run, and they run
    for every name under that domain without asking again, for as long as the
@@ -351,6 +359,27 @@ runs a zone can point a name at anything. That is DNS, not this record, and it
 is bounded by the rest of this page: private and reserved addresses are
 refused, each host has a budget, and a scan sends what a browser or a mail
 server would.
+
+### One password, and what it seals
+
+The compose file starts the service with `-access-file /data/access`, and
+nothing it serves is reachable without signing in: not the pages, not the API,
+not the history. There is one password, for whoever runs the installation.
+
+**The password is never written down.** `porch-data/access` holds a random key,
+sealed with AES-256-GCM under a key derived from the password with
+PBKDF2-SHA256 at 600,000 iterations. Opening the seal is the password check.
+What the installation keeps is encrypted under that key, so a copy of the disk,
+or of a backup, holds nothing readable without the password.
+
+**So a lost password cannot be recovered**, by anyone. Delete
+`porch-data/access` and restart: a new password is printed and a new key made,
+and what was kept under the old one stays unreadable.
+
+**A session is a cookie** that no script can read and no other site can send,
+and it ends when you sign out, after twelve hours, or when the service
+restarts. Changing the password ends every other session. Guessing is slowed
+per address and one guess is checked at a time.
 
 ### A public address, with a certificate
 

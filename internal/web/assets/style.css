@@ -2546,3 +2546,95 @@ main > .band:last-child { border-bottom: 0; }
   }
   .work-heading > .button { display: none; }
 }
+
+/* Signing in: the one page with no rail, a card in the middle. */
+.workspace-signin { display: block; }
+
+.workspace-signin main {
+  max-width: 31rem;
+  margin: 0 auto;
+  padding-top: 12vh;
+}
+
+.signin-mark {
+  margin: 0 0 1.4rem;
+  text-align: center;
+}
+
+.signin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+.signin-head h1 { margin: 0; }
+
+.signin-first {
+  margin-top: 1.4rem;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.signin-first p { margin: 0 0 0.6rem; }
+.signin-first .work-code { margin-bottom: 0.6rem; font-size: 0.78rem; }
+
+.signin-mark .wordmark { font-size: 2rem; }
+
+.signin-form,
+.password-form {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.signin-form h1 { font-size: 1.4rem; }
+.signin-form .field,
+.password-form .field { width: 100%; background: var(--paper); }
+.signin-form .submit { margin-top: 0.4rem; }
+
+.signin-status {
+  min-height: 1.3em;
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.password-form {
+  max-width: 30rem;
+  margin-top: 1.2rem;
+}
+
+.password-form .section-title { margin: 0 0 0.4rem; }
+.password-form .submit { justify-self: start; margin-top: 0.4rem; }
+
+.rail-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.topbar-signout {
+  margin-left: auto;
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.topbar-signout:hover { color: var(--ink); border-color: var(--ink-faint); }
+
+/* A heading between the parts of one workspace page. */
+.work-section {
+  margin: 2rem 0 0.8rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.work-heading + .work-section { margin-top: 0; }
+
+.password-form { margin-top: 0; }

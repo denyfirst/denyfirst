@@ -1,0 +1,36 @@
+<section class="signin">
+
+  <!--
+    The one page an installation behind a password shows before signing in.
+
+    Nothing about the installation is on it: not its scope, not its domains,
+    not what it keeps. The password is sent as JSON from session.js, so no
+    form on another site can post it, and the answer is a cookie a script
+    cannot read.
+  -->
+  <p class="signin-mark"><span class="wordmark">porch</span></p>
+
+  <form class="panel signin-form" id="signin-form" autocomplete="on">
+    <div class="signin-head">
+      <h1>Sign in</h1>
+      <span class="rail-tag">Self-host</span>
+    </div>
+    <label class="field-label" for="signin-password">Password</label>
+    <input class="field" type="password" id="signin-password" name="password"
+      autocomplete="current-password" required autofocus>
+    <button class="submit" type="submit" id="signin-submit">Sign in</button>
+    <p class="signin-status" id="signin-status" role="status"></p>
+  </form>
+
+  <!--
+    Where the first password is. It is printed once, in the log, and written
+    nowhere else, so the page says the one command that finds it rather than
+    a paragraph about logs.
+  -->
+  <div class="signin-first">
+    <p>First sign-in? The password is in the log. On the server, in the porch folder:</p>
+    <pre class="work-code"><code>docker compose logs porch | grep -A2 "password is"</code></pre>
+    <p>Change it after signing in, under This installation.</p>
+  </div>
+
+</section>

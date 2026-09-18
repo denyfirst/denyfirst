@@ -17,6 +17,7 @@
     </div>
   </div>
 
+  <h2 class="work-section">How it runs</h2>
   <div class="panel">
     <dl class="state-grid">
       <dt>Scope</dt>
@@ -44,10 +45,37 @@
         {{range .Checks}}<span class="state-policy">{{.Policy}}</span>{{end}}
       </dd>
 
+      <dt>Access</dt>
+      <dd>
+        {{if .Guarded}}Behind a password. What is kept is encrypted under a
+        key the password seals; a forgotten password cannot be recovered.{{else}}<strong>No
+        password.</strong> Anyone who can reach this installation can use it. Start
+        with <code>-access-file</code> to put one in front of it.{{end}}
+      </dd>
+
       <dt>Sent to us</dt>
       <dd>Nothing. This copy reports to no one.</dd>
     </dl>
   </div>
+
+  {{if .Guarded}}
+  <!--
+    Changing the password keeps the key what is kept is encrypted with, so
+    nothing becomes unreadable, and ends every other session, so a password
+    changed because it leaked stops working wherever it leaked to.
+  -->
+  <h2 class="work-section">Password</h2>
+  <form class="panel password-form" id="password-form" autocomplete="on">
+    <label class="field-label" for="password-current">Current password</label>
+    <input class="field" type="password" id="password-current" autocomplete="current-password" required>
+    <label class="field-label" for="password-next">New password, at least 12 characters</label>
+    <input class="field" type="password" id="password-next" autocomplete="new-password" minlength="12" required>
+    <label class="field-label" for="password-again">The new password again</label>
+    <input class="field" type="password" id="password-again" autocomplete="new-password" minlength="12" required>
+    <button class="submit" type="submit" id="password-submit">Change the password</button>
+    <p class="signin-status" id="password-status" role="status"></p>
+  </form>
+  {{end}}
 
   <p class="work-help">
     Who else a check asks, and what each of them learns, is on the
