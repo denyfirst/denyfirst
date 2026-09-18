@@ -794,6 +794,17 @@ scan with; and taking no slot at all (D10), so the lookups in flight had no
 bound. Both are now separate limits, and a request that gives up while queued
 is released unasked.
 
+**Signed is the resolver's word, and said as that.** The review of
+2026-09-16 (A06) asked what the proof rests on: a TXT answer from a resolver,
+which a forged answer or a stale cache can bend. The endpoint now says whether
+the resolver reported the proving record DNSSEC-validated, and Domains shows it
+in those words, because the AD bit is the resolver's claim and worth what the
+path to it is worth — the objection the CAA report makes about the same bit.
+`-verification-requires-dnssec` accepts only signed records and never the file,
+for an operator whose resolver is theirs. Freshness, a failed lookup, and
+starting over with a new secret are in `docs/self-host.md`; nothing is cached,
+so a record taken out ends the proof as soon as the resolver lets it go.
+
 **The record asked for is the name's own.** The endpoint offers the name and
 the domains above it, most specific first, because it cannot tell a public
 suffix from a registrable domain and does not guess. The pages used to pick the
@@ -827,6 +838,8 @@ first now, and say what choosing a parent gives away.
 `TestTheVerifyEndpointReadsWhatTheChecksRead`, `TestAnOpenDeploymentHasNothingToVerify`,
 `TestAFailedChallengeLookupIsNotUnverified`, `TestTheVerifyEndpointHasTheScanGuards`,
 `TestTheVerifyRecordsAreBounded`, `TestProvingDomainsDoesNotSpendTheScanAllowance`,
+`TestSignedProofIsReportedAndCanBeRequired`, `TestTheVerifyEndpointSaysWhetherTheProofWasSigned`,
+`TestSignedProofOnlyNeedsProofAndReachesTheScope`, `TestDomainsSaysWhetherTheProofWasSigned`,
 `TestProofLookupsInFlightAreBounded`, `TestTheProofDefaultsToTheNameItself`,
 `TestAMissingSecretIsCreatedAndThenKept`,
 `TestTheSecretIsCreatedByStartingAndNotByAsking`, `TestAnOpenServiceStaysOnLoopback`,

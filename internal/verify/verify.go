@@ -129,6 +129,30 @@ type Scope struct {
 	// only the zone proof works — and that is the stricter arrangement, so it
 	// is the safe thing for nil to mean.
 	Fetcher Fetcher
+
+	// RequireSigned accepts only a record the resolver reported
+	// DNSSEC-validated, and never the file. For an operator whose resolver is
+	// one they trust, on a path they trust: the bit is only as good as that.
+	// A resolver that cannot say leaves nothing provable under it.
+	RequireSigned bool
+}
+
+// ValidatingResolver is a Resolver that can also say whether the resolver it
+// asked reported the answer DNSSEC-validated. internal/dnsclient is one.
+// Optional, so that a Resolver which cannot say is read as never signed
+// rather than refused.
+type ValidatingResolver interface {
+	LookupChallengeValidated(ctx context.Context, name string) (values []string, validated bool, err error)
+}
+
+// lookup asks the resolver, and whether the answer was signed where it can
+// say.
+func (s Scope) lookup(ctx context.Context, name string) ([]string, bool, error) {
+	if v, ok := s.Resolver.(ValidatingResolver); ok {
+		return v.LookupChallengeValidated(ctx, name)
+	}
+	values, _, err := s.Resolver.LookupChallenge(ctx, name)
+	return values, false, err
 }
 
 // Fetcher reads the file at Path from one host.
@@ -181,16 +205,30 @@ var ErrNoChallenge = errors.New("verify: the host serves no challenge file")
 // covers more, and it costs the scanned host nothing — where a fetch is a
 // request this deployment makes to their server on every scan.
 func (s Scope) Covers(ctx context.Context, host string, surface Surface) error {
+	_, err := s.CoversSigned(ctx, host, surface)
+	return err
+}
+
+// CoversSigned is Covers, and says whether the resolver reported the record
+// that proved it DNSSEC-validated. A file proof is never signed.
+//
+// Signed is the resolver's word, not this program's work: the AD bit says the
+// resolver checked the signatures, and it is worth what the path to that
+// resolver is worth. From a validating resolver on this machine, a great deal.
+// From one across the internet over plain DNS, as much as the TXT answer it
+// travelled with — an attacker who can forge the one can set the other. The
+// Domains page says which it was, in those words (audit 2026-09-16, A06).
+func (s Scope) CoversSigned(ctx context.Context, host string, surface Surface) (signed bool, err error) {
 	if len(s.Secret) == 0 || s.Resolver == nil {
 		// Not an error about the host. A deployment configured to require
 		// proof and given no way to check it must refuse rather than admit,
 		// but the reason is local and the message says which it is.
-		return errors.New("this deployment requires proof of control and has no way to check it")
+		return false, errors.New("this deployment requires proof of control and has no way to check it")
 	}
 
 	host = fold(host)
 	if host == "" {
-		return ErrNotVerified
+		return false, ErrNotVerified
 	}
 
 	labels := strings.Split(host, ".")
@@ -201,12 +239,12 @@ func (s Scope) Covers(ctx context.Context, host string, surface Surface) error {
 	for i := 0; i+1 < len(labels); i++ {
 		domain := strings.Join(labels[i:], ".")
 
-		values, _, err := s.Resolver.LookupChallenge(ctx, Label+"."+domain)
+		values, validated, err := s.lookup(ctx, Label+"."+domain)
 		if err != nil {
 			// A lookup that failed is not a domain that is unverified, and
 			// the difference matters: reporting the second would tell an
 			// operator to publish a record they have already published.
-			return err
+			return false, err
 		}
 
 		want := Token(s.Secret, domain)
@@ -214,7 +252,13 @@ func (s Scope) Covers(ctx context.Context, host string, surface Surface) error {
 			// Constant time, because the comparison is against a value an
 			// outsider supplies and a token is the whole of the proof.
 			if hmac.Equal([]byte(strings.TrimSpace(strings.ToLower(v))), []byte(want)) {
-				return nil
+				// Where the operator asked for signed proof, an unsigned
+				// record is not proof. The walk goes on: a signed record
+				// at a parent still is.
+				if s.RequireSigned && !validated {
+					break
+				}
+				return validated, nil
 			}
 		}
 	}
@@ -225,7 +269,9 @@ func (s Scope) Covers(ctx context.Context, host string, surface Surface) error {
 	// parent — because that is the whole of what the file proves. A record in
 	// a zone is a statement about the zone; a file on a host is a statement
 	// about the host.
-	if surface == HTTPOnly && s.Fetcher != nil {
+	// Never where signed proof was asked for: a file is not DNS, and nothing
+	// signs it.
+	if surface == HTTPOnly && s.Fetcher != nil && !s.RequireSigned {
 		body, err := s.Fetcher.FetchChallenge(ctx, host)
 		switch {
 		case errors.Is(err, ErrNoChallenge):
@@ -234,13 +280,13 @@ func (s Scope) Covers(ctx context.Context, host string, surface Surface) error {
 		case err != nil:
 			// A fetch that failed is not a host that proved nothing, for the
 			// same reason a failed lookup is not.
-			return err
+			return false, err
 		case hmac.Equal([]byte(strings.TrimSpace(strings.ToLower(body))), []byte(Token(s.Secret, host))):
-			return nil
+			return false, nil
 		}
 	}
 
-	return ErrNotVerified
+	return false, ErrNotVerified
 }
 
 // fold reduces a name the way every other comparison in this project does.

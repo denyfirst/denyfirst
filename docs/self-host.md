@@ -338,6 +338,27 @@ is bounded by the rest of this page: private and reserved addresses are
 refused, each host has a budget, and a scan sends what a browser or a mail
 server would.
 
+**It is asked every time.** Nothing remembers that a domain was proven: every
+check asks DNS again, so taking the record out ends the proof. How soon
+depends on the resolver, which may answer from its cache until the record's
+time to live runs out; a short TTL on the record makes removal quick. A lookup
+that fails is not taken as proof, and the check is refused with a sentence
+saying the record could not be looked up.
+
+**Starting over.** Every record is derived from the secret in
+`porch-data/secret`. Delete it and restart, and a new one is made: every
+record published so far stops proving anything, and each domain has to publish
+its new value, which Domains shows.
+
+**Signed or not.** Domains says whether the resolver reported the record
+DNSSEC-signed. That is the resolver's word, not porch's own check, and it is
+worth what the resolver is worth: from a validating resolver on this machine, a
+great deal; from one across the internet over plain DNS, no more than the
+record itself, because whoever could forge one could forge the other. With a
+resolver you trust, `-verification-requires-dnssec` accepts only signed
+records, and no challenge file. A domain whose zone is not signed can then
+not be proven at all.
+
 ### One password, and what it seals
 
 The compose file starts the service with `-access-file /data/access`, and

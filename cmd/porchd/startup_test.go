@@ -123,3 +123,18 @@ func TestEveryShippedConfigurationCarriesAPassword(t *testing.T) {
 		t.Error("the guide has no command block, so this test checks nothing there")
 	}
 }
+
+// Signed proof only is a setting on the proof, so it needs proof to be on, and
+// when given it reaches the scope every check asks (A06).
+func TestSignedProofOnlyNeedsProofAndReachesTheScope(t *testing.T) {
+	code, said := start(t, "-listen", "127.0.0.1:0", "-verification-requires-dnssec")
+	if code != 2 || !strings.Contains(said, "-verification-requires-dnssec needs -verification-secret-file") {
+		t.Errorf("signed proof without proof: exit %d, %q", code, said)
+	}
+	src := repoFile(t, "cmd/porchd/main.go")
+	set := strings.Index(src, "scope.RequireSigned = true")
+	use := strings.Index(src, "serviceScanner(roots, scope, *resolver)")
+	if set < 0 || use < 0 || set > use {
+		t.Error("-verification-requires-dnssec is not set on the scope before the scanner is built")
+	}
+}

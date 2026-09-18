@@ -100,3 +100,21 @@ func TestTheProofDefaultsToTheNameItself(t *testing.T) {
 		}
 	}
 }
+
+// Domains says whether the proof was signed, as the resolver's word (A06).
+func TestDomainsSaysWhetherTheProofWasSigned(t *testing.T) {
+	body, err := assets.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(body)
+	for _, want := range []string{
+		`"The resolver reported the record DNSSEC-signed."`,
+		`"The record is not DNSSEC-signed, so the proof rests on the resolver's answer alone."`,
+		`answer.signed ? "proven, signed" : "proven"`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("app.js no longer says %s", want)
+		}
+	}
+}
