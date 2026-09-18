@@ -411,21 +411,42 @@ where it lands.
 
 ### Install
 
+**The server still uses the names from before the rename.** The unit is
+`denyfirstd.service` and the binary is `/opt/denyfirst/denyfirstd`, running
+as the `denyfirst` user; the release file is `porchd-demonstration`. This page
+said `/opt/porch/porchd` until 2026-09-18, a path that has never existed on
+that machine, and the v0.16.0 deploy stopped at its first line because of it.
+The file is installed under the old name so that the unit and its sandbox
+stay exactly as they are. Renaming the unit is a change of its own, made on a
+quiet day, and this page changes with it.
+
+The downloaded file is checked before it goes anywhere near the live path: it
+has to run, and it has to say it is the demonstration build.
+
 ```sh
-/opt/porch/porchd -version
+chmod +x porchd-demonstration_${V}_linux_amd64
+./porchd-demonstration_${V}_linux_amd64 -version
+./porchd-demonstration_${V}_linux_amd64 -version | grep -q '^demonstration: ' \
+  || { echo 'STOP: not the demonstration build'; exit 1; }
 
 sudo install -o root -g root -m 0755 \
-  ~/deploy/porchd-demonstration_${V}_linux_amd64 /opt/porch/porchd.new
-sudo cp -a /opt/porch/porchd /opt/porch/porchd.rollback-v0.3.2
-sudo mv /opt/porch/porchd.new /opt/porch/porchd
-sudo systemctl restart porchd
+  porchd-demonstration_${V}_linux_amd64 /opt/denyfirst/denyfirstd.new
+sudo cp -a /opt/denyfirst/denyfirstd /opt/denyfirst/denyfirstd.rollback-pre-${V}
+sudo mv /opt/denyfirst/denyfirstd.new /opt/denyfirst/denyfirstd
+sudo systemctl restart denyfirstd
+echo INSTALLED
 )
 ```
 
-The first line is read, not run for form's sake: the rollback below is named
-for the version it printed. Better still, name it from the binary itself —
-`prev="$(/opt/porch/porchd -version | head -1 | awk '{print $2}')"` —
-because a version typed by hand is a version that can be typed wrongly.
+The rollback is named for the release that replaced it, from `${V}`, so
+nothing in its name is typed by hand. Asking the running binary for its own
+version was the plan here once, and it depends on a `-version` whose output
+older builds did not share. To go back:
+
+```sh
+sudo mv /opt/denyfirst/denyfirstd.rollback-pre-v0.16.0 /opt/denyfirst/denyfirstd
+sudo systemctl restart denyfirstd
+```
 
 `install` sets owner and mode as it writes. `cp` followed by `chmod` leaves a
 window in which the file is in place with the wrong ownership, and that window
@@ -435,13 +456,13 @@ is on the live path.
 Copying onto the live path does, and the moment it is half-written is a moment
 the service might restart.
 
-The file is `root:root`; the service runs as `porch`. The account the
+The file is `root:root`; the service runs as `denyfirst`. The account the
 service runs as cannot rewrite the file it executes, which is the entire
 reason the two are different.
 
-The rollback carries the version in its name. A file called `porchd.bak`
-is one nobody can reason about a week later — there was one on this server
-from 2026-08-18, and nothing recorded what it held. Keep one, named.
+The rollback carries the release in its name. A file called `.bak` is one
+nobody can reason about a week later — there was one on this server from
+2026-08-18, and nothing recorded what it held. Keep one, named.
 
 ### The binary carries no capability
 
@@ -456,7 +477,7 @@ capability would grant it to anybody on the machine who runs the file, which
 is a much larger claim than the one that needs making.
 
 ```sh
-getcap /opt/porch/porchd
+getcap /opt/denyfirst/denyfirstd
 ```
 
 must print nothing. `install` does not carry capabilities across, so this
@@ -466,10 +487,10 @@ rather than assumed.
 ### Confirm the service, not the file
 
 ```sh
-/opt/porch/porchd -version | grep -q '^demonstration: ' \
+/opt/denyfirst/denyfirstd -version | grep -q '^demonstration: ' \
   || echo 'STOP: this is not the demonstration build'
-/opt/porch/porchd -version
-sudo readlink /proc/$(systemctl show -p MainPID --value porchd)/exe
+systemctl is-active denyfirstd
+sudo readlink /proc/$(systemctl show -p MainPID --value denyfirstd)/exe
 curl -s https://denyfirst.dev/healthz
 ```
 
@@ -483,14 +504,16 @@ scanner enforces, so a binary cannot say one thing and do another.
 The first runs the file on disk and says what was installed. It does not say
 what is serving: a restart that failed leaves the previous process alive on
 the previous inode, still answering, while the new file sits in place looking
-correct. The second line is what separates them — it must print
-`/opt/porch/porchd`, and must not end in `(deleted)`.
+correct, and `is-active` still says `active`. The `readlink` line is what
+separates them — it must print `/opt/denyfirst/denyfirstd`, and must not end
+in `(deleted)`.
 
-The third is the running process answering over the network, and it is the
-only one of the three that is evidence about what people actually reach.
+The last is the running process answering over the network, and it is the
+only one that is evidence about what people actually reach: its `policy`
+field names the rule set now serving, `porch-tls-v7` from v0.16.0 on.
 
-Every command here names the service by its path. `porchd` alone is not on
-`PATH`.
+Every command here names the binary by its path. Neither `porchd` nor
+`denyfirstd` is on `PATH`.
 
 ### Afterwards
 
