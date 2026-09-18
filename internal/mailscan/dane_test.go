@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	danecheck "github.com/denyfirst/denyfirst/internal/dane"
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/smtptls"
+	danecheck "github.com/denyfirst/porch/internal/dane"
+	"github.com/denyfirst/porch/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/smtptls"
 )
 
 // selfSigned is a certificate an exchanger could present.

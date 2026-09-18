@@ -370,7 +370,7 @@ bare `set -e`, so a failure ends the block and not the login session.
 set -euo pipefail
 
 V=v0.4.0
-base=https://github.com/denyfirst/denyfirst/releases/download/${V}
+base=https://github.com/denyfirst/porch/releases/download/${V}
 
 # The demonstration build, and not porchd.
 #
@@ -383,7 +383,7 @@ mkdir -p ~/deploy && cd ~/deploy
 curl -fsSLO "${base}/porchd-demonstration_${V}_linux_amd64"
 curl -fsSLO "${base}/SHA256SUMS"
 curl -fsSLO "${base}/SHA256SUMS.sig"
-curl -fsSLO https://raw.githubusercontent.com/denyfirst/denyfirst/main/.allowed_signers
+curl -fsSLO https://raw.githubusercontent.com/denyfirst/porch/main/.allowed_signers
 
 ssh-keygen -Y verify \
   -f .allowed_signers \

@@ -4,9 +4,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/certinfo"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/certinfo"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 // A server presenting a different chain at an older version is described

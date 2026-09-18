@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/rawhello"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/rawhello"
 )
 
 // heardHello is what a scripted server read out of a hello.

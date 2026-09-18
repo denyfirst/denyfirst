@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/dkim"
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
-	"github.com/denyfirst/denyfirst/internal/mailscan"
-	"github.com/denyfirst/denyfirst/internal/mtasts"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/results"
+	"github.com/denyfirst/porch/internal/dkim"
+	"github.com/denyfirst/porch/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/mailscan"
+	"github.com/denyfirst/porch/internal/mtasts"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/results"
 )
 
 // mailScanner builds the check this command runs.

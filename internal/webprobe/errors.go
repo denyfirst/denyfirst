@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/denyfirst/denyfirst/internal/safedial"
+	"github.com/denyfirst/porch/internal/safedial"
 )
 
 // classifyProbeError turns a failed hop into a phrase written here, and says

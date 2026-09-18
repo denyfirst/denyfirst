@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
-	"github.com/denyfirst/denyfirst/internal/scan"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/scan"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 // offlineScanner never reaches the network, so the tests describe the HTTP

@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/ocsp"
+	"github.com/denyfirst/porch/internal/ocsp"
 )
 
 // digicert is a real certificate, its real issuer, and the answer DigiCert's

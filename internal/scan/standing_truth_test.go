@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/policy"
 )
 
 // A standing limit describes what this build actually does.

@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
-	"github.com/denyfirst/denyfirst/internal/smtptls"
+	"github.com/denyfirst/porch/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/smtptls"
 )
 
 // fixedExchangers stands in for the exchangers, and records which were asked.

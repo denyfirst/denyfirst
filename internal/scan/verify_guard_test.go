@@ -7,9 +7,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
-	"github.com/denyfirst/denyfirst/internal/verify"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/verify"
 )
 
 type nothingPublished struct{}

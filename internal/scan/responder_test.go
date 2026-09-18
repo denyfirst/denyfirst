@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/ocspquery"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/ocspquery"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 // responderChain is an authority, a leaf it issued naming a responder, and a

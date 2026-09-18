@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/porch/internal/policy"
 )
 
 // Each exchanger's DANE binding is a row, in the words the page uses (R16).

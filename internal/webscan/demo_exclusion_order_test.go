@@ -7,8 +7,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/exclusion"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/exclusion"
 )
 
 // The exclusion list is asked before the deployment's own list, and no

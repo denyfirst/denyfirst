@@ -34,7 +34,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/ctlogs"
+	"github.com/denyfirst/porch/internal/ctlogs"
 )
 
 const (

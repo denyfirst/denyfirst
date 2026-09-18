@@ -44,8 +44,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/truststore"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/truststore"
 )
 
 // ErrNoChain is returned when there is nothing to describe.

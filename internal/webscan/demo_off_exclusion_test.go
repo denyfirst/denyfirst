@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/webprobe"
+	"github.com/denyfirst/porch/internal/webprobe"
 )
 
 // A name that is not on the list is not refused by it.

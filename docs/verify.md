@@ -25,11 +25,11 @@ record of what was released.
 
 ```sh
 # The public key that signs releases, from this repository.
-curl -fsSLO https://raw.githubusercontent.com/denyfirst/denyfirst/main/.allowed_signers
+curl -fsSLO https://raw.githubusercontent.com/denyfirst/porch/main/.allowed_signers
 
 # The list and its signature, from the release.
-curl -fsSLO https://github.com/denyfirst/denyfirst/releases/download/v0.1.0/SHA256SUMS
-curl -fsSLO https://github.com/denyfirst/denyfirst/releases/download/v0.1.0/SHA256SUMS.sig
+curl -fsSLO https://github.com/denyfirst/porch/releases/download/v0.1.0/SHA256SUMS
+curl -fsSLO https://github.com/denyfirst/porch/releases/download/v0.1.0/SHA256SUMS.sig
 
 ssh-keygen -Y verify \
   -f .allowed_signers \
@@ -63,7 +63,7 @@ they liked, and the signature would confirm only that the attacker had access.
 ## Check the binary against the list
 
 ```sh
-curl -fsSLO https://github.com/denyfirst/denyfirst/releases/download/v0.1.0/porch-scan_v0.1.0_linux_amd64
+curl -fsSLO https://github.com/denyfirst/porch/releases/download/v0.1.0/porch-scan_v0.1.0_linux_amd64
 
 sha256sum --ignore-missing -c SHA256SUMS
 ```
@@ -120,8 +120,8 @@ two checks below has anything to compare against. Read *If the tag predates the
 build record* before following these steps against it.
 
 ```sh
-git clone https://github.com/denyfirst/denyfirst
-cd denyfirst
+git clone https://github.com/denyfirst/porch
+cd porch
 git checkout v0.1.0
 
 # BUILD, from the release, records what produced it: the Go version and the
@@ -242,8 +242,8 @@ what it says about itself.
 The most direct option, and the one that needs the least trust.
 
 ```sh
-git clone https://github.com/denyfirst/denyfirst
-cd denyfirst
+git clone https://github.com/denyfirst/porch
+cd porch
 go build ./cmd/porch-scan
 ```
 

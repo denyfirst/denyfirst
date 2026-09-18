@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/scan"
+	"github.com/denyfirst/porch/internal/scan"
 )
 
 // Every path this service answers is mounted by the binary that serves it.

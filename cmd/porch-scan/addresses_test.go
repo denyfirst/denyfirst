@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/scan"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/scan"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 // sampleWithAddresses is a scan whose name answered on the given addresses.

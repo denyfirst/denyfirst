@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/denyfirst/denyfirst/internal/safedial"
+	"github.com/denyfirst/porch/internal/safedial"
 )
 
 // AddressAnswer is what one of a name's addresses answered when asked on its own.

@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/rootstores"
+	"github.com/denyfirst/porch/internal/rootstores"
 )
 
 // Chrome's anchors are read with whether they carry constraints, and nothing

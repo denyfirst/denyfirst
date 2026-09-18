@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/porch/internal/policy"
 )
 
 // refusalCodes are the reasons a request can be turned away, and the complete

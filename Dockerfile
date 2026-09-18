@@ -13,7 +13,7 @@
 # already verified on your own machine — see docs/verify.md — and the image is
 # a wrapper around bytes you have already decided to trust.
 #
-#   curl -fsSLO https://github.com/denyfirst/denyfirst/releases/download/vX.Y.Z/porchd_vX.Y.Z_linux_amd64
+#   curl -fsSLO https://github.com/denyfirst/porch/releases/download/vX.Y.Z/porchd_vX.Y.Z_linux_amd64
 #   # ... verify it, then:
 #   mv porchd_vX.Y.Z_linux_amd64 porchd
 #   docker compose up -d

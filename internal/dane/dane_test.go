@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/dnsclient"
 )
 
 const exchanger = "mx.example.test"

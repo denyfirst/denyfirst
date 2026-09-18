@@ -3,9 +3,9 @@ package webscan
 import (
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/markup"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/webprobe"
+	"github.com/denyfirst/porch/internal/markup"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/webprobe"
 )
 
 // Another host's policy is not this host's.

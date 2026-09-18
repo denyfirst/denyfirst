@@ -38,15 +38,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/ctsearch"
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
-	"github.com/denyfirst/denyfirst/internal/ocspquery"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/results"
-	"github.com/denyfirst/denyfirst/internal/scan"
-	"github.com/denyfirst/denyfirst/internal/smtptls"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/ctsearch"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/ocspquery"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/results"
+	"github.com/denyfirst/porch/internal/scan"
+	"github.com/denyfirst/porch/internal/smtptls"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 // version is the release this binary was built from, set by scripts/build.sh

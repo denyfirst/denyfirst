@@ -26,7 +26,7 @@ import (
 	"crypto/x509"
 	"runtime"
 
-	"github.com/denyfirst/denyfirst/internal/rootstores"
+	"github.com/denyfirst/porch/internal/rootstores"
 )
 
 // systemCertPool is a variable so that the failure branch below can be reached

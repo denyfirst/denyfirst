@@ -166,7 +166,7 @@ func TestTheDeployProcedureIsWrittenDown(t *testing.T) {
 			"a build that was signed but not reproduced is one a single laptop vouches for"},
 		{"ssh-keygen -Y verify",
 			"the signature is checked on the machine that will run the file, not only on the one that downloaded it"},
-		{"raw.githubusercontent.com/denyfirst/denyfirst/main/.allowed_signers",
+		{"raw.githubusercontent.com/denyfirst/porch/main/.allowed_signers",
 			"the key comes from the repository; a key shipped beside the file it vouches for establishes nothing"},
 		{"install -o root -g root -m 0755",
 			"owner and mode are set as the file is written, so there is no interval with the wrong ownership on the live path"},
@@ -240,6 +240,41 @@ func TestTheServiceIsNamedByThePathItIsAt(t *testing.T) {
 			}
 			t.Errorf("%s:%d invokes the service by a name that is not on PATH there:\n  %s",
 				path, n+1, strings.TrimSpace(line))
+		}
+	}
+}
+
+// A clone is followed by the directory it made.
+//
+// The repository was renamed from denyfirst to porch on 2026-09-18, and git
+// names the directory after the repository. Every guide that clones and then
+// changes into the old name is a first step that fails.
+func TestEveryCloneIsFollowedByTheDirectoryItMade(t *testing.T) {
+	for _, path := range []string{
+		"../../README.md",
+		"../../docs/self-host.md",
+		"../../docs/verify.md",
+		"../../internal/web/assets/porch.html",
+	} {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("reading %s: %v", path, err)
+		}
+		lines := strings.Split(strings.ReplaceAll(string(body), "\r\n", "\n"), "\n")
+		clones := 0
+		for i, line := range lines {
+			_, repo, ok := strings.Cut(line, "git clone https://github.com/denyfirst/")
+			if !ok {
+				continue
+			}
+			clones++
+			repo = strings.TrimSpace(repo)
+			if i+1 >= len(lines) || strings.TrimSpace(lines[i+1]) != "cd "+repo {
+				t.Errorf("%s:%d clones %s and is not followed by cd %s", path, i+1, repo, repo)
+			}
+		}
+		if clones == 0 {
+			t.Errorf("%s no longer clones the repository, so this test checks nothing there", path)
 		}
 	}
 }

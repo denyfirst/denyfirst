@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/porch/internal/demo"
 )
 
 // The demonstration keeps no copy of a report and counts nothing for its

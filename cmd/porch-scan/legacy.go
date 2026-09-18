@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 // printLegacyVersion adds SSL 3.0 to the version rows.

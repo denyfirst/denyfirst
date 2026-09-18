@@ -40,7 +40,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/dnsclient"
 )
 
 // Certificate usages, selectors and matching types, from RFC 6698 and RFC 7218.

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/results"
-	"github.com/denyfirst/denyfirst/internal/scan"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/results"
+	"github.com/denyfirst/porch/internal/scan"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 // A scan that failed is not kept as a verdict.

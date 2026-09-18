@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
-	"github.com/denyfirst/denyfirst/internal/mtasts"
+	"github.com/denyfirst/porch/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/mtasts"
 )
 
 // fixedPolicy stands in for the policy host, and records whether it was asked.

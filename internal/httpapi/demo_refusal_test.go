@@ -32,7 +32,7 @@ func TestTheDemonstrationRefusalIsAnsweredAndCounted(t *testing.T) {
 	// The message has to leave the reader somewhere to go. A refusal that
 	// only says no teaches them the service is broken.
 	body := w.Body.String()
-	for _, want := range []string{"hosts this project owns", "github.com/denyfirst/denyfirst"} {
+	for _, want := range []string{"hosts this project owns", "github.com/denyfirst/porch"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the refusal does not say %q", want)
 		}

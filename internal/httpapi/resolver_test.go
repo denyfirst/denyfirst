@@ -3,8 +3,8 @@ package httpapi
 import (
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
-	"github.com/denyfirst/denyfirst/internal/scan"
+	"github.com/denyfirst/porch/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/scan"
 )
 
 // A resolver the operator named reaches the mail check, which makes more

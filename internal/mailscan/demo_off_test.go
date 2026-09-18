@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/porch/internal/demo"
 )
 
 // The ordinary build has no list to be outside of.

@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/webprobe"
-	"github.com/denyfirst/denyfirst/internal/webscan"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/webprobe"
+	"github.com/denyfirst/porch/internal/webscan"
 )
 
 func TestAnUnknownCheckIsRefused(t *testing.T) {

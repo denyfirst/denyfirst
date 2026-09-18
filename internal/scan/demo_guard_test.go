@@ -3,7 +3,7 @@
 package scan
 
 import (
-	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/porch/internal/demo"
 
 	"context"
 	"errors"

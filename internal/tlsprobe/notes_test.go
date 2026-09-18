@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/porch/internal/policy"
 )
 
 // localTLSServer starts a TLS listener on loopback and returns its host and

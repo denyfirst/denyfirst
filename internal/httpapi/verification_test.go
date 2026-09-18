@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
-	"github.com/denyfirst/denyfirst/internal/scan"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
-	"github.com/denyfirst/denyfirst/internal/verify"
-	"github.com/denyfirst/denyfirst/internal/webprobe"
-	"github.com/denyfirst/denyfirst/internal/webscan"
+	"github.com/denyfirst/porch/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/scan"
+	"github.com/denyfirst/porch/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/verify"
+	"github.com/denyfirst/porch/internal/webprobe"
+	"github.com/denyfirst/porch/internal/webscan"
 )
 
 // This file tests the composition rather than the components.

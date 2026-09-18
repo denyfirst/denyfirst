@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/scan"
-	"github.com/denyfirst/denyfirst/internal/verify"
+	"github.com/denyfirst/porch/internal/scan"
+	"github.com/denyfirst/porch/internal/verify"
 )
 
 type verifyAnswer struct {

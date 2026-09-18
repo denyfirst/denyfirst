@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/rootstores"
+	"github.com/denyfirst/porch/internal/rootstores"
 )
 
 // A nil pool is resolved here rather than left for a verifier to interpret.

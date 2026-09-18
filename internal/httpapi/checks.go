@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/denyfirst/denyfirst/internal/mailscan"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/scan"
-	"github.com/denyfirst/denyfirst/internal/webprobe"
+	"github.com/denyfirst/porch/internal/mailscan"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/scan"
+	"github.com/denyfirst/porch/internal/webprobe"
 )
 
 // A check is one thing this service can be asked to measure.

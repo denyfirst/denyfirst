@@ -76,10 +76,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/markup"
-	"github.com/denyfirst/denyfirst/internal/safedial"
-	"github.com/denyfirst/denyfirst/internal/truststore"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/markup"
+	"github.com/denyfirst/porch/internal/safedial"
+	"github.com/denyfirst/porch/internal/truststore"
 )
 
 // DialFunc matches net.Dialer.DialContext and safedial.Dialer.DialContext.

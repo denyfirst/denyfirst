@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/httpapi"
+	"github.com/denyfirst/porch/internal/httpapi"
 )
 
 // The privacy page states how long a client address is held. That number was

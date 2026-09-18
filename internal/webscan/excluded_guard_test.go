@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/exclusion"
-	"github.com/denyfirst/denyfirst/internal/webprobe"
+	"github.com/denyfirst/porch/internal/exclusion"
+	"github.com/denyfirst/porch/internal/webprobe"
 )
 
 // dialRecorder answers nothing and records whether it was asked to.

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/httpapi"
+	"github.com/denyfirst/porch/internal/httpapi"
 )
 
 // privacyAs renders the served privacy page for one configuration and puts the

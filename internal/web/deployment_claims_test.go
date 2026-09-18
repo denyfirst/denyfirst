@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/porch/internal/demo"
 )
 
 // flatten collapses the whitespace a template wraps its prose with, so an

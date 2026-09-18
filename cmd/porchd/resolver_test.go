@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/dnsclient"
 )
 
 // -resolver reaches every lookup the service makes itself: the scanner's, which
