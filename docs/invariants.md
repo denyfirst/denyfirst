@@ -1998,7 +1998,16 @@ HttpOnly, SameSite=Strict and Secure, twelve hours at most, held on the
 server by its hash and forgotten on restart. Secure always, so the
 password and the session travel only over TLS or to localhost, which is how
 the SSH tunnel in the self-hosting guide reaches it; signing in over plain
-HTTP to any other address does not work, by design. The session endpoints take JSON
+HTTP to any other address does not work, by design. The server refuses it too, before the
+password is read, and does not count a session sent by hand on such a request:
+only TLS, or a request addressed to this machine's own name, which is what the
+browser at the near end of an SSH tunnel sends, carries a password or a session.
+Beyond loopback `porchd` will not serve without `-access-file` unless told
+`-without-password`, and every configuration this project ships carries it; one
+example in the guide dropped it once, because a compose command replaces the
+default rather than adding to it. A plain `-results-dir` beside a password is
+refused at start, since it would keep in the clear, under each checked name,
+what the password seals. The session endpoints take JSON
 only and refuse a request another site made the browser send, so a form
 elsewhere cannot sign somebody in, out, or change their password. Changing it
 ends every other session, so a password changed because it leaked stops
@@ -2032,6 +2041,10 @@ is not.
 `TestHistoryBehindAPasswordListsOpensAndDeletes`, `TestTheSealBindsTheName`,
 `TestOnlyThisPackagesNamesAreNames`, `TestAFileNameSaysNothingAndADateIsOnlyADate`,
 `TestAReportNotKeptIsStillAnswered`, `TestAKeptReportIsListedUnderTheNameAsTyped`,
+`TestAPasswordIsTakenOnlyOverAPrivateTransport`,
+`TestAPublicServiceWithoutAPasswordIsRefused`,
+`TestAPasswordAndAPlainResultsDirectoryAreRefusedTogether`,
+`TestEveryShippedConfigurationCarriesAPassword`,
 `TestTheDomainListAddsListsAndRemoves`, `TestOnlyADomainIsAdded`,
 `TestTheDomainListIsSealed`, `TestTheDomainListIsBounded`, `TestTheDomainHandler`,
 `TestDomainsBehindAPasswordKeepsAListAndAsksEachOne`

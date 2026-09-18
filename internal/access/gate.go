@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -88,6 +89,9 @@ func (g *Gate) Key() []byte {
 
 // SignedIn reports whether a request carries a live session.
 func (g *Gate) SignedIn(r *http.Request) bool {
+	if !privateTransport(r) {
+		return false
+	}
 	c, err := r.Cookie(CookieName)
 	if err != nil {
 		return false
@@ -377,6 +381,12 @@ func fromThisPage(r *http.Request) bool {
 // so a form on another site cannot post it without a preflight, and from this
 // installation's pages only.
 func readPassword(w http.ResponseWriter, r *http.Request) (passwordRequest, bool) {
+	if !privateTransport(r) {
+		refuse(w, http.StatusForbidden, "insecure_transport",
+			"This installation takes a password only over HTTPS, or through an SSH tunnel to localhost. "+
+				"Sent here it would cross the network in the clear.")
+		return passwordRequest{}, false
+	}
 	if !fromThisPage(r) {
 		refuse(w, http.StatusForbidden, "cross_site", "Sign in from this installation's own page.")
 		return passwordRequest{}, false
@@ -426,4 +436,36 @@ func refuse(w http.ResponseWriter, status int, code, message string) {
 	w.WriteHeader(status)
 	// The shape the API answers with, so a page reads either the same way.
 	_ = json.NewEncoder(w).Encode(map[string]map[string]string{"error": {"code": code, "message": message}})
+}
+
+// privateTransport reports whether a password or a session may travel on this
+// request: over TLS, or addressed to this machine's own name, which is what a
+// browser at the near end of an SSH tunnel sends (audit 2026-09-18, D06).
+//
+// Plain HTTP to any other name is refused, both to sign in and to use a
+// session. A browser already keeps the Secure cookie off such a request; this
+// makes the server refuse the password before it has been read and refuse a
+// cookie somebody sets by hand.
+//
+// The Host header is the client's to write, and that is acceptable here
+// because this is not a check against the client: a browser sends the name the
+// person typed, so the person who would send their password in the clear is
+// the one refused. Somebody who forges "localhost" is sending their own guess
+// over their own plaintext connection. No proxy header is read, because this
+// service runs with no proxy in front of it; one that did would terminate TLS
+// before this and need a rule of its own.
+func privateTransport(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.TrimSuffix(strings.Trim(host, "[]"), ".")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip, err := netip.ParseAddr(host)
+	return err == nil && ip.IsLoopback()
 }
