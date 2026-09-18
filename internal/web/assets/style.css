@@ -2664,3 +2664,14 @@ main > .band:last-child { border-bottom: 0; }
 .history-open:hover { color: var(--ink); border-color: var(--ink-faint); }
 .history-delete:hover { color: var(--insecure); border-color: var(--insecure); }
 #history-report { margin-top: 1.5rem; }
+
+/* The sign-in page's footer sits at the foot of the window, centred under the
+   card like everything else on the page. It floated in the middle, flush
+   left, because the page had no rail to stretch it. */
+.workspace-signin .workspace-main { min-height: 100vh; }
+.workspace-signin .colophon-row { justify-content: center; }
+
+/* On a phone the command wraps rather than scrolling out of sight. */
+@media (max-width: 46rem) {
+  .signin-first .work-code code { white-space: pre-wrap; overflow-wrap: anywhere; }
+}
