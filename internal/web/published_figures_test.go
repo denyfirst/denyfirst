@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/httpapi"
+	"github.com/denyfirst/porch/internal/httpapi"
 )
 
 // describedOnThePrivacyPage maps every figure /api/v1/stats publishes to the

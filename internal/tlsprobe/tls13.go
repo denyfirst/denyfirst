@@ -5,8 +5,8 @@ import (
 	"crypto/tls"
 	"sync"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/rawhello"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/rawhello"
 )
 
 // tls13NotEnumerated is said when the hand-written hellos could not be trusted

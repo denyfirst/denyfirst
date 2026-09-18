@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/crl"
-	"github.com/denyfirst/denyfirst/internal/ctsearch"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/crl"
+	"github.com/denyfirst/porch/internal/ctsearch"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 // Whether this deployment asks a certificate authority anything.

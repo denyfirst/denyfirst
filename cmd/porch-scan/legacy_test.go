@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 func legacyOutput(t *testing.T, l tlsprobe.Legacy) (versions, suites string) {

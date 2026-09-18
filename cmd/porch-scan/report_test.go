@@ -18,11 +18,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/ctsearch"
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/scan"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/ctsearch"
+	"github.com/denyfirst/porch/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/scan"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 // Fixed, so certificate arithmetic in the report is the same on every run.

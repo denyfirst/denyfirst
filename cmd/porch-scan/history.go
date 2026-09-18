@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/results"
-	"github.com/denyfirst/denyfirst/internal/scan"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/results"
+	"github.com/denyfirst/porch/internal/scan"
 )
 
 // keep records one scan, where the operator asked for records to be kept.

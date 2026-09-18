@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/certinfo"
-	"github.com/denyfirst/denyfirst/internal/scan"
+	"github.com/denyfirst/porch/internal/certinfo"
+	"github.com/denyfirst/porch/internal/scan"
 )
 
 // The certificate block prints the stores line certinfo wrote, as it wrote it.

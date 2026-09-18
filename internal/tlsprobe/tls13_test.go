@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/rawhello"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/rawhello"
 )
 
 // accept13 is a TLS 1.3 ServerHello record choosing one suite.

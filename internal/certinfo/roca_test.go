@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/porch/internal/policy"
 )
 
 // Two moduli built the way RSALib built them.

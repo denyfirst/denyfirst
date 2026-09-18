@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/webprobe"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/webprobe"
 )
 
 // The cookie rules reach a report.

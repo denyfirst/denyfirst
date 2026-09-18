@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/porch/internal/demo"
 )
 
 // What a visitor to denyfirst.dev is given.

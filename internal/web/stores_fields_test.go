@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/certinfo"
+	"github.com/denyfirst/porch/internal/certinfo"
 )
 
 // The page reads the stores line under the name the API sends it.

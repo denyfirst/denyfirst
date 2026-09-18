@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/safedial"
+	"github.com/denyfirst/porch/internal/safedial"
 )
 
 const exchanger = "mx.example.test"

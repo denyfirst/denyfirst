@@ -57,15 +57,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/dkim"
-	"github.com/denyfirst/denyfirst/internal/exclusion"
-	"github.com/denyfirst/denyfirst/internal/mailscan"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/results"
-	"github.com/denyfirst/denyfirst/internal/scan"
-	"github.com/denyfirst/denyfirst/internal/verify"
-	"github.com/denyfirst/denyfirst/internal/webscan"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/dkim"
+	"github.com/denyfirst/porch/internal/exclusion"
+	"github.com/denyfirst/porch/internal/mailscan"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/results"
+	"github.com/denyfirst/porch/internal/scan"
+	"github.com/denyfirst/porch/internal/verify"
+	"github.com/denyfirst/porch/internal/webscan"
 )
 
 // Defaults chosen to be comfortable by hand and unattractive in bulk.
@@ -554,7 +554,7 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request, parse func(string
 	if demo.Refusal(host) {
 		s.refuse(w, http.StatusForbidden, "not_demonstrated",
 			"This deployment scans only hosts this project owns. Run the tool on your "+
-				"own machine to scan anything else: github.com/denyfirst/denyfirst")
+				"own machine to scan anything else: github.com/denyfirst/porch")
 		return target{}, false
 	}
 

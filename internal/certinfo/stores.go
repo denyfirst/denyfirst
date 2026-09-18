@@ -4,8 +4,8 @@ import (
 	"crypto/x509"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/rootstores"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/rootstores"
 )
 
 // judgeStores asks the carried root stores of four clients what they make of a

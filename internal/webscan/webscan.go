@@ -22,12 +22,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/exclusion"
-	"github.com/denyfirst/denyfirst/internal/markup"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/verify"
-	"github.com/denyfirst/denyfirst/internal/webprobe"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/exclusion"
+	"github.com/denyfirst/porch/internal/markup"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/verify"
+	"github.com/denyfirst/porch/internal/webprobe"
 )
 
 // hstsHeader is the header the rules read. Spelled once.

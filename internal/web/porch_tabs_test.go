@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/porch/internal/demo"
 )
 
 // The Porch page gives each check a tab of its own and a state of its own.

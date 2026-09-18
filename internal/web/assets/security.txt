@@ -18,7 +18,7 @@ Encryption: https://denyfirst.dev/pgp-key.txt
 Expires: 2027-08-01T00:00:00Z
 Preferred-Languages: en, az
 Canonical: https://denyfirst.dev/.well-known/security.txt
-Policy: https://github.com/denyfirst/denyfirst/blob/main/SECURITY.md
+Policy: https://github.com/denyfirst/porch/blob/main/SECURITY.md
 
 # The key's fingerprint is:
 #

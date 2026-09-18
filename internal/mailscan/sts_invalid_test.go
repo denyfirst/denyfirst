@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/mtasts"
+	"github.com/denyfirst/porch/internal/mtasts"
 )
 
 // A file that is not a policy is graded as one, and nothing in it is used.

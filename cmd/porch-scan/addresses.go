@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 // printAddresses shows what each of the name's addresses answered when asked

@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/challenge"
-	"github.com/denyfirst/denyfirst/internal/crl"
-	"github.com/denyfirst/denyfirst/internal/ctsearch"
-	"github.com/denyfirst/denyfirst/internal/webprobe"
+	"github.com/denyfirst/porch/internal/challenge"
+	"github.com/denyfirst/porch/internal/crl"
+	"github.com/denyfirst/porch/internal/ctsearch"
+	"github.com/denyfirst/porch/internal/webprobe"
 )
 
 // Every request this project makes to a stranger names the tool that made it.

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/webprobe"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/webprobe"
 )
 
 // The store a caller configures has to reach the prober, and a store that could

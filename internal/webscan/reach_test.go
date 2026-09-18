@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/verify"
-	"github.com/denyfirst/denyfirst/internal/webprobe"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/verify"
+	"github.com/denyfirst/porch/internal/webprobe"
 )
 
 // A redirect is a host the server chose, and Scan's three guards authorised

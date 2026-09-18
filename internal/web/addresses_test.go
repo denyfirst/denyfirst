@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/webprobe"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/webprobe"
 )
 
 // Where things live, and why the two redirects are different kinds.

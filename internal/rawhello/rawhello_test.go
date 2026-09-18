@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/porch/internal/policy"
 )
 
 // record wraps a payload in a record header.

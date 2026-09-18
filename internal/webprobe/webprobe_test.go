@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/safedial"
+	"github.com/denyfirst/porch/internal/safedial"
 )
 
 // local returns a prober that may reach the loopback addresses httptest uses.

@@ -20,17 +20,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/certinfo"
-	"github.com/denyfirst/denyfirst/internal/crl"
-	"github.com/denyfirst/denyfirst/internal/ctsearch"
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
-	"github.com/denyfirst/denyfirst/internal/exclusion"
-	"github.com/denyfirst/denyfirst/internal/ocsp"
-	"github.com/denyfirst/denyfirst/internal/ocspquery"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
-	"github.com/denyfirst/denyfirst/internal/verify"
+	"github.com/denyfirst/porch/internal/certinfo"
+	"github.com/denyfirst/porch/internal/crl"
+	"github.com/denyfirst/porch/internal/ctsearch"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/exclusion"
+	"github.com/denyfirst/porch/internal/ocsp"
+	"github.com/denyfirst/porch/internal/ocspquery"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/verify"
 )
 
 const (

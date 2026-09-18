@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/safedial"
+	"github.com/denyfirst/porch/internal/safedial"
 )
 
 // The domain every test here asks about, and the host a policy for it lives on.

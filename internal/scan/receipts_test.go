@@ -5,9 +5,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/certinfo"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/certinfo"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 func ctFixture(t *testing.T) (leaf, issuer *x509.Certificate) {

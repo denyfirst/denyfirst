@@ -119,8 +119,8 @@
       <h3>Build it</h3>
       <p>Get the source and build the service. Built elsewhere, copy
       <code>porchd</code> into the checkout on the server.</p>
-      <pre><code>git clone https://github.com/denyfirst/denyfirst
-cd denyfirst
+      <pre><code>git clone https://github.com/denyfirst/porch
+cd porch
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o porchd ./cmd/porchd</code></pre>
     </li>
     <li>
@@ -140,7 +140,7 @@ docker compose up -d --build</code></pre>
   <p class="band-footnote">The first check of a domain shows a DNS record to
   add; the checks run once it is published. A public address, a signed
   release and everything else are in the
-  <a class="arrow-ne" href="https://github.com/denyfirst/denyfirst/blob/main/docs/self-host.md">self-hosting guide</a>.</p>
+  <a class="arrow-ne" href="https://github.com/denyfirst/porch/blob/main/docs/self-host.md">self-hosting guide</a>.</p>
 </section>
 
 <section class="cta">
@@ -150,5 +150,5 @@ docker compose up -d --build</code></pre>
     <p>Self-hosted, with proof of control for every domain, and nothing sent
     to us.</p>
   </div>
-  <a class="button button-secondary arrow-ne" href="https://github.com/denyfirst/denyfirst/blob/main/docs/self-host.md">Self-hosting guide</a>
+  <a class="button button-secondary arrow-ne" href="https://github.com/denyfirst/porch/blob/main/docs/self-host.md">Self-hosting guide</a>
 </section>

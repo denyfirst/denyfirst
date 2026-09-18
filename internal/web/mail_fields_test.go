@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/porch/internal/policy"
 )
 
 // The script reads the field names the API actually sends.

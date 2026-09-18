@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/verify"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/verify"
 )
 
 // zone answers from a table, so a report can be checked against records this

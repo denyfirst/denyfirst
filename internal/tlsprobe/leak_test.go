@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/safedial"
+	"github.com/denyfirst/porch/internal/safedial"
 )
 
 // Go writes network errors for an operator reading a terminal, so they name

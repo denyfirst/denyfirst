@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/safedial"
-	"github.com/denyfirst/denyfirst/internal/scan"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/safedial"
+	"github.com/denyfirst/porch/internal/scan"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 // blockedScanner stands in for a name that resolves only to an address

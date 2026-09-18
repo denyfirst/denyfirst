@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/porch/internal/policy"
 )
 
 // The limits of a scan open by default in one case and only one.

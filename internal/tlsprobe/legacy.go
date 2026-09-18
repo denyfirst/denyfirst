@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/rawhello"
-	"github.com/denyfirst/denyfirst/internal/safedial"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/rawhello"
+	"github.com/denyfirst/porch/internal/safedial"
 )
 
 // Legacy is what hand-written hellos established about the things Go's own

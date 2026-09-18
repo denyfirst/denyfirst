@@ -1,7 +1,7 @@
 package scan
 
 import (
-	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/porch/internal/demo"
 
 	"context"
 	"errors"
@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/certinfo"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/certinfo"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 func TestSplitTarget(t *testing.T) {

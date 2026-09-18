@@ -41,7 +41,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/rootstores"
+	"github.com/denyfirst/porch/internal/rootstores"
 )
 
 const (

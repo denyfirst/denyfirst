@@ -3,8 +3,8 @@ package scan
 import (
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
-	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/porch/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/policy"
 )
 
 // A CAA record set is a set, and a report on an unchanged server should not

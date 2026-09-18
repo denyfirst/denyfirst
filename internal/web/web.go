@@ -24,10 +24,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/httpapi"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/webprobe"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/httpapi"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/webprobe"
 )
 
 //go:embed assets

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 // The page reads the field names the API sends for the hand-written hellos.

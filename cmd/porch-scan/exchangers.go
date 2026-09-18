@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/porch/internal/policy"
 )
 
 // printExchangers shows what each exchanger answered when asked for encryption.

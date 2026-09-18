@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/markup"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/markup"
 )
 
 // pageServer answers every request with one body, and records how much of it

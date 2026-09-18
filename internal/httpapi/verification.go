@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/denyfirst/denyfirst/internal/mailscan"
-	"github.com/denyfirst/denyfirst/internal/scan"
-	"github.com/denyfirst/denyfirst/internal/verify"
+	"github.com/denyfirst/porch/internal/mailscan"
+	"github.com/denyfirst/porch/internal/scan"
+	"github.com/denyfirst/porch/internal/verify"
 )
 
 // The verification endpoint: what a domain has to publish for this deployment

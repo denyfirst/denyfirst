@@ -1,3 +1,3 @@
-module github.com/denyfirst/denyfirst
+module github.com/denyfirst/porch
 
 go 1.26.7

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/porch/internal/demo"
 )
 
 func get(t *testing.T, path string) *httptest.ResponseRecorder {

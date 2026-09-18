@@ -37,17 +37,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/challenge"
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
-	"github.com/denyfirst/denyfirst/internal/httpapi"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/results"
-	"github.com/denyfirst/denyfirst/internal/scan"
-	"github.com/denyfirst/denyfirst/internal/smtptls"
-	"github.com/denyfirst/denyfirst/internal/truststore"
-	"github.com/denyfirst/denyfirst/internal/verify"
-	"github.com/denyfirst/denyfirst/internal/web"
+	"github.com/denyfirst/porch/internal/challenge"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/httpapi"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/results"
+	"github.com/denyfirst/porch/internal/scan"
+	"github.com/denyfirst/porch/internal/smtptls"
+	"github.com/denyfirst/porch/internal/truststore"
+	"github.com/denyfirst/porch/internal/verify"
+	"github.com/denyfirst/porch/internal/web"
 )
 
 // version is the release this binary was built from, set by scripts/build.sh

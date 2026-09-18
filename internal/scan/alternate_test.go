@@ -1,7 +1,7 @@
 package scan
 
 import (
-	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/porch/internal/demo"
 
 	"context"
 	"crypto/ecdsa"
@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/tlsprobe"
+	"github.com/denyfirst/porch/internal/tlsprobe"
 )
 
 // A weakness reachable only by an old client is a weakness.

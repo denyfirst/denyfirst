@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/results"
-	"github.com/denyfirst/denyfirst/internal/webprobe"
-	"github.com/denyfirst/denyfirst/internal/webscan"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/results"
+	"github.com/denyfirst/porch/internal/webprobe"
+	"github.com/denyfirst/porch/internal/webscan"
 )
 
 // The checks this command can run, spelled once.

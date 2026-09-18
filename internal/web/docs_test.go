@@ -16,7 +16,7 @@ func TestEveryDocumentIsOnTheDocsPage(t *testing.T) {
 	for _, want := range []string{
 		`href="/tls/method"`, `href="/web/method"`, `href="/privacy"`, `href="/terms"`,
 		"docs/self-host.md", "docs/verify.md", "docs/scope.md", "docs/policy-changes.md",
-		"docs/invariants.md", "SECURITY.md", `href="https://github.com/denyfirst/denyfirst"`,
+		"docs/invariants.md", "SECURITY.md", `href="https://github.com/denyfirst/porch"`,
 		`href="/pgp-key.txt"`, `href="/.well-known/security.txt"`,
 	} {
 		if !strings.Contains(page, want) {

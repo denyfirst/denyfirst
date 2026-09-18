@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/webprobe"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/webprobe"
 )
 
 // Why the obsolete suites are asked by hand is said on the method page, and

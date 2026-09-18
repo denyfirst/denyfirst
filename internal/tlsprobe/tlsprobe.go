@@ -55,8 +55,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/safedial"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/safedial"
 )
 
 // DialFunc matches net.Dialer.DialContext and safedial.Dialer.DialContext.

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/policy"
+	"github.com/denyfirst/porch/internal/policy"
 )
 
 // Counting by reason is safe to publish; counting by requester is not. A key

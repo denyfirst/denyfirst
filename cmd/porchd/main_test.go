@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/httpapi"
+	"github.com/denyfirst/porch/internal/httpapi"
 )
 
 // WriteTimeout covers the entire exchange. Set at or below the scan budget it

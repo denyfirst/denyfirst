@@ -167,8 +167,8 @@ binary you have checked.
 Building from source is the other answer, and needs nothing but Go:
 
 ```sh
-git clone https://github.com/denyfirst/denyfirst
-cd denyfirst
+git clone https://github.com/denyfirst/porch
+cd porch
 go build ./cmd/porch-scan ./cmd/porchd
 ```
 
@@ -289,8 +289,8 @@ the image is a wrapper around a binary **you verified**, or built yourself.
    else:
 
    ```sh
-   git clone https://github.com/denyfirst/denyfirst
-   cd denyfirst
+   git clone https://github.com/denyfirst/porch
+   cd porch
    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o porchd ./cmd/porchd
    ```
 

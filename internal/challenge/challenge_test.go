@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/safedial"
-	"github.com/denyfirst/denyfirst/internal/verify"
+	"github.com/denyfirst/porch/internal/safedial"
+	"github.com/denyfirst/porch/internal/verify"
 )
 
 // localFetcher reaches a test server, which the default dialler refuses.

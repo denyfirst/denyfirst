@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/rawhello"
+	"github.com/denyfirst/porch/internal/rawhello"
 )
 
 // A server whose key exchange this test controls, and a count of every

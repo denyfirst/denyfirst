@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/demo"
+	"github.com/denyfirst/porch/internal/demo"
 )
 
 // The files somebody runs this from, and what they are allowed to say.

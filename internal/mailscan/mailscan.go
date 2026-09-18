@@ -78,16 +78,16 @@ import (
 	"sync"
 	"time"
 
-	danecheck "github.com/denyfirst/denyfirst/internal/dane"
-	"github.com/denyfirst/denyfirst/internal/demo"
-	"github.com/denyfirst/denyfirst/internal/dkim"
-	"github.com/denyfirst/denyfirst/internal/dnsclient"
-	"github.com/denyfirst/denyfirst/internal/exclusion"
-	"github.com/denyfirst/denyfirst/internal/mtasts"
-	"github.com/denyfirst/denyfirst/internal/policy"
-	"github.com/denyfirst/denyfirst/internal/smtptls"
-	"github.com/denyfirst/denyfirst/internal/spf"
-	"github.com/denyfirst/denyfirst/internal/verify"
+	danecheck "github.com/denyfirst/porch/internal/dane"
+	"github.com/denyfirst/porch/internal/demo"
+	"github.com/denyfirst/porch/internal/dkim"
+	"github.com/denyfirst/porch/internal/dnsclient"
+	"github.com/denyfirst/porch/internal/exclusion"
+	"github.com/denyfirst/porch/internal/mtasts"
+	"github.com/denyfirst/porch/internal/policy"
+	"github.com/denyfirst/porch/internal/smtptls"
+	"github.com/denyfirst/porch/internal/spf"
+	"github.com/denyfirst/porch/internal/verify"
 )
 
 const (

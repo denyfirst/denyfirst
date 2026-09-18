@@ -31,9 +31,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/denyfirst/denyfirst/internal/safedial"
-	"github.com/denyfirst/denyfirst/internal/truststore"
-	"github.com/denyfirst/denyfirst/internal/verify"
+	"github.com/denyfirst/porch/internal/safedial"
+	"github.com/denyfirst/porch/internal/truststore"
+	"github.com/denyfirst/porch/internal/verify"
 )
 
 const (

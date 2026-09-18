@@ -117,8 +117,8 @@ image with no base system whose trust store comes from your machine rather
 than from the image.
 
 ```sh
-git clone https://github.com/denyfirst/denyfirst
-cd denyfirst
+git clone https://github.com/denyfirst/porch
+cd porch
 go build ./cmd/porchd
 ```
 
