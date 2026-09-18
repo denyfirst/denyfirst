@@ -170,9 +170,13 @@ func TestTheDeployProcedureIsWrittenDown(t *testing.T) {
 			"the key comes from the repository; a key shipped beside the file it vouches for establishes nothing"},
 		{"install -o root -g root -m 0755",
 			"owner and mode are set as the file is written, so there is no interval with the wrong ownership on the live path"},
-		{"porchd.rollback-",
-			"a rollback carries the version it holds; porchd.bak from 2026-08-18 is what the alternative looks like"},
-		{"getcap /opt/porch/porchd",
+		{"denyfirstd.rollback-pre-${V}",
+			"a rollback carries the release that replaced it; a .bak from 2026-08-18 is what the alternative looks like"},
+		{"sudo systemctl restart denyfirstd",
+			"the unit on the server is still denyfirstd.service: the page named porchd, and the v0.16.0 deploy stopped at a path that never existed there"},
+		{"|| { echo 'STOP: not the demonstration build'; exit 1; }",
+			"the downloaded file proves it is the demonstration build before it reaches the live path, and the block stops if it does not"},
+		{"getcap /opt/denyfirst/denyfirstd",
 			"the binary must carry no file capability — the unit grants the port to one process instead"},
 		{"AmbientCapabilities",
 			"where the capability actually comes from"},
@@ -189,6 +193,16 @@ func TestTheDeployProcedureIsWrittenDown(t *testing.T) {
 	} {
 		if !strings.Contains(page, required.text) {
 			t.Errorf("docs/releasing.md no longer covers %q — %s", required.text, required.why)
+		}
+	}
+
+	// And nothing addresses a unit or a path the server does not have. The
+	// restart appears twice, so a check for its presence alone passes with one
+	// of them wrong. The one sentence saying what the page used to give is the
+	// only place the old path may appear.
+	for _, never := range []string{"systemctl restart porchd", "--value porchd", "/opt/porch/"} {
+		if strings.Count(page, never) > strings.Count(page, "said `"+never) {
+			t.Errorf("docs/releasing.md still gives %q, which names a unit or path the server does not have", never)
 		}
 	}
 }
@@ -218,6 +232,9 @@ func TestTheServiceIsNamedByThePathItIsAt(t *testing.T) {
 			command := strings.TrimSpace(line)
 			command = strings.TrimPrefix(command, "sudo ")
 			rest, bare := strings.CutPrefix(command, "porchd")
+			if !bare {
+				rest, bare = strings.CutPrefix(command, "denyfirstd")
+			}
 			if !bare || !strings.HasPrefix(rest, " -") {
 				continue
 			}
