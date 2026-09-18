@@ -2047,6 +2047,13 @@ runs the machine deletes them. A file the key does not open is never removed by
 the bound, because it is not that key's to judge; it is counted, with its size,
 and History says so, as it says when the bound could not remove a report.
 
+Signing out is done when the server says the session ended, not when the
+browser reaches the sign-in page. The review of 2026-09-18 found the page moving
+there whatever the answer (D07), so a sign-out a proxy swallowed looked like one
+that worked while the session stayed good; and a request that never came back
+left every form disabled. Every form now gets its button back and says what
+happened, and a failed sign-out stays on the page and says so.
+
 *Enforced in:* `internal/access`, `internal/vault`, `cmd/porchd.createAccess`, `cmd/porchd.retireSealed`, `cmd/porchd.run`,
 `internal/web.Configure`, `internal/web.PublicPaths`
 *Guarded by:* `TestNothingIsReachableWithoutSigningIn`,
@@ -2078,7 +2085,8 @@ and History says so, as it says when the bound could not remove a report.
 `TestTheDomainListIsSealed`, `TestTheDomainListIsBounded`, `TestTheDomainHandler`,
 `TestDomainsBehindAPasswordKeepsAListAndAsksEachOne`,
 `TestANewPasswordMovesWhatTheOldOneKeptAside`,
-`TestWhatTheListCannotShowIsCountedAndNeverTrimmed`
+`TestWhatTheListCannotShowIsCountedAndNeverTrimmed`,
+`TestTheSessionScriptRecoversAndSignsOutOnlyOnSuccess`
 
 ## Correctness of the report
 

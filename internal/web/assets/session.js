@@ -7,18 +7,39 @@
   session endpoints and moves the browser; it reads no report and stores
   nothing. The session itself is a cookie the server sets, which no script
   here can read.
+
+  Every form gets its button back and says what happened, whatever the
+  answer: an error, something that is not JSON, no answer at all. A network
+  that fails left the buttons disabled and "Checking…" on screen (audit
+  2026-09-18, D07), and a sign-out the server never saw sent the browser to
+  the sign-in page as though it had.
 */
 
 "use strict";
 
 (function () {
+  // How long an answer is waited for before it is treated as none.
+  const WAIT = 15000;
+
+  // send returns null when the installation said yes, and otherwise the
+  // sentence to show. It never throws.
   async function send(method, path, body) {
-    const response = await fetch(path, {
-      method,
-      headers: body ? { "Content-Type": "application/json" } : {},
-      body: body ? JSON.stringify(body) : undefined,
-      credentials: "same-origin",
-    });
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), WAIT);
+    let response;
+    try {
+      response = await fetch(path, {
+        method,
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body: body ? JSON.stringify(body) : undefined,
+        credentials: "same-origin",
+        signal: abort.signal,
+      });
+    } catch {
+      return "The installation could not be reached. Nothing here can say whether it acted; try again.";
+    } finally {
+      clearTimeout(timer);
+    }
     if (response.ok) return null;
     let message = "The installation did not answer as expected.";
     try {
@@ -39,24 +60,43 @@
       event.preventDefault();
       button.disabled = true;
       status.textContent = "Checking…";
-      const problem = await send("POST", "/api/v1/session", { password: field.value });
-      if (problem === null) {
-        window.location.assign("/");
-        return;
+      let problem = "The installation did not answer as expected.";
+      try {
+        problem = await send("POST", "/api/v1/session", { password: field.value });
+      } finally {
+        if (problem === null) {
+          window.location.assign("/");
+        } else {
+          status.textContent = problem;
+          field.value = "";
+          field.focus();
+          button.disabled = false;
+        }
       }
-      status.textContent = problem;
-      field.value = "";
-      field.focus();
-      button.disabled = false;
     });
   }
 
+  // Signed out means the server said it ended the session. Until it does,
+  // the session may still be good, so the browser stays where it is and the
+  // button says it did not work rather than showing the sign-in page, which
+  // would look the same as success.
   const signOut = document.getElementById("sign-out");
   if (signOut) {
     signOut.addEventListener("click", async () => {
       signOut.disabled = true;
-      await send("DELETE", "/api/v1/session");
-      window.location.assign("/login");
+      signOut.textContent = "Signing out…";
+      let problem = "The installation did not answer as expected.";
+      try {
+        problem = await send("DELETE", "/api/v1/session");
+      } finally {
+        if (problem === null) {
+          window.location.assign("/login");
+        } else {
+          signOut.textContent = "Not signed out. Try again";
+          signOut.title = problem;
+          signOut.disabled = false;
+        }
+      }
     });
   }
 
@@ -75,16 +115,20 @@
       }
       button.disabled = true;
       status.textContent = "Saving…";
-      const problem = await send("POST", "/api/v1/password", { password: current.value, next: next.value });
-      status.textContent = problem === null
-        ? "Changed. Every other session has been signed out."
-        : problem;
-      current.value = "";
-      if (problem === null) {
-        next.value = "";
-        again.value = "";
+      let problem = "The installation did not answer as expected.";
+      try {
+        problem = await send("POST", "/api/v1/password", { password: current.value, next: next.value });
+      } finally {
+        status.textContent = problem === null
+          ? "Changed. Every other session has been signed out."
+          : problem;
+        current.value = "";
+        if (problem === null) {
+          next.value = "";
+          again.value = "";
+        }
+        button.disabled = false;
       }
-      button.disabled = false;
     });
   }
 })();
