@@ -77,7 +77,9 @@
       <strong>A verification secret</strong> is kept in a file readable by its
       owner alone. Every record a domain publishes to prove it is theirs is
       derived from it. Which domains have proven anything is not kept: it is
-      asked again on every scan, so deleting the record ends it.
+      asked again on every scan, so deleting the record ends it.{{if .Guarded}}
+      The domains you add under Domains are kept, with the date each was
+      added, in one file sealed like the history.{{end}}
     </p>
     {{end}}
 

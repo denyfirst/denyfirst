@@ -1985,7 +1985,9 @@ nothing about which names were checked, sealed with AES-256-GCM with the
 file's own name authenticated beside it so a report moved to another name
 does not open, and dated but not timed. Without a key nothing is written, not
 even in the clear. It is read back only through the gate, and deleting a
-report removes its file for good. The
+report removes its file for good. The domains somebody adds are kept the same way, in one
+sealed file: names and the date each was added, never whether each is proven,
+which is asked of DNS each time the list is shown. The
 command line's `-results-dir` store is the operator's own file on their own
 machine and is not this. A forgotten password is
 therefore unrecoverable, by design, and the log line that prints the first one
@@ -2029,7 +2031,10 @@ is not.
 `TestTheHistoryExistsOnlyBehindThePassword`,
 `TestHistoryBehindAPasswordListsOpensAndDeletes`, `TestTheSealBindsTheName`,
 `TestOnlyThisPackagesNamesAreNames`, `TestAFileNameSaysNothingAndADateIsOnlyADate`,
-`TestAReportNotKeptIsStillAnswered`, `TestAKeptReportIsListedUnderTheNameAsTyped`
+`TestAReportNotKeptIsStillAnswered`, `TestAKeptReportIsListedUnderTheNameAsTyped`,
+`TestTheDomainListAddsListsAndRemoves`, `TestOnlyADomainIsAdded`,
+`TestTheDomainListIsSealed`, `TestTheDomainListIsBounded`, `TestTheDomainHandler`,
+`TestDomainsBehindAPasswordKeepsAListAndAsksEachOne`
 
 ## Correctness of the report
 

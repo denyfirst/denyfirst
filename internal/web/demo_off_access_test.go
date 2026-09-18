@@ -192,3 +192,51 @@ func TestTheSignInFooterSitsAtTheFootCentred(t *testing.T) {
 		}
 	}
 }
+
+// Behind a password, Domains keeps a list and asks DNS about each domain on
+// it, one after another, stopping when the budget says wait. Without one there
+// is no list.
+func TestDomainsBehindAPasswordKeepsAListAndAsksEachOne(t *testing.T) {
+	if open := workspaceWith(t, "/domains", true, false); strings.Contains(open, `id="domain-table"`) {
+		t.Error("Domains without a password draws a kept list")
+	}
+	page := guardedAs(t, "/domains")
+	for _, want := range []string{`id="domain-table"`, `<tbody id="domain-rows"></tbody>`, `<h2 class="work-section">Your domains</h2>`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("Domains behind a password lacks %q", want)
+		}
+	}
+
+	src := script(t)
+	start := strings.Index(src, "const domainTable = ")
+	if start < 0 {
+		t.Fatal("app.js has no domain list module")
+	}
+	list := src[start:]
+	if end := strings.Index(list, "if (domainTable) loadDomains();"); end > 0 {
+		list = list[:end]
+	}
+	for _, want := range []string{
+		`domainRequest("GET", "/api/v1/domains")`,
+		`domainRequest("DELETE", "/api/v1/domains/" + encodeURIComponent(domain.name))`,
+		"const answer = await check(domain.name, VERIFY);",
+		"if (!(await proveRow(m.domain, m.proof))) {",
+		`return err.status !== 429;`,
+		"if (!window.confirm(",
+	} {
+		if !strings.Contains(list, want) {
+			t.Errorf("the domain list module no longer contains %q", want)
+		}
+	}
+	if !strings.Contains(src, `await domainRequest("POST", "/api/v1/domains", { domain: target.value.trim() });`) {
+		t.Error("adding a domain behind a password does not keep it on the list")
+	}
+	// Proven or not is asked, never kept.
+	if strings.Contains(list, "localStorage") || strings.Contains(list, "innerHTML") {
+		t.Error("the domain list module stores state or builds markup from strings")
+	}
+
+	if privacy := flatten(guardedAs(t, "/privacy")); !strings.Contains(privacy, "The domains you add under Domains are kept") {
+		t.Error("the privacy page behind a password does not say the domain list is kept")
+	}
+}

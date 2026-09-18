@@ -1645,12 +1645,160 @@ if (domainForm && domainRecord) {
     }
   };
 
-  domainForm.addEventListener("submit", event => {
+  domainForm.addEventListener("submit", async event => {
     event.preventDefault();
+    // Behind a password, an added domain is kept on the list as well as
+    // shown its record.
+    if (domainTable && target.value.trim()) {
+      try {
+        await domainRequest("POST", "/api/v1/domains", { domain: target.value.trim() });
+      } catch (err) {
+        domainListStatus(err.message);
+        return;
+      }
+      loadDomains();
+    }
     ask(submit);
   });
-  again.addEventListener("click", () => ask(again));
+  again.addEventListener("click", async () => {
+    await ask(again);
+    if (domainTable) loadDomains();
+  });
 }
+
+/*
+  The domain list, on an installation behind a password.
+
+  Names and dates come from the sealed list; whether each is proven is asked
+  of DNS now, one domain after another, through the same endpoint the console
+  asks. That endpoint shares the scan budget, so a long list is asked until
+  the budget says wait, and the rest offer a button to ask when it has
+  refilled rather than reading as unproven.
+*/
+const domainTable = document.getElementById("domain-table");
+
+async function domainRequest(method, path, body) {
+  const response = await fetch(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (response.status === 401) {
+    window.location.assign("/login");
+    throw new Error("Sign in to use this installation.");
+  }
+  if (response.status === 204 || response.status === 201 || (response.ok && method !== "GET")) return null;
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error("The installation sent something this page could not read.");
+  }
+  if (!response.ok) {
+    const error = data && data.error ? data.error : {};
+    throw new Error(error.message || "The domain list could not be read.");
+  }
+  return data;
+}
+
+function domainListStatus(text) {
+  const status = document.getElementById("domain-list-status");
+  status.textContent = text;
+  status.hidden = !text;
+}
+
+async function proveRow(domain, cell) {
+  clear(cell);
+  cell.className = "mark-faint";
+  cell.textContent = "asking…";
+  try {
+    const answer = await check(domain.name, VERIFY);
+    cell.className = answer.verified ? "mark-strong" : "mark-weak";
+    cell.textContent = answer.verified ? "proven" : "not proven";
+    return true;
+  } catch (err) {
+    cell.className = "mark-faint";
+    cell.textContent = err.status === 429 ? "not asked yet " : "not established ";
+    const retry = el("button", "history-open", "Ask");
+    retry.type = "button";
+    retry.addEventListener("click", () => proveRow(domain, cell));
+    cell.appendChild(retry);
+    return err.status !== 429;
+  }
+}
+
+function domainRow(domain) {
+  const row = el("tr");
+  row.appendChild(el("td", "history-target", domain.name));
+  row.appendChild(el("td", null, domain.added));
+  const proof = el("td", "mark-faint", "…");
+  row.appendChild(proof);
+
+  const actions = el("td", "history-actions");
+  const record = el("button", "history-open", "Record");
+  record.type = "button";
+  const remove = el("button", "history-delete", "Remove");
+  remove.type = "button";
+  actions.appendChild(record);
+  actions.appendChild(remove);
+  row.appendChild(actions);
+
+  record.addEventListener("click", () => {
+    document.getElementById("domain-target").value = domain.name;
+    document.getElementById("domain-again").click();
+    domainRecord.scrollIntoView({ block: "start" });
+  });
+  remove.addEventListener("click", async () => {
+    if (!window.confirm("Take " + domain.name + " off the list? Its record in DNS and its " +
+        "reports in History stay where they are.")) return;
+    remove.disabled = true;
+    try {
+      await domainRequest("DELETE", "/api/v1/domains/" + encodeURIComponent(domain.name));
+      loadDomains();
+    } catch (err) {
+      domainListStatus(err.message);
+      remove.disabled = false;
+    }
+  });
+  return { row, proof, domain };
+}
+
+async function loadDomains() {
+  let data;
+  try {
+    data = await domainRequest("GET", "/api/v1/domains");
+  } catch (err) {
+    domainListStatus(err.message);
+    return;
+  }
+  domainListStatus("");
+  const list = (data && data.domains) || [];
+  const rows = document.getElementById("domain-rows");
+  clear(rows);
+  const made = list.map(domainRow);
+  for (const m of made) rows.appendChild(m.row);
+  domainTable.hidden = list.length === 0;
+  document.getElementById("domain-list-empty").hidden = list.length !== 0;
+
+  // One at a time, and stop asking once the budget says wait.
+  for (const m of made) {
+    if (!(await proveRow(m.domain, m.proof))) {
+      for (const rest of made.slice(made.indexOf(m) + 1)) {
+        clear(rest.proof);
+        rest.proof.textContent = "not asked yet ";
+        const ask = el("button", "history-open", "Ask");
+        ask.type = "button";
+        ask.addEventListener("click", () => proveRow(rest.domain, rest.proof));
+        rest.proof.appendChild(ask);
+      }
+      break;
+    }
+  }
+}
+
+if (domainTable) loadDomains();
 
 // proven says whether the checks may run, asking for proof first where it is
 // required. A failure to ask is shown in the results and ends the run.

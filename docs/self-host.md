@@ -378,6 +378,11 @@ sealed with that key and dated but not timed. **History** lists them, opens
 any of them as it was drawn, and deletes one for good. At most a thousand are
 kept, the oldest dropped first.
 
+**The domains you add are kept too**, in `porch-data/domains.sealed`, sealed the
+same way: the names and the date each was added. Whether each is proven is not
+kept. **Domains** asks DNS again every time it opens, so a record taken out of a
+zone reads as unproven straight away.
+
 **So a lost password cannot be recovered**, by anyone. Delete
 `porch-data/access` and restart: a new password is printed and a new key made,
 and what was kept under the old one stays unreadable.

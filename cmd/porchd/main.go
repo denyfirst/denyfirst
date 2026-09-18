@@ -421,6 +421,9 @@ func run() int {
 		api.KeepReports(history)
 		root.Handle("/api/v1/history", history.Handler())
 		root.Handle("/api/v1/history/", history.Handler())
+		domains := &vault.Domains{Path: filepath.Join(filepath.Dir(*accessFile), "domains.sealed"), Key: gate.Key}
+		root.Handle("/api/v1/domains", domains.Handler())
+		root.Handle("/api/v1/domains/", domains.Handler())
 	}
 
 	// The pages are told what this installation is before any of them is
