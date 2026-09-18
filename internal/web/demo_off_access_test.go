@@ -178,3 +178,17 @@ func TestHistoryBehindAPasswordListsOpensAndDeletes(t *testing.T) {
 		t.Error("the privacy page behind a password does not say how results are kept")
 	}
 }
+
+// The sign-in page's footer is at the foot of the window and centred under
+// the card, not floating mid-page flush left.
+func TestTheSignInFooterSitsAtTheFootCentred(t *testing.T) {
+	css := stylesheet(t)
+	for _, want := range []string{
+		".workspace-signin .workspace-main { min-height: 100vh; }",
+		".workspace-signin .colophon-row { justify-content: center; }",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("style.css no longer contains %q", want)
+		}
+	}
+}
