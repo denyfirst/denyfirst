@@ -1276,6 +1276,13 @@ async function check(target, spec) {
     cache: "no-store",
   });
 
+  // A session that ended while the page was open: the gate says so, and the
+  // page goes to sign in rather than reporting a check that never ran.
+  if (response.status === 401) {
+    window.location.assign("/login");
+    throw new Error("Sign in to use this installation.");
+  }
+
   let body = null;
   try {
     body = await response.json();

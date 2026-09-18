@@ -18,7 +18,7 @@ func privacyAs(t *testing.T, verified, keeps bool) string {
 	before, beforeConsole := rendered["/privacy"], rendered["/"]
 	t.Cleanup(func() { rendered["/privacy"], rendered["/"] = before, beforeConsole })
 
-	Configure(verified, keeps)
+	Configure(verified, keeps, false)
 	return flatten(get(t, "/privacy").Body.String())
 }
 

@@ -37,6 +37,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/denyfirst/porch/internal/access"
 	"github.com/denyfirst/porch/internal/challenge"
 	"github.com/denyfirst/porch/internal/demo"
 	"github.com/denyfirst/porch/internal/dnsclient"
@@ -202,6 +203,13 @@ func run() int {
 				"\treads this machine's own configuration. The addresses scans connect to\n"+
 				"\tare still resolved by the machine")
 
+		// One password in front of the whole installation, and the key its kept
+		// data is encrypted with, sealed by it. See internal/access.
+		accessFile = flag.String("access-file", "",
+			"path to this installation's access file, created with a new password if\n"+
+				"\tabsent; when set, nothing is served without signing in, and what is\n"+
+				"\tkept is encrypted under a key the password seals")
+
 		showVersion = flag.Bool("version", false, "print the release and policy versions, then exit")
 	)
 
@@ -272,6 +280,20 @@ func run() int {
 	// which is a question and writes nothing.
 	if *verifySecretFile != "" {
 		if err := createSecret(*verifySecretFile); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+	}
+
+	// The access file, the same way: a path that names no file gets one, with a
+	// password printed once. Never on the demonstration, which is public by
+	// design and keeps nothing to protect.
+	if *accessFile != "" {
+		if demo.Enabled {
+			fmt.Fprintln(os.Stderr, "-access-file is not available on the demonstration, which is public and keeps nothing")
+			return 2
+		}
+		if err := createAccess(*accessFile); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 2
 		}
@@ -390,11 +412,19 @@ func run() int {
 	// The pages are told what this installation is before any of them is
 	// served. The console says whether a boundary was configured, and an
 	// operator reading a report needs that to be true rather than plausible.
-	web.Configure(scope != nil, *resultsDir != "")
+	web.Configure(scope != nil, *resultsDir != "", *accessFile != "")
 	root.Handle("/", web.Handler())
 
+	// The gate goes in front of everything, pages and API alike, so a route
+	// added later is behind it without anybody remembering to put it there.
+	// Only the sign-in page and what it draws with are open.
+	var handler http.Handler = root
+	if *accessFile != "" {
+		handler = access.NewGate(*accessFile, web.PublicPaths()).Wrap(root)
+	}
+
 	srv := &http.Server{
-		Handler: root,
+		Handler: handler,
 
 		// ReadHeaderTimeout is the one that matters most. Without it, a
 		// client can open a connection and send headers one byte at a time
@@ -968,4 +998,28 @@ func openAllowed(listen string, scoped, open bool) error {
 	return errors.New("porchd will not listen beyond loopback without proof of control: " +
 		"anyone who can reach it could point it at any host, from this machine's address. " +
 		"Add -verification-secret-file, or -open if no one else can reach this network")
+}
+
+// createAccess writes an access file with a new password if nothing is at
+// path, and says the password once. An existing file is left alone: replacing
+// it would make everything kept under its key unreadable, which is a decision
+// made by deleting it, not a side effect of starting.
+func createAccess(path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("the access file could not be read: %w", err)
+	}
+	password, err := access.GeneratePassword()
+	if err != nil {
+		return err
+	}
+	if err := access.Create(path, password); err != nil {
+		return err
+	}
+	fmt.Fprintf(secretOut, "porchd: this installation's password is\n\n    %s\n\n"+
+		"Sign in with it and change it. It is shown once and written nowhere. If it is\n"+
+		"lost, delete %s and restart for a new one; what was kept under the old\n"+
+		"one can no longer be read.\n", password, path)
+	return nil
 }

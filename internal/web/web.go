@@ -117,6 +117,10 @@ type page struct {
 	// the demonstration has no rail and ignores it.
 	Section string
 
+	// SignedIn says the page is behind a password, so it offers a way to sign
+	// out. Set by render.
+	SignedIn bool
+
 	// Heading is what the workspace's top bar names the page, set by render
 	// from Section where a page gives none.
 	Heading string
@@ -299,6 +303,9 @@ type consolePage struct {
 	Tool   string
 	Checks []consoleCheck
 
+	// Guarded says a password is in front of this installation.
+	Guarded bool
+
 	// Keeps says this installation writes results to disk.
 	//
 	// The console said "Not kept" unconditionally, which was true of every
@@ -420,6 +427,7 @@ var files = map[string]struct {
 	"/style.css":    {"assets/style.css", "text/css; charset=utf-8"},
 	"/app.js":       {"assets/app.js", "text/javascript; charset=utf-8"},
 	"/theme.js":     {"assets/theme.js", "text/javascript; charset=utf-8"},
+	"/session.js":   {"assets/session.js", "text/javascript; charset=utf-8"},
 	"/hero.js":      {"assets/hero.js", "text/javascript; charset=utf-8"},
 	"/favicon.svg":  {"assets/favicon.svg", "image/svg+xml"},
 	SecurityTxtPath: {"assets/security.txt", "text/plain; charset=utf-8"},
@@ -491,6 +499,7 @@ func render(p *page) ([]byte, error) {
 	}
 
 	p.Brand = demo.Enabled
+	p.SignedIn = signedIn && p.Section != "login"
 	if p.Section == "" {
 		p.Section = "reference"
 	}
@@ -546,13 +555,55 @@ func render(p *page) ([]byte, error) {
 // claiming a boundary that is not there would tell an operator their service is
 // safe to expose when it is not; a page understating one costs them a second
 // look at a flag.
-func Configure(verified, keeps bool) {
+//
+// guarded says a password is in front of the installation. Every page is then
+// rendered again, because each carries a way to sign out, and the sign-in page
+// is added.
+func Configure(verified, keeps, guarded bool) {
 	// The demonstration's root is its front page and its privacy page is its
 	// own; neither depends on how it was started.
 	if demo.Enabled {
 		return
 	}
+	signedIn = guarded
+	for path, p := range pages {
+		body, err := render(p)
+		if err != nil {
+			panic("web: rendering " + path + ": " + err.Error())
+		}
+		rendered[path] = body
+	}
 	renderWorkspace(verified, keeps)
+	if guarded {
+		rendered["/login"] = renderSignIn()
+	} else {
+		delete(rendered, "/login")
+	}
+}
+
+// signedIn is true where a password is in front of the installation: every
+// page past the gate is one somebody signed in to see, and offers a way out.
+var signedIn bool
+
+// PublicPaths are what anybody may reach on an installation behind a
+// password: the sign-in page and what it draws and runs with.
+func PublicPaths() []string {
+	return []string{"/login", "/style.css", "/theme.js", "/session.js", "/favicon.svg"}
+}
+
+// renderSignIn is the one page an installation behind a password shows to
+// somebody who has not signed in.
+func renderSignIn() []byte {
+	body, err := render(&page{
+		Title:       "Sign in — " + ToolName,
+		Description: "Sign in to this installation.",
+		Fragment:    "assets/login.html",
+		Section:     "login",
+	})
+	if err != nil {
+		panic("rendering the sign-in page: " + err.Error())
+	}
+	return body
 }
 
 // renderConsole builds the tool surface.
@@ -614,6 +665,7 @@ func workspaceData(verified, keeps bool) consolePage {
 		Verified:   verified,
 		ReadsPages: verified,
 		Keeps:      keeps,
+		Guarded:    signedIn,
 	}
 }
 
@@ -725,6 +777,10 @@ type privacyPage struct {
 	ReadsPages bool
 	Keeps      bool
 	Threshold  int
+
+	// Guarded says a password is in front of the installation, which is when
+	// it sets its one cookie.
+	Guarded bool
 }
 
 // renderPrivacy builds the privacy page of an installation somebody runs.
@@ -744,6 +800,7 @@ func renderPrivacy(verified, keeps bool) []byte {
 			ReadsPages: verified,
 			Keeps:      keeps,
 			Threshold:  httpapi.TargetThreshold(),
+			Guarded:    signedIn,
 		},
 	}
 

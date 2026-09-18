@@ -73,7 +73,7 @@ func TestTheDemonstrationKeepsItsOwnPrivacyPage(t *testing.T) {
 	if !strings.Contains(page, "abuse@denyfirst.dev") || strings.Contains(page, "What this installation keeps") {
 		t.Error("the demonstration does not serve its own privacy page")
 	}
-	Configure(true, true)
+	Configure(true, true, false)
 	if strings.Contains(get(t, "/privacy").Body.String(), "What this installation keeps") {
 		t.Error("configuring the demonstration replaced its privacy page")
 	}
