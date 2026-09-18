@@ -61,9 +61,9 @@ func TestAMissingAccessFileIsCreatedAndItsPasswordSaidOnce(t *testing.T) {
 func TestTheGateIsInFrontOfEverything(t *testing.T) {
 	src := repoFile(t, "cmd/porchd/main.go")
 	for _, want := range []string{
-		"handler = access.NewGate(*accessFile, web.PublicPaths()).Wrap(root)",
+		"handler = gate.Wrap(root)",
 		"Handler: handler,",
-		`web.Configure(scope != nil, *resultsDir != "", *accessFile != "")`,
+		`web.Configure(scope != nil, *resultsDir != "" || gate != nil, gate != nil)`,
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("main.go no longer contains %q", want)
@@ -111,4 +111,30 @@ func TestTheSignInPageCommandFindsThePassword(t *testing.T) {
 		}
 	}
 	t.Errorf("grep -A2 \"password is\" would not show the password in: %q", said.String())
+}
+
+// The history exists only behind a password: the vault, the reports kept in
+// it and the routes that read it are made inside the one branch that makes
+// the gate, and nowhere else.
+func TestTheHistoryExistsOnlyBehindThePassword(t *testing.T) {
+	src := repoFile(t, "cmd/porchd/main.go")
+	const block = "\tif *accessFile != \"\" {\n" +
+		"\t\tgate = access.NewGate(*accessFile, web.PublicPaths())\n" +
+		"\t\thistory := &vault.Vault{Dir: filepath.Join(filepath.Dir(*accessFile), \"history\"), Key: gate.Key}\n" +
+		"\t\tapi.KeepReports(history)\n" +
+		"\t\troot.Handle(\"/api/v1/history\", history.Handler())\n" +
+		"\t\troot.Handle(\"/api/v1/history/\", history.Handler())\n" +
+		"\t}\n"
+	if !strings.Contains(src, block) {
+		t.Fatal("the vault is no longer made in the branch that makes the gate")
+	}
+	rest := strings.Replace(src, block, "", 1)
+	for _, never := range []string{"KeepReports(", "history.Handler()", "vault.Vault{"} {
+		if strings.Contains(rest, never) {
+			t.Errorf("main.go uses %q outside the branch that makes the gate", never)
+		}
+	}
+	if !strings.Contains(src, "if gate != nil {\n\t\thandler = gate.Wrap(root)\n\t}") {
+		t.Error("the gate is not what the server is handed")
+	}
 }

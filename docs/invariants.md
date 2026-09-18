@@ -1978,7 +1978,14 @@ sealed with AES-256-GCM under a key PBKDF2-SHA256 derives from the password at
 600,000 iterations; opening the seal is the check, so there is no separate
 hash to attack. The key is in memory from the first sign-in until the process
 stops, and what the workspace keeps is encrypted under it, so a copy of the
-disk or of a backup holds nothing of it readable without the password. The
+disk or of a backup holds nothing of it readable without the password. That is
+the history: every report the installation answers is kept whole by
+`internal/vault`, one file per report under a random name so a listing says
+nothing about which names were checked, sealed with AES-256-GCM with the
+file's own name authenticated beside it so a report moved to another name
+does not open, and dated but not timed. Without a key nothing is written, not
+even in the clear. It is read back only through the gate, and deleting a
+report removes its file for good. The
 command line's `-results-dir` store is the operator's own file on their own
 machine and is not this. A forgotten password is
 therefore unrecoverable, by design, and the log line that prints the first one
@@ -2000,7 +2007,7 @@ The demonstration refuses the flag. It is public by design and keeps nothing
 to protect, and a password in front of it would be a claim about a service it
 is not.
 
-*Enforced in:* `internal/access`, `cmd/porchd.createAccess`, `cmd/porchd.run`,
+*Enforced in:* `internal/access`, `internal/vault`, `cmd/porchd.createAccess`, `cmd/porchd.run`,
 `internal/web.Configure`, `internal/web.PublicPaths`
 *Guarded by:* `TestNothingIsReachableWithoutSigningIn`,
 `TestTheRightPasswordOpensASession`, `TestASessionEnds`,
@@ -2014,7 +2021,15 @@ is not.
 `TestOnlyTheSignInPageAndWhatItNeedsArePublic`,
 `TestEveryPageBehindAPasswordOffersAWayOut`, `TestTheSessionScriptDoesOnlyThat`,
 `TestAFileSealedAtALowerWorkFactorIsRefused`, `TestAPublicPathIsExact`,
-`TestAPasswordChangeNeedsALiveSession`, `TestOnlyThisPageMaySignIn`
+`TestAPasswordChangeNeedsALiveSession`, `TestOnlyThisPageMaySignIn`,
+`TestAKeptReportComesBackWhole`, `TestNothingOnDiskIsReadable`,
+`TestWithoutTheKeyNothingIsKeptOrRead`, `TestAReportMovedToAnotherNameDoesNotOpen`,
+`TestDeleteRemovesTheReportAndOnlyIt`, `TestTheHistoryIsNewestFirstAndBounded`,
+`TestTheHandlerListsOpensAndDeletes`, `TestEveryReportAnsweredIsKeptWhole`,
+`TestTheHistoryExistsOnlyBehindThePassword`,
+`TestHistoryBehindAPasswordListsOpensAndDeletes`, `TestTheSealBindsTheName`,
+`TestOnlyThisPackagesNamesAreNames`, `TestAFileNameSaysNothingAndADateIsOnlyADate`,
+`TestAReportNotKeptIsStillAnswered`, `TestAKeptReportIsListedUnderTheNameAsTyped`
 
 ## Correctness of the report
 

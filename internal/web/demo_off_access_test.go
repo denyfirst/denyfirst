@@ -130,3 +130,51 @@ func TestTheSessionScriptDoesOnlyThat(t *testing.T) {
 		}
 	}
 }
+
+// Behind a password, History lists what is kept and opens it with the same
+// builders New check uses; the list is asked for after the page loads, and
+// nothing of it is in the page. Without a password History runs no script.
+func TestHistoryBehindAPasswordListsOpensAndDeletes(t *testing.T) {
+	open := get(t, "/history").Body.String()
+	if strings.Contains(open, `src="/app.js"`) || strings.Contains(open, `id="history-table"`) {
+		t.Error("History without a password loads the script or draws the list")
+	}
+
+	page := guardedAs(t, "/history")
+	for _, want := range []string{`<script src="/app.js"></script>`, `id="history-table"`, `<tbody id="history-rows"></tbody>`, `id="history-report"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("History behind a password lacks %q", want)
+		}
+	}
+
+	src := script(t)
+	start := strings.Index(src, "const historyBox = ")
+	if start < 0 {
+		t.Fatal("app.js has no history module")
+	}
+	history := src[start:]
+	for _, want := range []string{
+		`historyRequest("GET", "/api/v1/history")`,
+		`historyRequest("GET", "/api/v1/history/" + entry.id)`,
+		`historyRequest("DELETE", "/api/v1/history/" + entry.id)`,
+		"if (!window.confirm(",
+		"view.build(record.report)",
+		`window.location.assign("/login")`,
+	} {
+		if !strings.Contains(history, want) {
+			t.Errorf("the history module no longer contains %q", want)
+		}
+	}
+	// Asked before it is deleted: the confirmation comes first.
+	if strings.Index(history, "if (!window.confirm(") > strings.Index(history, `historyRequest("DELETE"`) {
+		t.Error("a report is deleted before anybody is asked")
+	}
+	if strings.Contains(history, "innerHTML") {
+		t.Error("the history module builds markup from strings")
+	}
+
+	privacy := flatten(guardedAs(t, "/privacy"))
+	if !strings.Contains(privacy, "encrypted under a key the password seals") {
+		t.Error("the privacy page behind a password does not say how results are kept")
+	}
+}

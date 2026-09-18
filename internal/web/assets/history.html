@@ -1,12 +1,16 @@
 <section class="workspace-page">
 
   <!--
-    History: what this installation has kept of the checks it ran.
+    History: what this installation kept of the checks it ran.
 
-    Kept only where the operator asked for it with -results-dir, and read on
-    this machine. It is not shown in the browser yet, because a page listing
-    every name this installation checked has to be closed to whoever else can
-    reach it first.
+    Behind a password, every report is kept whole in a vault sealed by it, and
+    listed here to open again or delete for good. The list is fetched once
+    the page has loaded, through the gate, and nothing of it is in the page
+    itself: these bytes are rendered at startup, before any check has run.
+
+    Without a password nothing is shown in a browser at all. A page listing
+    every name this installation checked, served to whoever can reach it, is
+    the thing P6 exists to prevent.
   -->
   <div class="work-heading">
     <div>
@@ -15,6 +19,26 @@
     </div>
   </div>
 
+  {{if .Guarded}}
+  <div class="panel history" id="history">
+    <p class="history-status" id="history-status" role="status">Opening the history…</p>
+    <p class="history-empty" id="history-empty" hidden>Nothing is kept yet. Every check run from
+    New check is kept here, encrypted, until you delete it.</p>
+    <table class="rows history-table" id="history-table" hidden>
+      <thead>
+        <tr><th scope="col">Date</th><th scope="col">Domain</th><th scope="col">Check</th><th scope="col">Verdict</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr>
+      </thead>
+      <tbody id="history-rows"></tbody>
+    </table>
+  </div>
+
+  <div class="console-results" id="history-report" hidden></div>
+
+  <p class="work-help">
+    Kept encrypted under a key your password seals, newest first, at most a
+    thousand. Deleting a report removes it for good; nobody can bring it back.
+  </p>
+  {{else}}
   <div class="panel">
     {{if .Keeps}}
     <p class="report-empty-title">Kept on this machine</p>
@@ -23,9 +47,11 @@
     <pre class="work-code"><code>porch-scan -history -results-dir &lt;the same directory&gt;</code></pre>
     {{else}}
     <p class="report-empty-title">Nothing is kept</p>
-    <p>This installation keeps no results. Start it with
-    <code>-results-dir</code> to keep each check's report on this machine.</p>
+    <p>This installation keeps no results. Put a password in front of it with
+    <code>-access-file</code> and every check is kept here, encrypted, to open
+    again or delete.</p>
     {{end}}
   </div>
+  {{end}}
 
 </section>

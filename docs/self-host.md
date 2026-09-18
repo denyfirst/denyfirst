@@ -372,6 +372,12 @@ PBKDF2-SHA256 at 600,000 iterations. Opening the seal is the password check.
 What the installation keeps is encrypted under that key, so a copy of the disk,
 or of a backup, holds nothing readable without the password.
 
+**Every check is kept, and can be deleted.** Behind the password each report is
+kept whole in `porch-data/history`, one file per report under a random name,
+sealed with that key and dated but not timed. **History** lists them, opens
+any of them as it was drawn, and deletes one for good. At most a thousand are
+kept, the oldest dropped first.
+
 **So a lost password cannot be recovered**, by anyone. Delete
 `porch-data/access` and restart: a new password is printed and a new key made,
 and what was kept under the old one stays unreadable.
