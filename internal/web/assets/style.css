@@ -2675,3 +2675,12 @@ main > .band:last-child { border-bottom: 0; }
 @media (max-width: 46rem) {
   .signin-first .work-code code { white-space: pre-wrap; overflow-wrap: anywhere; }
 }
+
+/* A shell command, coloured the way a terminal would: the program, its
+   flags, a quoted string and the pipe each told apart. Colour only; the
+   text is the command exactly, so what is copied is what runs. */
+.shell .sh-cmd  { color: var(--ink); font-weight: 700; }
+.shell .sh-flag { color: var(--link); }
+.shell .sh-str  { color: var(--strong); }
+.shell .sh-op   { color: var(--ink-faint); }
+.shell code     { color: var(--ink-soft); }

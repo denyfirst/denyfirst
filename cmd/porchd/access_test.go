@@ -83,7 +83,9 @@ func TestTheGateIsInFrontOfEverything(t *testing.T) {
 // service, and greps for words the log line carries, and the password is on
 // one of the two lines after them.
 func TestTheSignInPageCommandFindsThePassword(t *testing.T) {
-	page := repoFile(t, "internal/web/assets/login.html")
+	// Read as text: the command is coloured with spans, and what matters is
+	// what a person copies.
+	page := regexp.MustCompile(`<[^>]+>`).ReplaceAllString(repoFile(t, "internal/web/assets/login.html"), "")
 	const command = `docker compose logs porch | grep -A2 "password is"`
 	if !strings.Contains(page, command) {
 		t.Fatalf("the sign-in page no longer gives %q", command)
