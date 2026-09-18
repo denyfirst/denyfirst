@@ -2164,3 +2164,385 @@ main > .band:last-child { border-bottom: 0; }
   .colophon-by,
   .colophon-row .colophon-links { justify-content: center; }
 }
+
+/* ── The workspace ─────────────────────────────────────────────────────
+   An installation somebody runs: a rail of what can be done here beside the
+   page. The demonstration keeps the site's masthead; none of this applies
+   there, because its body carries no .workspace class. */
+
+.workspace {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.rail {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 1.6rem 1rem;
+  background: var(--paper-sunk);
+  border-right: 1px solid var(--rule);
+}
+
+.rail-identity {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 0 0.6rem 2.2rem;
+}
+
+.rail-identity .wordmark { font-size: 1.7rem; }
+
+.rail-tag {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--brand);
+  border: 1px solid color-mix(in srgb, var(--brand) 40%, var(--rule));
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.rail-caption {
+  margin: 0 0.75rem 0.6rem;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.rail-nav {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 1.8rem;
+}
+
+.rail-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 42px;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+}
+
+.rail-item:hover { color: var(--ink); background: var(--paper); }
+
+.rail-item[aria-current="page"] {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--brand) 10%, var(--paper));
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--rule));
+}
+
+.rail-glyph {
+  width: 1.1rem;
+  text-align: center;
+  color: var(--ink-faint);
+}
+
+.rail-item[aria-current="page"] .rail-glyph { color: var(--brand); }
+
+.rail-foot {
+  margin-top: auto;
+  padding: 1.2rem 0.75rem 0;
+  border-top: 1px solid var(--rule);
+}
+
+.rail-foot .theme-toggle { margin: 0; }
+
+.workspace-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  min-height: 3.6rem;
+  padding: 0 2rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.topbar-path {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ink-faint);
+}
+
+.topbar-path strong { font-weight: 500; color: var(--ink); }
+.topbar-slash { margin: 0 0.35rem; }
+
+.workspace main {
+  width: 100%;
+  max-width: 72rem;
+  margin: 0;
+  padding: 2rem 2rem 3rem;
+  flex: 1;
+}
+
+.workspace .colophon {
+  max-width: none;
+  margin: 0;
+  padding: 1rem 2rem;
+}
+
+.work-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 1.6rem;
+}
+
+.work-heading h1 {
+  margin: 0 0 0.4rem;
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+}
+
+.work-heading p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.work-help {
+  margin: 1.2rem 0 0;
+  max-width: var(--measure);
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
+.panel {
+  padding: 1.4rem 1.5rem;
+  background: var(--paper-sunk);
+  border: 1px solid var(--rule);
+  border-radius: calc(var(--radius) + 2px);
+}
+
+.panel p { margin: 0 0 0.8rem; }
+.panel p:last-child { margin-bottom: 0; }
+
+.work-code {
+  margin: 0;
+  padding: 0.8rem 1rem;
+  overflow-x: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+
+/* New check: one card, two steps. */
+.composer {
+  background: var(--paper-sunk);
+  border: 1px solid var(--rule);
+  border-radius: calc(var(--radius) + 2px);
+  overflow: hidden;
+}
+
+.composer-part {
+  margin: 0;
+  padding: 1.4rem 1.5rem;
+  border: 0;
+}
+
+.composer-part + .composer-part { border-top: 1px solid var(--rule); }
+
+.composer-step {
+  display: block;
+  margin-bottom: 0.7rem;
+  padding: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.composer-field {
+  width: 100%;
+  max-width: 28rem;
+  font-size: 1.1rem;
+  background: var(--paper);
+}
+
+.composer-scope {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  margin: 0.9rem 0 0;
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+}
+
+.scope-dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--weak);
+}
+
+.scope-dot-on { background: var(--strong); }
+
+.check-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.composer .check {
+  margin: 0;
+  background: var(--paper);
+}
+
+.composer-run {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.1rem;
+}
+
+.composer-run p {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+}
+
+.report-empty {
+  margin-top: 1.5rem;
+  padding: 2rem;
+  text-align: center;
+  color: var(--ink-soft);
+  border: 1px dashed var(--rule);
+  border-radius: calc(var(--radius) + 2px);
+}
+
+.report-empty p { margin: 0; font-size: 0.9rem; }
+
+.report-empty-title {
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.report-empty .report-empty-title { margin-bottom: 0.4rem; }
+
+.console-results:not([hidden]) + .report-empty { display: none; }
+
+/* Domains. */
+.domain-form .field-row { max-width: 36rem; }
+.domain-record { margin-top: 1rem; }
+.domain-state { font-weight: 600; }
+
+.workspace .state-grid { margin: 0; }
+
+@media (max-width: 60rem) {
+  .check-grid { grid-template-columns: 1fr; }
+}
+
+/* A phone: the rail becomes a bar of four across the top. */
+@media (max-width: 46rem) {
+  .workspace { display: block; }
+  .rail {
+    position: static;
+    height: auto;
+    padding: 1rem 1rem 0.5rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .rail-identity { margin: 0 0 0.9rem; }
+  .rail-caption { display: none; }
+  .rail-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: 0.5rem;
+  }
+  .rail-nav + .rail-caption + .rail-nav { grid-template-columns: 1fr; }
+  .rail-item {
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.25rem;
+    min-height: 3.4rem;
+    padding: 0.4rem 0.2rem;
+    font-size: 0.72rem;
+    text-align: center;
+  }
+  .rail-foot { margin: 0; padding: 0.6rem 0 0.4rem; border: 0; }
+  .topbar { padding: 0 1rem; min-height: 2.8rem; }
+  .workspace main { padding: 1.2rem 1rem 2rem; }
+  .work-heading { flex-direction: column; gap: 0.8rem; }
+  .composer-part { padding: 1.1rem 1rem; }
+  .composer-run { flex-direction: column; align-items: stretch; }
+  .workspace .colophon { padding: 1rem; }
+}
+
+/* The checks in the composer are cards: the box and the name on one line,
+   what the check reads under them, its rule set at the foot. */
+.composer .checks { margin: 0; }
+
+.composer-part > legend.composer-step {
+  float: left;
+  width: 100%;
+}
+
+.composer-part > legend.composer-step + * { clear: both; }
+
+.check-grid .check {
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto 1fr auto;
+  align-items: start;
+  gap: 0.35rem 0.6rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+
+.check-grid .check:last-child { border-bottom: 1px solid var(--rule); }
+
+.check-grid .check input { margin: 0.2rem 0 0; }
+
+.check-grid .check-name {
+  font-family: var(--sans);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.check-grid .check-says,
+.check-grid .check-policy { grid-column: 2; }
+
+.check-grid .check-says { font-size: 0.88rem; line-height: 1.5; }
+
+.check-grid .check:has(input:checked) {
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--rule));
+}
+
+/* A phone: four across and nothing else. The documents are in the footer,
+   the colour switch sits beside the name, and a button repeating a rail item
+   is left out. */
+@media (max-width: 46rem) {
+  .rail { position: relative; }
+  .rail-identity { padding-right: 4.5rem; }
+  .rail-nav + .rail-caption + .rail-nav { display: none; }
+  .rail-foot {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    padding: 0;
+  }
+  .work-heading > .button { display: none; }
+}

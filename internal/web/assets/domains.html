@@ -1,0 +1,68 @@
+<section class="workspace-page">
+
+  <!--
+    Domains: the record that shows a domain is yours, asked for before a
+    check needs it.
+
+    The record is this installation's token for the one domain. It is shown
+    freely because it proves nothing until it is published in that domain's
+    zone, which only whoever runs the zone can do: another domain's token is a
+    different value, and so is another installation's. The same question the
+    console asks when a check meets a new domain, asked here on its own.
+  -->
+  <div class="work-heading">
+    <div>
+      <h1>Domains</h1>
+      <p>A domain is checked once its DNS shows it is yours. The proof covers every check.</p>
+    </div>
+  </div>
+
+  {{if .Verified}}
+  <form class="panel domain-form" id="domain-form" autocomplete="off">
+    <label class="composer-step" for="domain-target">Add a domain</label>
+    <div class="field-row">
+      <input class="field" type="text" id="domain-target" name="target"
+        placeholder="example.com" spellcheck="false" autocapitalize="off"
+        autocorrect="off" enterkeyhint="go">
+      <button class="submit" type="submit" id="domain-submit">Add domain</button>
+    </div>
+    <p class="work-help">Hostname only, without https:// or a path.</p>
+  </form>
+
+  <section class="panel domain-record" id="domain-record" aria-live="polite" hidden>
+    <p class="domain-state" id="domain-state"></p>
+
+    <label class="field-label" for="domain-level">Publish under</label>
+    <select class="proof-level" id="domain-level"></select>
+    <p class="proof-hint">A record on a domain covers every name beneath it.</p>
+
+    <dl class="proof-record">
+      <dt>Type</dt>
+      <dd><code>TXT</code></dd>
+      <dt>Name</dt>
+      <dd><code id="domain-name"></code> <button class="proof-copy" type="button" data-copy="domain-name">Copy</button></dd>
+      <dt>Value</dt>
+      <dd><code id="domain-value"></code> <button class="proof-copy" type="button" data-copy="domain-value">Copy</button></dd>
+    </dl>
+    <p class="proof-hint">Some providers want only the part of the name before your domain.</p>
+
+    <div class="proof-actions">
+      <button class="submit" type="button" id="domain-again">Check again</button>
+    </div>
+  </section>
+
+  <p class="work-help">
+    A proven domain does not prove another one, a place it redirects to, or a
+    mail server run by someone else. A new record can take a few minutes to be
+    seen.
+  </p>
+  {{else}}
+  <div class="panel">
+    <p><strong>No proof of control is required here</strong>, so there is
+    nothing to prove: any public name is checked. Start with
+    <code>-verification-secret-file</code> to check only domains shown to be
+    yours.</p>
+  </div>
+  {{end}}
+
+</section>

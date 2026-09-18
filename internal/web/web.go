@@ -23,6 +23,7 @@ import (
 	"html/template"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/denyfirst/porch/internal/demo"
 	"github.com/denyfirst/porch/internal/httpapi"
@@ -109,6 +110,16 @@ type page struct {
 	// into the markup would put them in two places, and two places drift —
 	// which is the whole argument of R16, applied to a third renderer.
 	Data any
+
+	// Section is which part of an installation's workspace the page belongs
+	// to: check, domains, history or installation, or reference for the
+	// documents. The rail marks it current. Empty is reference, set by render;
+	// the demonstration has no rail and ignores it.
+	Section string
+
+	// Heading is what the workspace's top bar names the page, set by render
+	// from Section where a page gives none.
+	Heading string
 
 	// Brand is true on the demonstration, which is the denyfirst site and
 	// carries its wordmark; an installation somebody runs is porch, by
@@ -462,8 +473,7 @@ func init() {
 	// Rendered here at all so that every path in the table answers from the
 	// moment the package loads, including in a test that never calls Configure.
 	if !demo.Enabled {
-		rendered["/"] = renderConsole(false, false)
-		rendered["/privacy"] = renderPrivacy(false, false)
+		renderWorkspace(false, false)
 	}
 }
 
@@ -481,6 +491,18 @@ func render(p *page) ([]byte, error) {
 	}
 
 	p.Brand = demo.Enabled
+	if p.Section == "" {
+		p.Section = "reference"
+	}
+	if p.Heading == "" {
+		p.Heading = sectionHeadings[p.Section]
+	}
+	if p.Heading == "" {
+		// A document is named by its own title, without the maker, which some
+		// titles put first and some last.
+		title := strings.TrimPrefix(p.Title, "denyfirst — ")
+		p.Heading, _, _ = strings.Cut(title, " — ")
+	}
 
 	fragment, err := assets.ReadFile(p.Fragment)
 	if err != nil {
@@ -530,8 +552,7 @@ func Configure(verified, keeps bool) {
 	if demo.Enabled {
 		return
 	}
-	rendered["/"] = renderConsole(verified, keeps)
-	rendered["/privacy"] = renderPrivacy(verified, keeps)
+	renderWorkspace(verified, keeps)
 }
 
 // renderConsole builds the tool surface.
@@ -540,25 +561,70 @@ func Configure(verified, keeps bool) {
 // page whose content depends on how the program was started. It is rendered at
 // init() too, so that a caller who never calls Configure still gets a page
 // rather than a blank response.
+// sectionHeadings names each part of the workspace in its top bar.
+var sectionHeadings = map[string]string{
+	"check":        "New check",
+	"domains":      "Domains",
+	"history":      "History",
+	"installation": "This installation",
+}
+
+// renderWorkspace renders every page whose content depends on how this
+// installation was started: the four parts of the workspace, and the privacy
+// page, which says what this copy keeps.
+func renderWorkspace(verified, keeps bool) {
+	rendered["/"] = renderConsole(verified, keeps)
+	rendered["/privacy"] = renderPrivacy(verified, keeps)
+	for _, part := range []struct{ path, section, fragment, description string }{
+		{"/domains", "domains", "assets/domains.html",
+			"The domains this installation may check, and the record that shows each one is yours."},
+		{"/history", "history", "assets/history.html",
+			"What this installation has kept of the checks it ran."},
+		{"/installation", "installation", "assets/installation.html",
+			"How this installation was started: what it may check, what it reads and what it keeps."},
+	} {
+		p := &page{
+			Title:       sectionHeadings[part.section] + " — " + ToolName,
+			Description: part.description,
+			Fragment:    part.fragment,
+			Section:     part.section,
+			Script:      part.section == "domains",
+			Data:        workspaceData(verified, keeps),
+		}
+		body, err := render(p)
+		if err != nil {
+			panic("rendering " + part.path + ": " + err.Error())
+		}
+		rendered[part.path] = body
+	}
+}
+
+// workspaceData is what every part of the workspace is told about this
+// installation.
+func workspaceData(verified, keeps bool) consolePage {
+	return consolePage{
+		Tool:   ToolName,
+		Checks: consoleChecks(),
+
+		// ReadsPages follows from Verified rather than being passed beside
+		// it. They are one fact — internal/httpapi sets ReadMarkup from the
+		// same scope — and two fields could be made to disagree by a caller,
+		// which would put a claim about what was read on a page with nothing
+		// behind it.
+		Verified:   verified,
+		ReadsPages: verified,
+		Keeps:      keeps,
+	}
+}
+
 func renderConsole(verified, keeps bool) []byte {
 	p := &page{
 		Title:       ToolName,
 		Description: "Run this project's checks against one name: the handshake and certificate, how the site is reached, and what the domain's DNS says about its mail.",
 		Fragment:    "assets/console.html",
 		Script:      true,
-		Data: consolePage{
-			Tool:   ToolName,
-			Checks: consoleChecks(),
-
-			// ReadsPages follows from Verified rather than being passed
-			// beside it. They are one fact — internal/httpapi sets
-			// ReadMarkup from the same scope — and two fields could be made
-			// to disagree by a caller, which would put a claim about what
-			// was read on a page with nothing behind it.
-			Verified:   verified,
-			ReadsPages: verified,
-			Keeps:      keeps,
-		},
+		Section:     "check",
+		Data:        workspaceData(verified, keeps),
 	}
 
 	body, err := render(p)

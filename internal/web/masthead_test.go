@@ -17,11 +17,13 @@ func TestTheHeaderNamesTheToolAndTheFooterTheMaker(t *testing.T) {
 	for path := range pages {
 		body := get(t, path).Body.String()
 
-		head, rest, ok := strings.Cut(body, "</header>")
+		// What comes before the page: the masthead on the demonstration, the
+		// rail and top bar on an installation.
+		head, rest, ok := strings.Cut(body, "<main>")
 		if !ok {
-			t.Fatalf("%s has no header", path)
+			t.Fatalf("%s has no main", path)
 		}
-		head = head[strings.Index(head, `<header class="masthead">`):]
+		_, head, _ = strings.Cut(head, "<body")
 		_, foot, ok := strings.Cut(rest, `<footer class="colophon">`)
 		if !ok {
 			t.Fatalf("%s has no footer", path)
@@ -43,7 +45,7 @@ func TestTheHeaderNamesTheToolAndTheFooterTheMaker(t *testing.T) {
 		if strings.Contains(strings.ToLower(head), "denyfirst") || strings.Contains(head, "Records nothing") {
 			t.Errorf("%s: the header still carries the maker:\n%s", path, head)
 		}
-		if !strings.Contains(foot, ToolName+`, by <span class="colophon-brand"><span class="wordmark-deny">deny</span>first.</span>`) {
+		if !strings.Contains(foot, `<p class="colophon-line">by <span class="colophon-brand"><span class="wordmark-deny">deny</span>first.</span>`) {
 			t.Errorf("%s: the footer does not name the maker", path)
 		}
 	}

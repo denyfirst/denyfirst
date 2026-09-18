@@ -1,0 +1,31 @@
+<section class="workspace-page">
+
+  <!--
+    History: what this installation has kept of the checks it ran.
+
+    Kept only where the operator asked for it with -results-dir, and read on
+    this machine. It is not shown in the browser yet, because a page listing
+    every name this installation checked has to be closed to whoever else can
+    reach it first.
+  -->
+  <div class="work-heading">
+    <div>
+      <h1>History</h1>
+      <p>What this installation kept of the checks it ran.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    {{if .Keeps}}
+    <p class="report-empty-title">Kept on this machine</p>
+    <p>Each check's report is kept, and nothing about who asked. Read them on
+    the server with:</p>
+    <pre class="work-code"><code>porch-scan -history -results-dir &lt;the same directory&gt;</code></pre>
+    {{else}}
+    <p class="report-empty-title">Nothing is kept</p>
+    <p>This installation keeps no results. Start it with
+    <code>-results-dir</code> to keep each check's report on this machine.</p>
+    {{end}}
+  </div>
+
+</section>

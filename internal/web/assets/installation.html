@@ -1,0 +1,57 @@
+<section class="workspace-page">
+
+  <!--
+    How this installation was started, one line each.
+
+    An operator reading a report needs to know which of these were true when
+    it was produced. A report that says nothing about mail because the check
+    was off reads exactly like one that says nothing because the domain
+    publishes nothing, and only one of those is a fact about the domain.
+    Filled in from the flags the program was given, so it cannot describe a
+    configuration this copy does not have.
+  -->
+  <div class="work-heading">
+    <div>
+      <h1>This installation</h1>
+      <p>What it may check, what it reads, and what it keeps, from how it was started.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <dl class="state-grid">
+      <dt>Scope</dt>
+      <dd>
+        {{if .Verified}}Only domains it has been shown control of, with a DNS
+        record derived from this installation's secret.{{else}}<strong>No
+        proof of control is required.</strong> Any public name is checked, so keep
+        it where only you can reach it.{{end}}
+      </dd>
+
+      <dt>Pages</dt>
+      <dd>
+        {{if .ReadsPages}}Read where control was proven; only a few facts are
+        kept.{{else}}Not read. Headers only.{{end}}
+      </dd>
+
+      <dt>Results</dt>
+      <dd>
+        {{if .Keeps}}Kept on this machine. Nothing about who asked is written
+        down.{{else}}Not kept. Start with <code>-results-dir</code> to keep them.{{end}}
+      </dd>
+
+      <dt>Rule sets</dt>
+      <dd>
+        {{range .Checks}}<span class="state-policy">{{.Policy}}</span>{{end}}
+      </dd>
+
+      <dt>Sent to us</dt>
+      <dd>Nothing. This copy reports to no one.</dd>
+    </dl>
+  </div>
+
+  <p class="work-help">
+    Who else a check asks, and what each of them learns, is on the
+    <a href="/privacy">privacy page</a>.
+  </p>
+
+</section>
