@@ -1985,8 +1985,11 @@ therefore unrecoverable, by design, and the log line that prints the first one
 says so.
 
 **A session is a cookie no script can read and no other site can send**:
-HttpOnly, SameSite=Strict, Secure over TLS, twelve hours at most, held on the
-server by its hash and forgotten on restart. The session endpoints take JSON
+HttpOnly, SameSite=Strict and Secure, twelve hours at most, held on the
+server by its hash and forgotten on restart. Secure always, so the
+password and the session travel only over TLS or to localhost, which is how
+the SSH tunnel in the self-hosting guide reaches it; signing in over plain
+HTTP to any other address does not work, by design. The session endpoints take JSON
 only and refuse a request another site made the browser send, so a form
 elsewhere cannot sign somebody in, out, or change their password. Changing it
 ends every other session, so a password changed because it leaked stops

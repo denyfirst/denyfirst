@@ -100,7 +100,7 @@ func TestTheRightPasswordOpensASession(t *testing.T) {
 	if c == nil || w.Code != http.StatusNoContent {
 		t.Fatalf("the right password: %d, no session", w.Code)
 	}
-	if !c.HttpOnly || c.SameSite != http.SameSiteStrictMode || c.Path != "/" {
+	if !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteStrictMode || c.Path != "/" {
 		t.Errorf("the session cookie is readable by script or sent from other sites: %+v", c)
 	}
 	if c.MaxAge <= 0 || time.Duration(c.MaxAge)*time.Second > SessionLife {

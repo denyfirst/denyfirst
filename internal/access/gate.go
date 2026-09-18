@@ -139,7 +139,7 @@ func (g *Gate) serveSession(w http.ResponseWriter, r *http.Request) {
 		if c, err := r.Cookie(CookieName); err == nil {
 			g.forget(c.Value)
 		}
-		http.SetCookie(w, expired(r))
+		http.SetCookie(w, expired())
 		w.WriteHeader(http.StatusNoContent)
 		return
 	default:
@@ -175,13 +175,17 @@ func (g *Gate) serveSession(w http.ResponseWriter, r *http.Request) {
 			"The password could not be checked. The operator should look at the installation's log.")
 		return
 	}
+	// Secure always, not only over TLS. A browser treats http://localhost as a
+	// secure origin, so the SSH tunnel the guide uses works; what stops working
+	// is signing in over plain HTTP to any other address, which is a password
+	// sent in the clear and exactly what should not work.
 	http.SetCookie(w, &http.Cookie{
 		Name:     CookieName,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   int(SessionLife / time.Second),
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	})
 	w.WriteHeader(http.StatusNoContent)
@@ -391,14 +395,14 @@ func readPassword(w http.ResponseWriter, r *http.Request) (passwordRequest, bool
 	return body, true
 }
 
-func expired(r *http.Request) *http.Cookie {
+func expired() *http.Cookie {
 	return &http.Cookie{
 		Name:     CookieName,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   true,
 		SameSite: http.SameSiteStrictMode,
 	}
 }
