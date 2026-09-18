@@ -240,3 +240,66 @@ func TestDomainsBehindAPasswordKeepsAListAndAsksEachOne(t *testing.T) {
 		t.Error("the privacy page behind a password does not say the domain list is kept")
 	}
 }
+
+// Every form in session.js gets its button back and says what happened,
+// whatever the answer, and signing out moves to the sign-in page only once
+// the server has said the session ended (audit 2026-09-18, D07). A network
+// that failed used to leave the buttons disabled, and a sign-out the server
+// never saw looked exactly like one it did.
+func TestTheSessionScriptRecoversAndSignsOutOnlyOnSuccess(t *testing.T) {
+	src, err := assets.ReadFile("assets/session.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(src)
+
+	// send never throws: no answer, or one too late, is a sentence.
+	start := strings.Index(js, "async function send(")
+	end := strings.Index(js, "const signinForm")
+	if start < 0 || end < start {
+		t.Fatal("session.js no longer has send before the forms")
+	}
+	send := js[start:end]
+	for _, want := range []string{"} catch {\n      return \"The installation could not be reached.", "abort.abort()", "signal: abort.signal"} {
+		if !strings.Contains(send, want) {
+			t.Errorf("send no longer contains %q", want)
+		}
+	}
+
+	block := func(from, to string) string {
+		t.Helper()
+		i := strings.Index(js, from)
+		j := strings.Index(js[i+1:], to)
+		if i < 0 || j < 0 {
+			t.Fatalf("session.js has no block from %q to %q", from, to)
+		}
+		return js[i : i+1+j]
+	}
+	forms := map[string]string{
+		"sign-in":  block("const signinForm", "const signOut"),
+		"sign-out": block("const signOut", "const passwordForm"),
+		"password": block("const passwordForm", "})();"),
+	}
+	for name, b := range forms {
+		fin := strings.Index(b, "} finally {")
+		if fin < 0 {
+			t.Errorf("the %s handler has no finally", name)
+			continue
+		}
+		if !strings.Contains(b[fin:], ".disabled = false;") {
+			t.Errorf("the %s handler does not give its button back in finally", name)
+		}
+	}
+
+	out := forms["sign-out"]
+	fin := strings.Index(out, "} finally {")
+	if fin < 0 || !strings.Contains(out[fin:], "if (problem === null) {\n          window.location.assign(\"/login\");") {
+		t.Error("signing out moves to the sign-in page without the server saying the session ended")
+	}
+	if strings.Count(out, `window.location.assign("/login")`) != 1 {
+		t.Error("signing out moves to the sign-in page by another path")
+	}
+	if !strings.Contains(out, `signOut.textContent = "Not signed out. Try again";`) {
+		t.Error("a failed sign-out is not said")
+	}
+}
