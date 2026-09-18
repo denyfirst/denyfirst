@@ -47,7 +47,7 @@ is entitled to find it still answering.
 
 ## `porch-mail-v1` — a new rule set
 
-Unreleased.
+Released in v0.16.0, 2026-09.
 
 A third rule set, for a third check: what a domain's DNS says about its mail.
 **No TLS verdict changed and no web verdict changed.** `denyfirst-tls-v7`
@@ -315,7 +315,7 @@ is said by the report that read it.
 
 ## `denyfirst-tls-v6` → `porch-tls-v7`
 
-Unreleased.
+Released in v0.16.0, 2026-09.
 
 **Three sentences corrected by the 2026-09-16 audit (A19, A20).** The coverage
 line says every suite *this client can offer* was tried, not every suite the
@@ -472,7 +472,7 @@ says revocation was not checked, which is true there.
 
 ## `denyfirst-web-v2` → `porch-web-v3`
 
-Unreleased.
+Released in v0.16.0, 2026-09.
 
 **Four readings corrected by the 2026-09-16 audit (A13–A16).** A
 Strict-Transport-Security header that repeats a directive is unparseable, as a
@@ -681,7 +681,10 @@ exactly as it was under v2.
 
 ## `denyfirst-web-v1` → `denyfirst-web-v2`
 
-Released in v0.15.1, 2026-09.
+Released in v0.16.0, 2026-09, already superseded there by `porch-web-v3`. It
+was tagged as v0.15.1, which was built and never signed or published, so no
+published release graded under v2; the section stays because v3 is described
+as a change from it.
 
 **Two verdicts change, in the same direction and for the same reason: v1 said
 nothing where it had measured something.** No rule was added, removed, or made
