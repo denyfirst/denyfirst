@@ -122,6 +122,21 @@ try {
     New-Item -ItemType Directory -Path $dist | Out-Null
     gh release download $Tag --dir $dist --clobber
     if ($LASTEXITCODE -ne 0) {
+        # A download can fail with the release right there: on the v0.17.0
+        # evening a dropped connection was reported as no release at all, and
+        # the advice to push the tag again pointed at the one step that had
+        # worked. Ask whether the release exists before saying it does not.
+        # try/catch because stderr from a native command under 'Stop' throws.
+        $exists = $false
+        try {
+            $null = gh release view $Tag --json tagName 2>$null
+            $exists = ($LASTEXITCODE -eq 0)
+        } catch {
+            $exists = $false
+        }
+        if ($exists) {
+            throw "The release for $Tag is there, but downloading it failed, usually a dropped connection. Run this script again."
+        }
         throw "No release found for $Tag. Push the tag and wait for build-release.yml, or start it with:`n  gh workflow run build-release.yml -f tag=$Tag"
     }
 
