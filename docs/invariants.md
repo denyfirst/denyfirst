@@ -786,9 +786,24 @@ change to make deliberately rather than as a side effect of an upgrade.
 `docs/scope.md` says the default belongs on for a service, and the roadmap
 carries the gap until it is.
 
+**Asking is not scanning, and is bounded apart.** The verify endpoint walks
+every guard a scan does, but spends an allowance of its own and holds a slot of
+its own. The review of 2026-09-18 found it spending the scan allowance (D04),
+so opening a Domains page of five, which asks once per domain, left nothing to
+scan with; and taking no slot at all (D10), so the lookups in flight had no
+bound. Both are now separate limits, and a request that gives up while queued
+is released unasked.
+
+**The record asked for is the name's own.** The endpoint offers the name and
+the domains above it, most specific first, because it cannot tell a public
+suffix from a registrable domain and does not guess. The pages used to pick the
+last of them (D05) — `co.uk` for `www.shop.co.uk`, a zone its owner does not
+run, and a record that would speak for every name beneath it. They pick the
+first now, and say what choosing a parent gives away.
+
 *Enforced in:* `internal/verify`, `internal/challenge`,
 `internal/scan.Scanner.Scan`, `internal/webscan.Scanner.Scan`,
-`internal/httpapi.New`, `internal/httpapi.Server.UseWebScanner`,
+`internal/httpapi.New`, `internal/httpapi.Server.UseWebScanner`, `internal/httpapi.Server.handleVerify`,
 `cmd/porchd.verificationScope`
 *Guarded by:* `TestAPublishedTokenCoversTheZone`,
 `TestADomainThatProvedNothingIsRefused`,
@@ -811,7 +826,9 @@ carries the gap until it is.
 `TestTheVerifyEndpointNamesTheRecordAndSaysWhetherItIsThere`,
 `TestTheVerifyEndpointReadsWhatTheChecksRead`, `TestAnOpenDeploymentHasNothingToVerify`,
 `TestAFailedChallengeLookupIsNotUnverified`, `TestTheVerifyEndpointHasTheScanGuards`,
-`TestTheVerifyRecordsAreBounded`, `TestAMissingSecretIsCreatedAndThenKept`,
+`TestTheVerifyRecordsAreBounded`, `TestProvingDomainsDoesNotSpendTheScanAllowance`,
+`TestProofLookupsInFlightAreBounded`, `TestTheProofDefaultsToTheNameItself`,
+`TestAMissingSecretIsCreatedAndThenKept`,
 `TestTheSecretIsCreatedByStartingAndNotByAsking`, `TestAnOpenServiceStaysOnLoopback`,
 `TestTheComposeFileTakesAwayWhatItSays`,
 `TestTheProofDialogIsOfferedOnlyWhereProofIsRequired`, `TestTheConsoleAsksForProofBeforeItRuns`,

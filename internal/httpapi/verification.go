@@ -58,7 +58,11 @@ type verifyResponse struct {
 const maxVerifyRecords = 4
 
 func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
-	t, ok := s.admit(w, r, parseVerifyTarget)
+	// Every guard a scan has, spending the proof allowance rather than the
+	// scan one: the Domains page asks once per domain, and a list of five
+	// used to leave nothing to scan with (audit 2026-09-18, D04).
+	t, ok := s.admit(w, r, parseVerifyTarget, s.proofs,
+		"Too many proof checks from this address. Try again shortly.")
 	if !ok {
 		return
 	}
@@ -71,6 +75,17 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), s.limits.RequestTimeout)
 	defer cancel()
+
+	// And a slot of its own, so the lookups in flight are bounded however
+	// many clients ask (D10), without a cheap lookup holding a scan's slot.
+	// A request whose deadline passes while queued is released unanswered.
+	if err := s.proofSem.acquire(ctx); err != nil {
+		w.Header().Set("Retry-After", "5")
+		s.refuse(w, http.StatusServiceUnavailable, "too_busy",
+			"Too many proof checks are in flight. Try again shortly.")
+		return
+	}
+	defer s.proofSem.release()
 
 	// The zone proof, which is what every check accepts. The file proof
 	// covers only the web check and is not offered here: a record the page
