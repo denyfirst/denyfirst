@@ -146,6 +146,15 @@ func run() int {
 				"\tabsent; when set, only domains that have published the matching challenge\n"+
 				"\tare scanned, and the page shows the record to publish")
 
+		// Signed proof only, for an operator whose resolver is theirs. The AD
+		// bit is the resolver's word and worth what the path to it is worth,
+		// so this is a choice about a resolver, not a switch that makes DNS
+		// safe (audit 2026-09-16, A06).
+		requireSigned = flag.Bool("verification-requires-dnssec", false,
+			"accept only a challenge record the resolver reports DNSSEC-validated, and\n"+
+				"\tno challenge file. Worth it only with a validating resolver you trust,\n"+
+				"\tsuch as one on this machine: see -resolver")
+
 		// Stated rather than implied. Without it porchd refuses to listen
 		// beyond loopback unless a secret is given, because a service anyone can
 		// reach and that scans anything is an open scanner with this machine's
@@ -310,6 +319,13 @@ func run() int {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
+	}
+	if *requireSigned {
+		if scope == nil {
+			fmt.Fprintln(os.Stderr, "-verification-requires-dnssec needs -verification-secret-file")
+			return 2
+		}
+		scope.RequireSigned = true
 	}
 
 	// An open service is refused anywhere but loopback.

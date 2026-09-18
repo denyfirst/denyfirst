@@ -19,6 +19,7 @@ import (
 type verifyAnswer struct {
 	Required bool `json:"required"`
 	Verified bool `json:"verified"`
+	Signed   bool `json:"signed"`
 	Records  []struct {
 		Domain string `json:"domain"`
 		Name   string `json:"name"`
@@ -310,5 +311,39 @@ func TestProofLookupsInFlightAreBounded(t *testing.T) {
 	}
 	if a := <-ask(5, time.Minute); a.code != http.StatusOK {
 		t.Errorf("after the slots emptied: %d %s", a.code, a.body)
+	}
+}
+
+// signedZone publishes a record for each name and reports it validated or not.
+type signedZone map[string]bool
+
+func (z signedZone) LookupChallenge(ctx context.Context, name string) ([]string, bool, error) {
+	values, _, err := z.LookupChallengeValidated(ctx, name)
+	return values, values != nil, err
+}
+
+func (z signedZone) LookupChallengeValidated(_ context.Context, name string) ([]string, bool, error) {
+	domain := strings.TrimPrefix(name, verify.Label+".")
+	signed, ok := z[domain]
+	if !ok {
+		return nil, false, nil
+	}
+	return []string{verify.Token(verificationSecret, domain)}, signed, nil
+}
+
+// The page is told whether the resolver reported the proof signed, and never
+// that an unproven name is (A06).
+func TestTheVerifyEndpointSaysWhetherTheProofWasSigned(t *testing.T) {
+	scope := &verify.Scope{Secret: verificationSecret, Resolver: signedZone{"signed.test": true, "plain.test": false}}
+	s := New(&scan.Scanner{Verify: scope}, Limits{ProofBurst: 100, ProofRefill: time.Nanosecond}, nil)
+
+	for target, want := range map[string]bool{"signed.test": true, "www.signed.test": true, "plain.test": false, "absent.test": false} {
+		code, got, body := askVerify(t, s, target)
+		if code != http.StatusOK || got.Signed != want {
+			t.Errorf("%s: %d %s, want signed %v", target, code, body, want)
+		}
+	}
+	if _, got, _ := askVerify(t, s, "absent.test"); got.Verified {
+		t.Error("an unproven name was reported proven")
 	}
 }

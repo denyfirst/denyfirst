@@ -247,3 +247,79 @@ func (r recorder) LookupChallenge(ctx context.Context, name string) ([]string, b
 	*r.asked = append(*r.asked, name)
 	return r.values.LookupChallenge(ctx, name)
 }
+
+// signing answers from a table and says, per name, whether the resolver
+// reported the answer validated.
+type signing struct {
+	published
+	signed map[string]bool
+}
+
+func (s signing) LookupChallengeValidated(_ context.Context, name string) ([]string, bool, error) {
+	return s.published[name], s.signed[name], nil
+}
+
+// servedFile serves one body at every host.
+type servedFile string
+
+func (f servedFile) FetchChallenge(context.Context, string) (string, error) { return string(f), nil }
+
+// Whether the proof was signed is the resolver's word, carried as that (audit
+// 2026-09-16, A06). By default either proves; where the operator asked for
+// signed proof, only a signed record does: an unsigned one at the host gives
+// way to a signed one above it, the file never counts, and a resolver that
+// cannot say proves nothing.
+func TestSignedProofIsReportedAndCanBeRequired(t *testing.T) {
+	ctx := context.Background()
+	r := signing{
+		published: published{
+			Label + ".signed.test":       {Token(secret, "signed.test")},
+			Label + ".plain.test":        {Token(secret, "plain.test")},
+			Label + ".www.mixed.test":    {Token(secret, "www.mixed.test")},
+			Label + ".mixed.test":        {Token(secret, "mixed.test")},
+			Label + ".www.unsigned.test": {Token(secret, "www.unsigned.test")},
+		},
+		signed: map[string]bool{Label + ".signed.test": true, Label + ".mixed.test": true},
+	}
+
+	for host, want := range map[string]bool{"signed.test": true, "www.signed.test": true, "plain.test": false, "www.mixed.test": false} {
+		signed, err := scope(r).CoversSigned(ctx, host, AnyPort)
+		if err != nil || signed != want {
+			t.Errorf("CoversSigned(%q) = %v, %v; want %v, nil", host, signed, err, want)
+		}
+	}
+	if signed, err := scope(r.published).CoversSigned(ctx, "signed.test", AnyPort); err != nil || signed {
+		t.Errorf("a resolver that cannot say reported signed: %v, %v", signed, err)
+	}
+
+	strict := scope(r)
+	strict.RequireSigned = true
+	strict.Fetcher = servedFile(Token(secret, "files.test"))
+	for host, ok := range map[string]bool{
+		"signed.test":       true,
+		"www.mixed.test":    true, // unsigned at the host, signed at its parent
+		"plain.test":        false,
+		"www.unsigned.test": false,
+	} {
+		signed, err := strict.CoversSigned(ctx, host, AnyPort)
+		if ok && (err != nil || !signed) {
+			t.Errorf("strict: %q was refused, or proven unsigned: %v, %v", host, signed, err)
+		}
+		if !ok && !errors.Is(err, ErrNotVerified) {
+			t.Errorf("strict: an unsigned %q was accepted: %v", host, err)
+		}
+	}
+	if err := strict.Covers(ctx, "files.test", HTTPOnly); !errors.Is(err, ErrNotVerified) {
+		t.Errorf("strict: a served file was accepted: %v", err)
+	}
+	loose := scope(r)
+	loose.Fetcher = servedFile(Token(secret, "files.test"))
+	if err := loose.Covers(ctx, "files.test", HTTPOnly); err != nil {
+		t.Errorf("a served file stopped proving where nothing strict was asked: %v", err)
+	}
+	blind := scope(r.published)
+	blind.RequireSigned = true
+	if err := blind.Covers(ctx, "signed.test", AnyPort); !errors.Is(err, ErrNotVerified) {
+		t.Errorf("strict with a resolver that cannot say: %v", err)
+	}
+}

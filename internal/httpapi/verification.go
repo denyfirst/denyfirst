@@ -45,6 +45,10 @@ type verifyResponse struct {
 	// Verified is whether a proof covering the name is published now.
 	Verified bool `json:"verified"`
 
+	// Signed is whether the resolver reported the record that proved it
+	// DNSSEC-validated. The resolver's word, and the page says so (A06).
+	Signed bool `json:"signed"`
+
 	// Records are the places a proof may go, most specific first: the name
 	// itself, then each domain above it down to two labels. A record at a
 	// parent covers the name too, and which one to use is the operator's
@@ -91,7 +95,7 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 	// covers only the web check and is not offered here: a record the page
 	// tells somebody to publish has to be one that works for whatever they
 	// tick.
-	err := scope.Covers(ctx, t.host, verify.AnyPort)
+	signed, err := scope.CoversSigned(ctx, t.host, verify.AnyPort)
 	switch {
 	case err == nil:
 	case errors.Is(err, verify.ErrNotVerified):
@@ -105,7 +109,7 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := verifyResponse{Required: true, Verified: err == nil}
+	out := verifyResponse{Required: true, Verified: err == nil, Signed: err == nil && signed}
 	labels := strings.Split(t.host, ".")
 	for i := 0; i+1 < len(labels) && len(out.Records) < maxVerifyRecords; i++ {
 		domain := strings.Join(labels[i:], ".")

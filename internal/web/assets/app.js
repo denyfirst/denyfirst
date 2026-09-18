@@ -1599,8 +1599,12 @@ function showDomainRecord(answer) {
   const level = document.getElementById("domain-level");
   const records = answer.records || [];
 
+  // Signed is the resolver's word that it checked DNSSEC, and is shown as
+  // that: not this page's work, and worth what the resolver is worth (A06).
   state.textContent = answer.verified
-    ? "Proven. Every check may run against this domain."
+    ? "Proven. Every check may run against this domain. " + (answer.signed
+      ? "The resolver reported the record DNSSEC-signed."
+      : "The record is not DNSSEC-signed, so the proof rests on the resolver's answer alone.")
     : "Not proven yet. Publish this record, then check again.";
   state.className = "domain-state " + (answer.verified ? "mark-strong" : "mark-weak");
 
@@ -1721,7 +1725,7 @@ async function proveRow(domain, cell) {
   try {
     const answer = await check(domain.name, VERIFY);
     cell.className = answer.verified ? "mark-strong" : "mark-weak";
-    cell.textContent = answer.verified ? "proven" : "not proven";
+    cell.textContent = answer.verified ? (answer.signed ? "proven, signed" : "proven") : "not proven";
     return true;
   } catch (err) {
     cell.className = "mark-faint";

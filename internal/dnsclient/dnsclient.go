@@ -731,13 +731,22 @@ func (c *Client) LookupTXT(ctx context.Context, name string) (TXTAnswer, error) 
 // here rather than there, and it is one method rather than a closure written
 // at every place a scope is constructed.
 //
-// Validated is dropped on purpose. It is the resolver's claim that it checked
+// Validated is not in this shape. It is the resolver's claim that it checked
 // DNSSEC, and a boundary that treated it as its own work would be presenting
 // somebody else's verification as this program's — the same objection the CAA
-// report already makes about the same bit.
+// report already makes about the same bit. LookupChallengeValidated carries
+// it, for the one caller that names it as the resolver's word.
 func (c *Client) LookupChallenge(ctx context.Context, name string) (values []string, existed bool, err error) {
 	answer, err := c.LookupTXT(ctx, name)
 	return answer.Values, answer.Existed, err
+}
+
+// LookupChallengeValidated is LookupChallenge with the AD bit: whether the
+// resolver reported the answer DNSSEC-validated. internal/verify shows it as
+// that, and can be told to accept nothing else (A06).
+func (c *Client) LookupChallengeValidated(ctx context.Context, name string) (values []string, validated bool, err error) {
+	answer, err := c.LookupTXT(ctx, name)
+	return answer.Values, answer.Validated, err
 }
 
 // MXAnswer is what asking for a domain's mail exchangers found.
