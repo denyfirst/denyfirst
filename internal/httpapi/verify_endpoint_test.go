@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -132,7 +134,7 @@ func TestTheVerifyEndpointHasTheScanGuards(t *testing.T) {
 		t.Errorf("an unknown field: %q", got)
 	}
 
-	tight := New(&scan.Scanner{Verify: scope}, Limits{Burst: 1, Refill: time.Hour}, nil)
+	tight := New(&scan.Scanner{Verify: scope}, Limits{ProofBurst: 1, ProofRefill: time.Hour}, nil)
 	postTo(t, tight, "/api/v1/verify", `{"target":"example.test"}`, "203.0.113.62:5000")
 	if got := errorCode(t, postTo(t, tight, "/api/v1/verify", `{"target":"example.test"}`, "203.0.113.62:5000")); got != "rate_limited" {
 		t.Errorf("a second ask inside the budget: %q", got)
@@ -183,5 +185,130 @@ func TestAServedFileIsNotReportedAsProofForEveryCheck(t *testing.T) {
 
 	if _, got, body := askVerify(t, s, "files.test"); got.Verified {
 		t.Errorf("a served file was reported as proof for every check: %s", body)
+	}
+}
+
+// Asking whether domains are proven spends an allowance of its own (audit
+// 2026-09-18, D04): opening a Domains page of ten leaves every scan in the
+// allowance, and scanning leaves every proof check. The proof allowance is
+// bounded all the same, and says which allowance ran out.
+func TestProvingDomainsDoesNotSpendTheScanAllowance(t *testing.T) {
+	scope, _ := scopeProving()
+	s := New(&scan.Scanner{Verify: scope}, Limits{Burst: 2, Refill: time.Hour, ProofBurst: 10, ProofRefill: time.Hour}, nil)
+	const from = "203.0.113.70:5000"
+
+	for i := range 10 {
+		if r := postTo(t, s, "/api/v1/verify", `{"target":"d`+string(rune('a'+i))+`.example.test"}`, from); r.Code != http.StatusOK {
+			t.Fatalf("proof check %d: %d %s", i+1, r.Code, r.Body.String())
+		}
+	}
+	for i := range 2 {
+		if got := errorCode(t, postTo(t, s, "/api/v1/scan", `{"target":"example.test"}`, from)); got == "rate_limited" {
+			t.Fatalf("scan %d after ten proof checks was refused for the allowance", i+1)
+		}
+	}
+	if got := errorCode(t, postTo(t, s, "/api/v1/scan", `{"target":"example.test"}`, from)); got != "rate_limited" {
+		t.Errorf("the scan allowance is not bounded any more: %q", got)
+	}
+
+	r := postTo(t, s, "/api/v1/verify", `{"target":"example.test"}`, from)
+	if got := errorCode(t, r); got != "rate_limited" || !strings.Contains(r.Body.String(), "proof checks") {
+		t.Errorf("an eleventh proof check: %q, %s", got, r.Body.String())
+	}
+
+	// The other way round: a spent scan allowance leaves proof checks.
+	other := New(&scan.Scanner{Verify: scope}, Limits{Burst: 1, Refill: time.Hour}, nil)
+	postTo(t, other, "/api/v1/scan", `{"target":"example.test"}`, from)
+	if r := postTo(t, other, "/api/v1/verify", `{"target":"example.test"}`, from); r.Code != http.StatusOK {
+		t.Errorf("a spent scan allowance refused a proof check: %d %s", r.Code, r.Body.String())
+	}
+}
+
+// slowZone answers a challenge lookup only once released, or when the asker
+// gives up, and remembers the most lookups it had in flight at once.
+type slowZone struct {
+	release  chan struct{}
+	inFlight atomic.Int32
+	most     atomic.Int32
+}
+
+func (z *slowZone) LookupChallenge(ctx context.Context, _ string) ([]string, bool, error) {
+	n := z.inFlight.Add(1)
+	defer z.inFlight.Add(-1)
+	for {
+		m := z.most.Load()
+		if n <= m || z.most.CompareAndSwap(m, n) {
+			break
+		}
+	}
+	select {
+	case <-z.release:
+		return nil, false, nil
+	case <-ctx.Done():
+		return nil, false, ctx.Err()
+	}
+}
+
+// However many ask, at most MaxConcurrentProofs lookups are in flight (D10),
+// apart from the scan slots: with one scan slot, two proof lookups run. A
+// request that waits past its deadline is released with a refusal rather than
+// run late, and once the slow lookups finish the next one is answered.
+func TestProofLookupsInFlightAreBounded(t *testing.T) {
+	zone := &slowZone{release: make(chan struct{})}
+	scope := &verify.Scope{Secret: verificationSecret, Resolver: zone}
+	s := New(&scan.Scanner{Verify: scope}, Limits{
+		MaxConcurrent: 1, MaxConcurrentProofs: 2, RequestTimeout: 30 * time.Second,
+		ProofBurst: 100, ProofRefill: time.Nanosecond,
+	}, nil)
+
+	type answer struct {
+		code int
+		body string
+	}
+	// ask posts from its own address, giving up after wait.
+	ask := func(i int, wait time.Duration) <-chan answer {
+		out := make(chan answer, 1)
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), wait)
+			defer cancel()
+			r := httptest.NewRequest(http.MethodPost, "/api/v1/verify", strings.NewReader(`{"target":"example.test"}`)).WithContext(ctx)
+			r.Header.Set("Content-Type", "application/json")
+			r.RemoteAddr = "203.0.113.71:" + strconv.Itoa(5000+i)
+			w := httptest.NewRecorder()
+			s.ServeHTTP(w, r)
+			out <- answer{w.Code, w.Body.String()}
+		}()
+		return out
+	}
+
+	first := []<-chan answer{ask(0, time.Minute), ask(1, time.Minute)}
+	deadline := time.Now().Add(5 * time.Second)
+	for zone.inFlight.Load() < 2 {
+		if time.Now().After(deadline) {
+			t.Fatalf("two proof lookups did not start alongside one scan slot: %d in flight", zone.inFlight.Load())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// The slots are full: these wait, give up, and are refused unasked.
+	queued := []<-chan answer{ask(2, 300*time.Millisecond), ask(3, 300*time.Millisecond), ask(4, 300*time.Millisecond)}
+	for _, q := range queued {
+		a := <-q
+		if a.code != http.StatusServiceUnavailable || !strings.Contains(a.body, "too_busy") {
+			t.Errorf("a proof check that gave up in the queue: %d %s", a.code, a.body)
+		}
+	}
+	if most := zone.most.Load(); most != 2 {
+		t.Errorf("%d lookups were in flight at once, want the bound of 2", most)
+	}
+
+	close(zone.release)
+	for _, f := range first {
+		if a := <-f; a.code != http.StatusOK {
+			t.Errorf("a lookup that held a slot: %d %s", a.code, a.body)
+		}
+	}
+	if a := <-ask(5, time.Minute); a.code != http.StatusOK {
+		t.Errorf("after the slots emptied: %d %s", a.code, a.body)
 	}
 }

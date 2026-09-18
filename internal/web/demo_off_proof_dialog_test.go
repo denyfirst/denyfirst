@@ -69,3 +69,34 @@ func TestAnUnprovenNameOpensTheDialog(t *testing.T) {
 		}
 	}
 }
+
+// Both places that show the record default to the name itself, the first in
+// the list, and never to the broadest (audit 2026-09-18, D05): the last entry
+// for www.shop.co.uk is co.uk, a zone its owner does not run. A parent is
+// the operator's choice, and the hint says what choosing one gives away.
+func TestTheProofDefaultsToTheNameItself(t *testing.T) {
+	body, err := assets.ReadFile("assets/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(body)
+	for _, fill := range []string{"function fillProof(records) {", "function showDomainRecord(answer) {"} {
+		start := strings.Index(src, fill)
+		if start < 0 {
+			t.Fatalf("the script no longer has %q", fill)
+		}
+		end := strings.Index(src[start:], "\n}\n")
+		fn := src[start : start+end]
+		if !strings.Contains(fn, `level.value = "0";`) {
+			t.Errorf("%s does not default to the name itself", fill)
+		}
+		if strings.Contains(fn, "records.length - 1") {
+			t.Errorf("%s still reaches for the broadest domain", fill)
+		}
+	}
+	for _, page := range []string{"assets/console.html", "assets/domains.html"} {
+		if !strings.Contains(asset(t, page), "choose one only if you run its DNS") {
+			t.Errorf("%s does not say what a domain above the name gives away", page)
+		}
+	}
+}

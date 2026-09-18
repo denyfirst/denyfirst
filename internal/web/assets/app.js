@@ -1494,9 +1494,13 @@ function fillProof(records) {
     document.getElementById("proof-value").textContent = r.value;
   };
   level.onchange = pick;
-  // The broadest domain by default: one record then covers every name an
-  // operator is likely to check. The list is most specific first.
-  level.value = String(records.length - 1);
+  // The name itself by default, which is the first in the list. A domain
+  // above it is the operator's choice to make, never this page's: the last
+  // entry for www.shop.co.uk is co.uk, a zone nobody who owns shop.co.uk
+  // controls, and a record there would speak for every name under it (audit
+  // 2026-09-18, D05). The service cannot tell a public suffix from a
+  // registrable domain, so it does not guess.
+  level.value = "0";
   pick();
 }
 
@@ -1613,8 +1617,9 @@ function showDomainRecord(answer) {
     document.getElementById("domain-value").textContent = r.value;
   };
   level.onchange = pick;
-  // The broadest domain by default, as the console's dialog does.
-  level.value = String(Math.max(records.length - 1, 0));
+  // The name itself by default, as the console's dialog does, and for the
+  // same reason.
+  level.value = "0";
   pick();
   domainRecord.hidden = false;
 }

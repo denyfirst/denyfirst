@@ -19,7 +19,9 @@
 // without letting a cross-site request spend the visitor's scan budget on
 // their behalf. /healthz and /api/v1/stats draw on that same allowance, for
 // the same reason: they do no scanning and should never be free to call in a
-// loop.
+// loop. Asking whether a domain is proven draws on an allowance and slots of
+// its own in place of the scan ones, so that opening the Domains page, which
+// asks once per domain, never spends what a scan needs.
 //
 // All but one protect this service. The per-host limit protects the server
 // being measured, which had no say in whether it is measured at all.
@@ -77,6 +79,16 @@ const (
 	DefaultRefill          = 12 * time.Second // five at once, then one per twelve
 	DefaultMaxTrackedIPs   = 20_000
 
+	// Asking whether a domain is proven is one DNS lookup, and the Domains
+	// page asks once for every domain on it, so it has an allowance of its
+	// own rather than the scan one (audit 2026-09-18, D04): opening a list of
+	// five used to leave nothing to scan with. Bounded all the same, and in
+	// how many run at once, because each is a lookup somebody else answers
+	// (D10).
+	DefaultProofBurst          = 30
+	DefaultProofRefill         = 2 * time.Second
+	DefaultMaxConcurrentProofs = 4
+
 	// readBurst and readRefill govern /healthz and /api/v1/stats. Generous,
 	// because a monitor polling every few seconds is the intended use; bounded,
 	// because neither endpoint should be free to call in a loop.
@@ -94,6 +106,12 @@ type Limits struct {
 	// long one token takes to return.
 	Burst  int
 	Refill time.Duration
+
+	// ProofBurst and ProofRefill are the same for asking whether a domain is
+	// proven, and MaxConcurrentProofs is how many of those run at once.
+	ProofBurst          int
+	ProofRefill         time.Duration
+	MaxConcurrentProofs int
 
 	// MaxTrackedIPs caps the rate limiter's memory. Once reached, unknown
 	// clients are refused rather than admitted.
@@ -133,6 +151,15 @@ func (l Limits) withDefaults() Limits {
 	if l.Refill <= 0 {
 		l.Refill = DefaultRefill
 	}
+	if l.ProofBurst <= 0 {
+		l.ProofBurst = DefaultProofBurst
+	}
+	if l.ProofRefill <= 0 {
+		l.ProofRefill = DefaultProofRefill
+	}
+	if l.MaxConcurrentProofs <= 0 {
+		l.MaxConcurrentProofs = DefaultMaxConcurrentProofs
+	}
 	if l.MaxTrackedIPs <= 0 {
 		l.MaxTrackedIPs = DefaultMaxTrackedIPs
 	}
@@ -163,6 +190,11 @@ type Server struct {
 	// so that polling a health check can never consume a scan allowance, or
 	// the reverse.
 	reads *limiter
+
+	// proofs and proofSem are the allowance and the slots for asking whether
+	// a domain is proven, apart from the scan ones for the same reason.
+	proofs   *limiter
+	proofSem semaphore
 
 	routes []route
 
@@ -257,13 +289,15 @@ func New(scanner *scan.Scanner, limits Limits, now func() time.Time) *Server {
 
 			DKIMSelectors: dkim.DocumentedSelectors(),
 		},
-		limits:  limits,
-		rate:    newLimiter(limits.Burst, limits.Refill, limits.MaxTrackedIPs, now),
-		reads:   newLimiter(readBurst, readRefill, limits.MaxTrackedIPs, now),
-		sem:     newSemaphore(limits.MaxConcurrent),
-		counts:  newCounters(now),
-		targets: newTargetLimiter(now),
-		mux:     http.NewServeMux(),
+		limits:   limits,
+		rate:     newLimiter(limits.Burst, limits.Refill, limits.MaxTrackedIPs, now),
+		reads:    newLimiter(readBurst, readRefill, limits.MaxTrackedIPs, now),
+		proofs:   newLimiter(limits.ProofBurst, limits.ProofRefill, limits.MaxTrackedIPs, now),
+		proofSem: newSemaphore(limits.MaxConcurrentProofs),
+		sem:      newSemaphore(limits.MaxConcurrent),
+		counts:   newCounters(now),
+		targets:  newTargetLimiter(now),
+		mux:      http.NewServeMux(),
 	}
 
 	// Two paths, one handler, and deliberately not a redirect.
@@ -410,7 +444,7 @@ func (s *Server) scanHandler(c check) http.HandlerFunc {
 }
 
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, c check) {
-	t, ok := s.admit(w, r, c.parse)
+	t, ok := s.admit(w, r, c.parse, s.rate, "Too many scans from this address. Try again shortly.")
 	if !ok {
 		return
 	}
@@ -428,7 +462,10 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request, c check) {
 // Shared by the scan endpoints and the verification endpoint, because a guard
 // that exists on one path and not another is a guard somebody walks around by
 // calling the other (N6).
-func (s *Server) admit(w http.ResponseWriter, r *http.Request, parse func(string) (target, *refusal)) (target, bool) {
+// admit spends from budget, which is the scan allowance for a scan and the
+// proof allowance for asking whether a domain is proven, and answers tooMany
+// once it is spent.
+func (s *Server) admit(w http.ResponseWriter, r *http.Request, parse func(string) (target, *refusal), budget *limiter, tooMany string) (target, bool) {
 	key := clientKey(r, s.limits.TrustedProxies, s.limits.TrustedProxyHops)
 
 	// Everything below this line costs something, including the refusals.
@@ -492,10 +529,9 @@ func (s *Server) admit(w http.ResponseWriter, r *http.Request, parse func(string
 		return target{}, false
 	}
 
-	if !s.rate.allow(key) {
-		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(s.limits.Refill)))
-		s.refuse(w, http.StatusTooManyRequests, "rate_limited",
-			"Too many scans from this address. Try again shortly.")
+	if !budget.allow(key) {
+		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(budget.refill)))
+		s.refuse(w, http.StatusTooManyRequests, "rate_limited", tooMany)
 		return target{}, false
 	}
 
