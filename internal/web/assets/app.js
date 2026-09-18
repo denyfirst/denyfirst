@@ -1537,22 +1537,112 @@ function waitForProof(target, first) {
   });
 }
 
-if (proofDialog) {
-  proofDialog.addEventListener("click", event => {
-    const button = event.target.closest("[data-copy]");
-    if (!button) return;
-    // Selected, not written to the clipboard. The record names the domain, and
-    // the clipboard is shared with every process on the machine and sometimes
-    // synced off it — the same reason a report is never offered there. One
-    // keystroke copies a selection, and the person makes that choice.
+/*
+  Copying a proof record, and nothing else.
+
+  The one place this script writes to the clipboard. A report is never put
+  there: it names a host and what was found on it, and the clipboard is shared
+  with every process on the machine and sometimes synced off it. A proof record
+  is the opposite case. It exists to be pasted into a DNS provider's form, it
+  proves nothing until it is published in that domain's zone, and the person
+  pressing the button is about to paste it. Where the browser refuses the
+  write, the text is selected instead, so one keystroke still copies it.
+*/
+async function copyRecord(button) {
+  const source = document.getElementById(button.dataset.copy);
+  if (!source) return;
+  const text = source.textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    button.textContent = "Copied";
+  } catch {
     const range = document.createRange();
-    range.selectNodeContents(document.getElementById(button.dataset.copy));
+    range.selectNodeContents(source);
     const selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
     button.textContent = "Selected";
-    setTimeout(() => { button.textContent = "Select"; }, 1500);
+  }
+  setTimeout(() => { button.textContent = "Copy"; }, 1500);
+}
+
+for (const holder of [proofDialog, document.getElementById("domain-record")]) {
+  if (!holder) continue;
+  holder.addEventListener("click", event => {
+    const button = event.target.closest("[data-copy]");
+    if (button) copyRecord(button);
   });
+}
+
+/*
+  Domains: the record for one domain, asked for before a check needs it.
+
+  The same question the console asks when a check meets a new domain, through
+  the same endpoint, shown on the page instead of in a dialog.
+*/
+const domainForm = document.getElementById("domain-form");
+const domainRecord = document.getElementById("domain-record");
+
+function showDomainRecord(answer) {
+  const state = document.getElementById("domain-state");
+  const level = document.getElementById("domain-level");
+  const records = answer.records || [];
+
+  state.textContent = answer.verified
+    ? "Proven. Every check may run against this domain."
+    : "Not proven yet. Publish this record, then check again.";
+  state.className = "domain-state " + (answer.verified ? "mark-strong" : "mark-weak");
+
+  clear(level);
+  records.forEach((r, i) => {
+    const option = el("option", null, r.domain);
+    option.value = String(i);
+    level.appendChild(option);
+  });
+  const pick = () => {
+    const r = records[Number(level.value)] || records[0];
+    if (!r) return;
+    document.getElementById("domain-name").textContent = r.name;
+    document.getElementById("domain-value").textContent = r.value;
+  };
+  level.onchange = pick;
+  // The broadest domain by default, as the console's dialog does.
+  level.value = String(Math.max(records.length - 1, 0));
+  pick();
+  domainRecord.hidden = false;
+}
+
+if (domainForm && domainRecord) {
+  const target = document.getElementById("domain-target");
+  const submit = document.getElementById("domain-submit");
+  const again = document.getElementById("domain-again");
+
+  const ask = async (button) => {
+    const name = target.value.trim();
+    const state = document.getElementById("domain-state");
+    if (!name) {
+      target.focus();
+      return;
+    }
+    button.disabled = true;
+    try {
+      showDomainRecord(await check(name, VERIFY));
+    } catch (err) {
+      domainRecord.hidden = false;
+      state.className = "domain-state mark-weak";
+      state.textContent = err.status === 429
+        ? "Asked too often. Wait a few seconds and try again."
+        : (err.message || "The record could not be looked up.");
+    } finally {
+      button.disabled = false;
+    }
+  };
+
+  domainForm.addEventListener("submit", event => {
+    event.preventDefault();
+    ask(submit);
+  });
+  again.addEventListener("click", () => ask(again));
 }
 
 // proven says whether the checks may run, asking for proof first where it is

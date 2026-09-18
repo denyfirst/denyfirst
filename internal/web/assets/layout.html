@@ -11,10 +11,39 @@
 <link rel="stylesheet" href="/style.css">
 <script src="/theme.js"></script>
 </head>
-<body{{if .Brand}} data-site="demo"{{end}}>
+<body{{if .Brand}} data-site="demo"{{else}} class="workspace"{{end}}>
 
+{{if not .Brand}}
+<!--
+  An installation somebody runs is a workspace, not a site: a rail with what
+  can be done here, and the page beside it. The rail is links, so every view
+  is an address that works without the script, and the one marked current is
+  said to assistive technology as well as drawn.
+-->
+<aside class="rail">
+  <p class="rail-identity"><a class="wordmark" href="/">porch</a> <span class="rail-tag">Self-host</span></p>
+  <p class="rail-caption" id="rail-workspace">Workspace</p>
+  <nav class="rail-nav" aria-labelledby="rail-workspace">
+    <a class="rail-item" href="/"{{if eq .Section "check"}} aria-current="page"{{end}}><span class="rail-glyph" aria-hidden="true">▦</span>New check</a>
+    <a class="rail-item" href="/domains"{{if eq .Section "domains"}} aria-current="page"{{end}}><span class="rail-glyph" aria-hidden="true">◎</span>Domains</a>
+    <a class="rail-item" href="/history"{{if eq .Section "history"}} aria-current="page"{{end}}><span class="rail-glyph" aria-hidden="true">◷</span>History</a>
+    <a class="rail-item" href="/installation"{{if eq .Section "installation"}} aria-current="page"{{end}}><span class="rail-glyph" aria-hidden="true">⚙</span>This installation</a>
+  </nav>
+  <p class="rail-caption" id="rail-reference">Reference</p>
+  <nav class="rail-nav" aria-labelledby="rail-reference">
+    <a class="rail-item" href="/docs"{{if eq .Section "reference"}} aria-current="page"{{end}}><span class="rail-glyph" aria-hidden="true">≡</span>Docs</a>
+  </nav>
+  <div class="rail-foot">
+    <button class="theme-toggle" id="theme-toggle" type="button" hidden>Dark</button>
+  </div>
+</aside>
+<div class="workspace-main">
+<header class="topbar">
+  <p class="topbar-path"><span>{{if eq .Section "reference"}}Reference{{else}}Workspace{{end}}</span> <span class="topbar-slash" aria-hidden="true">/</span> <strong>{{.Heading}}</strong></p>
+</header>
+{{else}}
 <header class="masthead">
-  {{if .Brand}}<a class="wordmark" href="/"><span class="wordmark-deny">deny</span>first.</a>
+  <a class="wordmark" href="/"><span class="wordmark-deny">deny</span>first.</a>
   <nav class="masthead-nav" aria-label="Main">
     <a href="/">Home</a>
     <!--
@@ -32,13 +61,10 @@
       </ul>
     </div>
     <a href="/docs">Docs</a>
-  </nav>{{else}}<a class="wordmark" href="/">porch</a>
-  <nav class="masthead-nav" aria-label="Main">
-    <a href="/">Check</a>
-    <a href="/docs">Docs</a>
-  </nav>{{end}}
+  </nav>
   <button class="theme-toggle" id="theme-toggle" type="button" hidden>Dark</button>
 </header>
+{{end}}
 
 <main>
 {{.Body}}
@@ -54,7 +80,7 @@
   <div class="colophon-row">
     <div class="colophon-by">
       {{if .Brand}}<p class="colophon-mark"><span class="colophon-brand"><span class="wordmark-deny">deny</span>first.</span></p>
-      <p class="colophon-line">Cites everything. Records nothing.</p>{{else}}<p class="colophon-line">porch, by <span class="colophon-brand"><span class="wordmark-deny">deny</span>first.</span> Cites everything. Records nothing.</p>{{end}}
+      <p class="colophon-line">Cites everything. Records nothing.</p>{{else}}<p class="colophon-line">by <span class="colophon-brand"><span class="wordmark-deny">deny</span>first.</span> Cites everything. Records nothing.</p>{{end}}
     </div>
     <p class="colophon-links">
       <a href="/docs">Docs</a>
@@ -64,6 +90,7 @@
   </div>
   {{if not .Brand}}<p class="tally" id="tally" hidden></p>{{end}}
 </footer>
+{{if not .Brand}}</div>{{end}}
 
 {{if .Script}}<script src="/app.js"></script>{{end}}
 </body>

@@ -59,13 +59,18 @@ func TestEveryPageCarriesTheSameShell(t *testing.T) {
 	for path := range pages {
 		body := get(t, path).Body.String()
 
-		for _, required := range []string{
-			`class="masthead"`,
+		// The site's masthead on the demonstration; the workspace's rail and top
+		// bar on an installation, which is a tool and not a site.
+		shell := []string{`class="masthead"`}
+		if !demo.Enabled {
+			shell = []string{`<aside class="rail">`, `<header class="topbar">`, `<body class="workspace">`}
+		}
+		for _, required := range append(shell,
 			`class="wordmark"`,
 			`class="colophon"`,
 			`href="/privacy"`,
 			`href="/terms"`,
-		} {
+		) {
 			if !strings.Contains(body, required) {
 				t.Errorf("%s is missing %s from the shared layout", path, required)
 			}

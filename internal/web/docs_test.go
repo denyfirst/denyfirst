@@ -44,8 +44,10 @@ func TestEveryDocumentIsOnTheDocsPage(t *testing.T) {
 		if !strings.Contains(foot, `href="/docs">Docs</a>`) {
 			t.Errorf("%s: the footer does not lead to /docs", path)
 		}
-		head, _, _ := strings.Cut(body, "</header>")
-		if !strings.Contains(head, `href="/docs">Docs</a>`) {
+		// The masthead on the demonstration, the rail on an installation: either
+		// way before the page begins.
+		head, _, _ := strings.Cut(body, "<main>")
+		if !strings.Contains(head, `href="/docs"`) {
 			t.Errorf("%s: the header does not lead to /docs", path)
 		}
 	}
@@ -104,8 +106,10 @@ func TestProductsAreAMenuNotABar(t *testing.T) {
 		t.Fatal(err)
 	}
 	layout := string(src)
-	head, _, _ := strings.Cut(layout, "</header>")
-	brand, _, _ := strings.Cut(head, "{{else}}")
+	// The demonstration's header is the masthead; an installation's rail comes
+	// first in the file and is not it.
+	_, brand, _ := strings.Cut(layout, `<header class="masthead">`)
+	brand, _, _ = strings.Cut(brand, "</header>")
 
 	if strings.Count(brand, `href="/porch"`) != 1 || !strings.Contains(brand, `<ul class="nav-menu-list">`) {
 		t.Error("Porch is not listed under the Products menu")

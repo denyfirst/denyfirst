@@ -1,21 +1,28 @@
 <section class="console">
 
   <!--
-    A field, the checks, and the facts about this installation. Nothing else.
+    New check: a name, the checks, and the report under them.
 
-    The header already names the tool, and the person here installed it; a
-    headline or a paragraph restating what a scan sends is text between them
-    and the field. What a scan sends is one link away, on the privacy page,
-    where it is written for whoever needs it.
+    Laid out as the workspace's other parts are, with a heading that says what
+    the page is for, then the two choices a check needs in the order they are
+    made. The facts about this installation are on their own page; the one
+    that decides whether a name can be checked at all, the scope, stays here
+    in a line, because it is the one an operator needs before pressing the
+    button.
   -->
-  <h1 class="visually-hidden">Check a name</h1>
+  <div class="work-heading">
+    <div>
+      <h1>New check</h1>
+      <p>Check a name this installation may reach, with the checks you choose.</p>
+    </div>
+    {{if .Verified}}<a class="button button-secondary" href="/domains">Domains</a>{{end}}
+  </div>
 
-  <form class="console-form" id="console-form" autocomplete="off"{{if .Verified}} data-proof="required"{{end}}>
-    <label class="field-label" for="console-target">Hostname</label>
-
-    <div class="field-row">
+  <form class="composer" id="console-form" autocomplete="off"{{if .Verified}} data-proof="required"{{end}}>
+    <div class="composer-part">
+      <label class="composer-step" for="console-target">01 / Domain</label>
       <input
-        class="field"
+        class="field composer-field"
         type="text"
         id="console-target"
         name="target"
@@ -25,7 +32,12 @@
         autocorrect="off"
         enterkeyhint="go"
         autofocus>
-      <button class="submit" type="submit" id="console-submit">Check</button>
+      <p class="composer-scope">
+        {{if .Verified}}<span class="scope-dot scope-dot-on" aria-hidden="true"></span>Only domains this installation
+        has been shown control of. A new one is asked for its record first.{{else}}<span class="scope-dot" aria-hidden="true"></span><strong>No
+        proof of control is required.</strong> Any public name is checked, so keep
+        this where only you can reach it.{{end}}
+      </p>
     </div>
 
     <!--
@@ -34,20 +46,31 @@
       and active, because each of them quietly authorises something this
       project has already declined to do.
     -->
-    <fieldset class="checks">
-      <legend class="field-label">Checks</legend>
-      {{range .Checks}}
-      <label class="check">
-        <input type="checkbox" name="check" value="{{.ID}}" checked>
-        <span class="check-name">{{.Label}}</span>
-        <span class="check-says">{{.Says}}</span>
-        <span class="check-policy">{{.Policy}}</span>
-      </label>
-      {{end}}
+    <fieldset class="composer-part checks">
+      <legend class="composer-step">02 / Checks</legend>
+      <div class="check-grid">
+        {{range .Checks}}
+        <label class="check">
+          <input type="checkbox" name="check" value="{{.ID}}" checked>
+          <span class="check-name">{{.Label}}</span>
+          <span class="check-says">{{.Says}}</span>
+          <span class="check-policy">{{.Policy}}</span>
+        </label>
+        {{end}}
+      </div>
+      <div class="composer-run">
+        <p>Each check reports on its own, one after another.</p>
+        <button class="submit" type="submit" id="console-submit">Run the checks</button>
+      </div>
     </fieldset>
   </form>
 
   <div class="console-results" id="console-results" hidden></div>
+
+  <div class="report-empty" id="report-empty">
+    <p class="report-empty-title">The report appears here</p>
+    <p>Each check leads with its verdict and its findings, with the evidence underneath.</p>
+  </div>
 
   <!--
     Proof of control, asked for where it is needed.
@@ -74,9 +97,9 @@
       <dt>Type</dt>
       <dd><code>TXT</code></dd>
       <dt>Name</dt>
-      <dd><code id="proof-name"></code> <button class="proof-copy" type="button" data-copy="proof-name">Select</button></dd>
+      <dd><code id="proof-name"></code> <button class="proof-copy" type="button" data-copy="proof-name">Copy</button></dd>
       <dt>Value</dt>
-      <dd><code id="proof-value"></code> <button class="proof-copy" type="button" data-copy="proof-value">Select</button></dd>
+      <dd><code id="proof-value"></code> <button class="proof-copy" type="button" data-copy="proof-value">Copy</button></dd>
     </dl>
     <p class="proof-hint">
       Some providers want only the part of the name before your domain.
@@ -90,45 +113,5 @@
     </div>
   </dialog>
   {{end}}
-
-  <!--
-    The state of this installation, one line each.
-
-    An operator reading a report needs to know which of these were true when it
-    was produced. A report that says nothing about mail because the check was
-    off reads exactly like one that says nothing because the domain publishes
-    nothing, and only one of those is a fact about the domain.
-  -->
-  <section class="console-state">
-    <h2 class="section-title">This installation</h2>
-
-    <dl class="state-grid">
-      <dt>Scope</dt>
-      <dd>
-        {{if .Verified}}Only domains it has been shown control of.{{else}}<strong>No
-        proof of control is required.</strong> Any public name is scanned, so keep
-        it where only you can reach it.{{end}}
-      </dd>
-
-      <dt>Pages</dt>
-      <dd>
-        {{if .ReadsPages}}Read where control was proven; only a few facts are
-        kept.{{else}}Not read. Headers only.{{end}}
-      </dd>
-
-      <dt>Results</dt>
-      <dd>
-        {{if .Keeps}}Kept on this machine. Read them with
-        <code>porch-scan -history</code>. Nothing about who asked is written
-        down.{{else}}Not kept. Save a report's JSON, or start with
-        <code>-results-dir</code>.{{end}}
-      </dd>
-
-      <dt>Rule sets</dt>
-      <dd>
-        {{range .Checks}}<span class="state-policy">{{.Policy}}</span>{{end}}
-      </dd>
-    </dl>
-  </section>
 
 </section>

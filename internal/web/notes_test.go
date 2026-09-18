@@ -2,6 +2,7 @@ package web
 
 import (
 	"html"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -130,6 +131,44 @@ func TestTheReportCanBeSaved(t *testing.T) {
 // a control byte and carries no executable meaning anywhere.
 func TestTheReportIsOfferedInOneFormatOnly(t *testing.T) {
 	source := script(t)
+
+	// One exception, and it is not a report: a proof-of-control record, which
+	// exists to be pasted into a DNS provider's form and proves nothing until
+	// it is published in the zone. copyRecord is the only writer, it copies the
+	// element a data-copy button names, and it is attached to the two places a
+	// record is shown and nowhere else.
+	start := strings.Index(source, "async function copyRecord(button) {")
+	end := -1
+	if start >= 0 {
+		if n := strings.Index(source[start:], "\n}\n"); n >= 0 {
+			end = start + n
+		}
+	}
+	if start < 0 || end < 0 {
+		t.Fatal("copyRecord was not found; if the proof record is no longer copied, delete this exception")
+	}
+	copier := source[start:end]
+	if strings.Count(copier, "clipboard.writeText") != 1 ||
+		!strings.Contains(copier, "const source = document.getElementById(button.dataset.copy);") ||
+		!strings.Contains(copier, "const text = source.textContent;") ||
+		!strings.Contains(copier, "await navigator.clipboard.writeText(text);") {
+		t.Errorf("copyRecord writes something other than the record its button names:\n%s", copier)
+	}
+	if !strings.Contains(source, `for (const holder of [proofDialog, document.getElementById("domain-record")]) {`) {
+		t.Error("copyRecord is attached somewhere other than the two places a proof record is shown")
+	}
+	for _, page := range []string{"assets/console.html", "assets/domains.html"} {
+		body, err := assets.ReadFile(page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range regexp.MustCompile(`data-copy="([^"]+)"`).FindAllStringSubmatch(string(body), -1) {
+			if !strings.HasPrefix(id[1], "proof-") && !strings.HasPrefix(id[1], "domain-") {
+				t.Errorf("%s offers %q to the clipboard, which is not a proof record", page, id[1])
+			}
+		}
+	}
+	source = source[:start] + source[end:]
 
 	for _, forbidden := range []struct{ text, why string }{
 		{"text/csv", "a spreadsheet would read a name beginning with = as a formula"},

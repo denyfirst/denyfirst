@@ -22,12 +22,26 @@ func consoleAs(t *testing.T, verified bool) string {
 
 func consoleWith(t *testing.T, verified, keeps bool) string {
 	t.Helper()
+	return workspaceWith(t, "/", verified, keeps)
+}
 
-	before := rendered["/"]
-	t.Cleanup(func() { rendered["/"] = before })
+// workspaceWith renders the workspace for one configuration, reads one of its
+// pages, and puts every page Configure replaces back as it was.
+func workspaceWith(t *testing.T, path string, verified, keeps bool) string {
+	t.Helper()
+
+	before := map[string][]byte{}
+	for _, p := range []string{"/", "/privacy", "/domains", "/history", "/installation"} {
+		before[p] = rendered[p]
+	}
+	t.Cleanup(func() {
+		for p, body := range before {
+			rendered[p] = body
+		}
+	})
 
 	Configure(verified, keeps)
-	return flatten(get(t, "/").Body.String())
+	return flatten(get(t, path).Body.String())
 }
 
 // The console says what this installation actually is.
@@ -62,12 +76,13 @@ func TestTheConsoleSaysWhetherABoundaryIsConfigured(t *testing.T) {
 // installation that reads none — and a report silent about mixed content would
 // then read as a site that has none (R4).
 func TestTheConsoleSaysWhetherPagesAreRead(t *testing.T) {
-	unbounded := consoleAs(t, false)
+	// On the page that describes the installation, beside the scope it follows.
+	unbounded := workspaceWith(t, "/installation", false, false)
 	if !strings.Contains(unbounded, "Not read") {
 		t.Errorf("an installation that reads no page does not say so:\n%s", unbounded)
 	}
 
-	bounded := consoleAs(t, true)
+	bounded := workspaceWith(t, "/installation", true, false)
 	if strings.Contains(bounded, "Not read.") {
 		t.Errorf("an installation that reads pages where control was proven says it reads "+
 			"none:\n%s", bounded)
@@ -145,7 +160,9 @@ func TestTheConsoleDoesNotPromiseMoreThanItDoes(t *testing.T) {
 // not take — and the sentence it replaces is the one they would have read as a
 // promise.
 func TestTheConsoleSaysWhetherResultsAreKept(t *testing.T) {
-	nothing := consoleWith(t, false, false)
+	// Said on the page that describes the installation, and again on the
+	// history page, which is where somebody looks for them.
+	nothing := workspaceWith(t, "/installation", false, false)
 	if !strings.Contains(nothing, "Not kept") {
 		t.Errorf("an installation keeping nothing does not say so:\n%s", nothing)
 	}
@@ -153,7 +170,7 @@ func TestTheConsoleSaysWhetherResultsAreKept(t *testing.T) {
 		t.Errorf("it does not say how to start keeping them:\n%s", nothing)
 	}
 
-	keeping := consoleWith(t, false, true)
+	keeping := workspaceWith(t, "/installation", false, true)
 	if strings.Contains(keeping, "Not kept") {
 		t.Errorf("an installation that was told to keep results says it keeps none:\n%s", keeping)
 	}
@@ -163,7 +180,7 @@ func TestTheConsoleSaysWhetherResultsAreKept(t *testing.T) {
 
 	// And it says what is kept and what is not, because "kept" without either
 	// is the sentence an operator has to guess at.
-	if !strings.Contains(keeping, "porch-scan -history") {
+	if history := workspaceWith(t, "/history", false, true); !strings.Contains(history, "porch-scan -history") {
 		t.Errorf("it does not say how to read them back:\n%s", keeping)
 	}
 	if !strings.Contains(keeping, "Nothing about who asked") {
@@ -177,30 +194,50 @@ func TestTheConsoleSaysWhetherResultsAreKept(t *testing.T) {
 // attacking, and this one has no authentication at all. The store is written
 // and never served; reading it back is the command line's job, on the machine
 // itself. This asserts the shape rather than the prose: no route serves it.
+//
+// The workspace has a History page since 2026-09-18, and it serves no result:
+// it is rendered once, when the program starts and before any check has run,
+// so there is nothing in it to leak. What it says is where results are kept
+// and how to read them on the machine. Nothing else answers.
 func TestAKeptResultIsNotServedOverHTTP(t *testing.T) {
 	consoleWith(t, false, true)
 
-	for _, path := range []string{"/results", "/history", "/api/v1/results", "/api/v1/history"} {
+	for _, path := range []string{"/results", "/api/v1/results", "/api/v1/history"} {
 		if w := get(t, path); w.Code == http.StatusOK {
 			t.Errorf("%s is served, and a history of an estate's weaknesses is not something a "+
 				"service with no authentication should offer", path)
 		}
 	}
+
+	// The page is the bytes rendered at startup, and no handler writes
+	// anything else to that path.
+	w := get(t, "/history")
+	if w.Code != http.StatusOK || w.Body.String() != string(rendered["/history"]) {
+		t.Error("/history answers with something other than the page rendered when the program started")
+	}
+	if strings.Contains(w.Body.String(), "<script") && !strings.Contains(w.Body.String(), `<script src="/theme.js"></script>`) {
+		t.Error("/history loads a script, and a script is how a page would start fetching results")
+	}
+	if strings.Contains(w.Body.String(), `src="/app.js"`) {
+		t.Error("/history loads app.js, and a script is how a page would start fetching results")
+	}
 }
 
-// The console is a field and the facts about the installation: the tool's
-// name is in the header and the tab, and the page's one heading is there for
-// assistive technology rather than repeated on the screen.
+// The console names the tool in the tab and the page in its heading.
+//
+// It carried one heading, visually hidden, while the page was a field and
+// the facts about the installation. In the workspace every part has a
+// visible heading saying what it is for, and the tab still names the tool.
 func TestTheConsoleSaysItsNameOnce(t *testing.T) {
 	page := get(t, "/").Body.String()
 	if !strings.Contains(page, "<title>"+ToolName+"</title>") {
 		t.Errorf("the console's title is not the tool's name")
 	}
-	if n := strings.Count(page, "<h1"); n != 1 || !strings.Contains(page, `<h1 class="visually-hidden">`) {
-		t.Errorf("the console has %d headings of the first rank, want one, visually hidden", n)
+	if n := strings.Count(page, "<h1"); n != 1 || !strings.Contains(page, "<h1>New check</h1>") {
+		t.Errorf("the console has %d headings of the first rank, want one: New check", n)
 	}
-	if !strings.Contains(stylesheet(t), ".visually-hidden {") {
-		t.Error("nothing hides the console's heading from the screen")
+	if !strings.Contains(page, `<a class="rail-item" href="/" aria-current="page">`) {
+		t.Error("the rail does not mark New check as the current page")
 	}
 }
 
